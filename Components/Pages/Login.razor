@@ -1,0 +1,10 @@
+@page "/login"
+@rendermode InteractiveServer
+@using System.Security.Cryptography
+@using System.Text
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+<PageTitle>تسجيل الدخول - ARMS</PageTitle>
+<div class="login-page"><div class="login-card"><img src="/images/arms-logo.png" class="login-logo" alt="ARMS"/><h1>تسجيل الدخول</h1><p>نفس نظام ARMS، والحساب يحدد الدور والصلاحيات.</p><div class="field"><label>اسم المستخدم</label><input @bind="Username" /></div><div class="field"><label>كلمة المرور</label><input type="password" @bind="Password" /></div><button class="btn primary full-btn" @onclick="DoLogin">دخول</button>@if(Message!=""){<div class="notice danger-notice">@Message</div>}<div class="demo-box"><b>حسابات الاختبار</b><div>فرع: ahmed.mohamed / 123456</div><div>فني: ahmed.tech / 123456</div><div>مشرف: maintenance.manager / 123456</div><div>فني متنقل: mobile.tech / 123456</div><div>مدير الصيانة: maintenance.director / 123456</div><div>مدير عام ARMS: system.admin / 123456</div></div></div></div>
+@code {string Username="ahmed.mohamed",Password="123456",Message="";async Task DoLogin(){await using var db=await DbFactory.CreateDbContextAsync();var u=await db.UserAccounts.FirstOrDefaultAsync(x=>x.Username==Username.Trim());if(u is null||!u.IsActive||u.PasswordHash!=Hash(Password)){Message="بيانات الدخول غير صحيحة.";return;}var token=await ArmsAuth.CreateSessionAsync(db,u.Id);await JS.InvokeVoidAsync("armsTheme.setUser",token);Nav.NavigateTo("/", forceLoad: true);}static string Hash(string v)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(v)));}

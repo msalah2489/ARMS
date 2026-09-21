@@ -1,0 +1,34 @@
+ARMS V2.4.3 - User Requested Fixes
+
+1. Restored spare-parts management.
+   - Spare part name, optional color, compatible device model, stock quantity, active/inactive status.
+   - Technician can select consumed spare parts and quantities per service device.
+   - On completing maintenance, selected quantities are deducted from spare-parts stock and linked usage records are stored against the ServiceDevice/ServiceRequest.
+
+2. Fixed device-model status selector so Active/Stopped is visibly selected in the editor.
+
+3. Added bulk maintenance dispatch from the Service Requests page.
+   - Branch user can select multiple requests.
+   - One unified dispatch report contains all eligible devices.
+   - Print report once, then send all eligible devices as one dispatch batch.
+   - Existing per-request dispatch workflow remains available.
+
+4. Supervisor navigation labels updated:
+   - Maintenance Requests -> View Requests
+   - Devices -> View Devices
+   - Maintenance Receiving -> Send & Receive Maintenance
+   - Receiving icon changed to bidirectional arrow.
+
+5. Technician workspace now displays the customer's complaint in the waiting list, receive modal, and active-device workspace.
+
+6. Technician tracking now uses a dedicated MaintenanceTechnicianName so completed work is attributed to the technician rather than the maintenance supervisor.
+   - Technician filter now works for completed operations even after the technician assignment is cleared.
+
+7. Branch scoping reinforced.
+   - Branch request creation is forced to the logged-in user's branch.
+   - Customer lookup is limited to the user's branch.
+   - Direct access to another branch's request details/edit/prepare pages is blocked for branch users.
+
+8. Local-maintenance failure -> branch -> central maintenance path hardened.
+   - Central receiving also recognizes devices whose physical location is still paired with the transit status "مع مندوب التوصيل".
+   - Sending a request creates a notification for the maintenance supervisor and the device enters the central incoming queue.

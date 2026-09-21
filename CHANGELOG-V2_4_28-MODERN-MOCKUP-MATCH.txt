@@ -1,0 +1,5 @@
+V2.4.28 - Modern UI Mockup Match
+- Reworked desktop top bar alignment to match the approved modern mockup.
+- Enlarged sidebar icons while keeping the primary navigation within the viewport.
+- Refined dashboard banner, KPI cards, recent requests panel, quick actions and alerts.
+- Kept existing workflow and page logic unchanged; UI-only changes.

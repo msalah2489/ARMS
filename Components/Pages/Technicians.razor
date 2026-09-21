@@ -1,0 +1,126 @@
+@page "/technicians"
+@rendermode InteractiveServer
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+<PageTitle>متابعة الفنيين</PageTitle>
+
+<div class="page-head"><div><h1>متابعة الفنيين</h1><p>الأجهزة التي يعمل عليها كل فني الآن وما تم إنهاؤه خلال التاريخ المحدد والمدة المستغرقة.</p></div></div>
+@if(CurrentUser is null)
+{
+    <div class="empty">جارٍ تحميل البيانات...</div>
+}
+else if(!CanAccess)
+{
+    <div class="notice danger-notice">هذه الصفحة متاحة لمشرف ومدير الصيانة فقط.</div>
+}
+else
+{
+    <div class="stats">
+        <div class="stat"><span>الفنيون</span><b>@TechnicianUsers.Count</b></div>
+        <div class="stat"><span>مهام حالية</span><b>@CurrentTasks.Count</b></div>
+        <div class="stat"><span>منجز في التاريخ المحدد</span><b>@CompletedToday.Count</b></div>
+    </div>
+
+    <div class="panel">
+        <div class="section-title">تقرير الفنيين</div>
+        <div class="form-grid">
+            <div class="field"><label>من تاريخ</label><input type="date" @bind="FromDate" /></div><div class="field"><label>إلى تاريخ</label><input type="date" @bind="ToDate" /></div><div class="field"><label>عدد الصفوف</label><select @bind="PageSize"><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></div><div class="field"><label>اسم الفني</label><select @bind="SelectedTechnicianId"><option value="0">كل الفنيين</option>@foreach(var tech in TechnicianUsers){<option value="@tech.Id">@tech.FullName — @tech.Role</option>}</select></div>
+        </div>
+        <div class="actions-bottom"><button class="btn primary" @onclick="LoadData">تطبيق التاريخ</button><button class="btn" @onclick="PrintReport">🖨 طباعة التقرير</button><button class="btn green" @onclick="ExportExcel">📊 تصدير Excel</button></div>
+    </div>
+
+    <div class="panel">
+        <div class="section-title">الفنيون ومهامهم الحالية</div>
+        <table>
+            <thead><tr><th>الفني</th><th>نوع العمل</th><th>الجهاز الحالي</th><th>الموديل</th><th>الطلب</th><th>الموقع</th><th>الحالة</th><th>بدأ في</th><th>المدة</th></tr></thead>
+            <tbody>
+            @foreach(var tech in TechnicianUsers)
+            {
+                var d=CurrentTasks.FirstOrDefault(x=>x.AssignedTechnicianId==tech.Id);
+                <tr>
+                    <td><b>@tech.FullName</b></td><td>@tech.Role</td>
+                    @if(d is null)
+                    {
+                        <td colspan="7"><span class="small">لا توجد مهمة حالية</span></td>
+                    }
+                    else
+                    {
+                        <td>@d.DeviceCode</td><td>@d.Model</td><td>@d.ServiceRequest?.RequestNumber</td><td>@d.CurrentLocation</td><td>@d.CurrentStatus</td><td>@d.MaintenanceStartedAt?.ToString("HH:mm:ss")</td><td>@Duration(d.MaintenanceStartedAt,DateTime.Now)</td>
+                    }
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel" id="technician-report">
+        <div class="section-title">ما تم إصلاحه من @FromDate.ToString("yyyy-MM-dd") إلى @ToDate.ToString("yyyy-MM-dd")</div>
+        <table>
+            <thead><tr><th>الفني</th><th>الجهاز</th><th>الموديل</th><th>الطلب</th><th>النتيجة</th><th>الموقع</th><th>بدأ</th><th>انتهى</th><th>المدة</th></tr></thead>
+            <tbody>
+            @if(!CompletedToday.Any())
+            {
+                <tr><td colspan="9" class="empty">لا توجد عمليات مكتملة في التاريخ المحدد.</td></tr>
+            }
+            else
+            {
+                @foreach(var d in PagedCompleted)
+                {
+                    <tr><td>@(string.IsNullOrWhiteSpace(d.MaintenanceTechnicianName)?d.MaintenanceReceivedBy:d.MaintenanceTechnicianName)</td><td>@d.DeviceCode</td><td>@d.Model</td><td>@d.ServiceRequest?.RequestNumber</td><td>@d.MaintenanceResult</td><td>@d.CurrentLocation</td><td>@d.MaintenanceStartedAt?.ToString("HH:mm:ss")</td><td>@d.MaintenanceCompletedAt?.ToString("HH:mm:ss")</td><td>@Duration(d.MaintenanceStartedAt,d.MaintenanceCompletedAt)</td></tr>
+                }
+            }
+            </tbody>
+        </table>
+        <div class="actions-bottom" style="justify-content:center;gap:8px"><button class="btn outline" disabled="@(Page<=1)" @onclick="PrevPage">← السابق</button><span class="small">صفحة @Page من @TotalPages — إجمالي @CompletedToday.Count</span><button class="btn outline" disabled="@(Page>=TotalPages)" @onclick="NextPage">التالي →</button></div>
+    </div>
+}
+
+@code{
+    UserAccount? CurrentUser;
+    List<UserAccount> TechnicianUsers=new();
+    List<ServiceDevice> CurrentTasks=new(),CompletedToday=new();
+    DateTime FromDate=DateTime.Today, ToDate=DateTime.Today; int SelectedTechnicianId=0,PageSize=10,Page=1; IEnumerable<ServiceDevice> PagedCompleted=>CompletedToday.Skip((Page-1)*PageSize).Take(PageSize); int TotalPages=>Math.Max(1,(int)Math.Ceiling(CompletedToday.Count/(double)PageSize)); void PrevPage(){if(Page>1)Page--;} void NextPage(){if(Page<TotalPages)Page++;}
+    bool CanAccess=>CurrentUser?.Role is "مشرف صيانة" or "مدير صيانة" or "مدير رئيسي" or "مدير عام ARMS";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(!firstRender)return;
+        var username=await JS.InvokeAsync<string>("armsTheme.getUser");
+        await using var db=await DbFactory.CreateDbContextAsync();
+        CurrentUser=await ArmsAuth.ResolveUserAsync(db, username);
+        await LoadData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task LoadData()
+    {
+        Page=1;
+        if(!CanAccess)return;
+        await using var db=await DbFactory.CreateDbContextAsync();
+        TechnicianUsers=await db.UserAccounts.Where(x=>x.IsActive&&(x.Role=="فني صيانة"||x.Role=="فني متنقل")).OrderBy(x=>x.FullName).ToListAsync();
+        var currentQ=db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>x.AssignedTechnicianId!=null&&(x.CurrentStatus=="جاري الصيانة"||x.CurrentStatus=="فحص بدون صيانة"||x.CurrentStatus=="جاري الصيانة محليًا"));if(SelectedTechnicianId>0)currentQ=currentQ.Where(x=>x.AssignedTechnicianId==SelectedTechnicianId);CurrentTasks=await currentQ.ToListAsync();
+        var start=FromDate.Date; var end=ToDate.Date.AddDays(1);
+        var completedQ=db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>x.MaintenanceCompletedAt>=start&&x.MaintenanceCompletedAt<end);if(SelectedTechnicianId>0){var selectedTech=TechnicianUsers.FirstOrDefault(x=>x.Id==SelectedTechnicianId);if(selectedTech is not null)completedQ=completedQ.Where(x=>x.MaintenanceTechnicianName==selectedTech.FullName||x.AssignedTechnicianId==SelectedTechnicianId);}CompletedToday=await completedQ.OrderByDescending(x=>x.MaintenanceCompletedAt).ToListAsync();
+        foreach(var d in CompletedToday)
+        {
+            if(string.IsNullOrWhiteSpace(d.MaintenanceTechnicianName)){
+                var tech=TechnicianUsers.FirstOrDefault(x=>x.Id==d.AssignedTechnicianId);
+                if(tech is not null)d.MaintenanceTechnicianName=tech.FullName;
+            }
+            if(string.IsNullOrWhiteSpace(d.MaintenanceTechnicianName))d.MaintenanceTechnicianName=d.MaintenanceReceivedBy;
+            if(string.IsNullOrWhiteSpace(d.MaintenanceTechnicianName))d.MaintenanceTechnicianName="—";
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task PrintReport()=>await JS.InvokeVoidAsync("print");
+    async Task ExportExcel(){var rows=new List<string[]> {new[]{"الفني","الجهاز","الموديل","الطلب","النتيجة","الموقع","بدأ","انتهى","المدة"}};rows.AddRange(CompletedToday.Select(d=>new[]{string.IsNullOrWhiteSpace(d.MaintenanceTechnicianName)?d.MaintenanceReceivedBy:d.MaintenanceTechnicianName,d.DeviceCode,d.Model,d.ServiceRequest?.RequestNumber??"",d.MaintenanceResult,d.CurrentLocation,d.MaintenanceStartedAt?.ToString("yyyy-MM-dd HH:mm")??"",d.MaintenanceCompletedAt?.ToString("yyyy-MM-dd HH:mm")??"",Duration(d.MaintenanceStartedAt,d.MaintenanceCompletedAt)}));var bytes=CreateXlsx(rows);await JS.InvokeVoidAsync("armsDownload.downloadBase64",$"ARMS-Technicians-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",Convert.ToBase64String(bytes));}
+    static byte[] CreateXlsx(List<string[]> rows){using var ms=new MemoryStream();using(var zip=new System.IO.Compression.ZipArchive(ms,System.IO.Compression.ZipArchiveMode.Create,true)){Add(zip,"[Content_Types].xml","<?xml version='1.0' encoding='UTF-8'?><Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/><Default Extension='xml' ContentType='application/xml'/><Override PartName='/xl/workbook.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'/><Override PartName='/xl/worksheets/sheet1.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'/></Types>");Add(zip,"_rels/.rels","<?xml version='1.0' encoding='UTF-8'?><Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'><Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument' Target='xl/workbook.xml'/></Relationships>");Add(zip,"xl/workbook.xml","<?xml version='1.0' encoding='UTF-8'?><workbook xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><sheets><sheet name='ARMS Report' sheetId='1' r:id='rId1'/></sheets></workbook>");Add(zip,"xl/_rels/workbook.xml.rels","<?xml version='1.0' encoding='UTF-8'?><Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'><Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' Target='worksheets/sheet1.xml'/></Relationships>");var ns=System.Xml.Linq.XNamespace.Get("http://schemas.openxmlformats.org/spreadsheetml/2006/main");var sd=new System.Xml.Linq.XElement(ns+"sheetData");for(int i=0;i<rows.Count;i++){var row=new System.Xml.Linq.XElement(ns+"row",new System.Xml.Linq.XAttribute("r",i+1));for(int j=0;j<rows[i].Length;j++)row.Add(new System.Xml.Linq.XElement(ns+"c",new System.Xml.Linq.XAttribute("r",Col(j+1)+(i+1)),new System.Xml.Linq.XAttribute("t","inlineStr"),new System.Xml.Linq.XElement(ns+"is",new System.Xml.Linq.XElement(ns+"t",rows[i][j]??""))));sd.Add(row);}Add(zip,"xl/worksheets/sheet1.xml",new System.Xml.Linq.XDocument(new System.Xml.Linq.XDeclaration("1.0","UTF-8",null),new System.Xml.Linq.XElement(ns+"worksheet",sd)).ToString(System.Xml.Linq.SaveOptions.DisableFormatting));}return ms.ToArray();}
+    static string Col(int n){var s="";while(n>0){n--;s=(char)('A'+n%26)+s;n/=26;}return s;}static void Add(System.IO.Compression.ZipArchive z,string path,string text){var e=z.CreateEntry(path);using var w=new System.IO.StreamWriter(e.Open(),new System.Text.UTF8Encoding(false));w.Write(text);}
+    static string Duration(DateTime? start,DateTime? end)
+    {
+        if(!start.HasValue)return "—";
+        var x=(end??DateTime.Now)-start.Value;
+        return $"{(int)x.TotalHours:00}:{x.Minutes:00}:{x.Seconds:00}";
+    }
+}

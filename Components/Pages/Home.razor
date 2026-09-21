@@ -1,0 +1,64 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+<PageTitle>الرئيسية</PageTitle>
+<div class="home-page executive-dashboard">
+  <div class="arms-watermark"><img src="/images/arms-logo.png" alt="ARMS" /></div>
+
+  <section class="executive-hero">
+    <div class="hero-copy">
+      <div class="small breadcrumb">لوحة التحكم الرئيسية</div>
+      <h1>مرحبًا بك، @(CurrentUser?.FullName ?? "مستخدم ARMS") 👋</h1>
+      <p>نظرة سريعة على حالة الصيانة والأجهزة والإجراءات الأكثر استخدامًا.</p>
+      <div class="hero-meta"><span>● النظام يعمل بشكل طبيعي</span><span>آخر تحديث: اليوم</span></div>
+    </div>
+    @if(IsBranch || IsSystemAdmin){<a class="btn primary hero-btn" href="/service-requests/new">＋ إنشاء طلب صيانة جديد</a>}
+  </section>
+
+  <div class="stats executive-stats">
+    <a class="stat clickable-stat kpi-red" href="/service-requests"><span class="kpi-icon">▤</span><div class="kpi-copy"><span>طلبات الصيانة</span><b>@Requests</b><small>إجمالي الطلبات المسجلة</small></div></a>
+    <a class="stat clickable-stat kpi-blue" href="/devices"><span class="kpi-icon">▣</span><div class="kpi-copy"><span>الأجهزة</span><b>@Devices</b><small>كل الأجهزة المسجلة</small></div></a>
+    <a class="stat clickable-stat kpi-amber" href="/devices?status=ready"><span class="kpi-icon">▣</span><div class="kpi-copy"><span>جاهز للإرسال</span><b>@Ready</b><small>أجهزة جاهزة للإرجاع</small></div></a>
+    <a class="stat clickable-stat kpi-green" href="/devices?status=excluded"><span class="kpi-icon">⚒</span><div class="kpi-copy"><span>مستبعد</span><b>@Excluded</b><small>أجهزة مستبعدة من الخدمة</small></div></a>
+  </div>
+
+  <section class="panel executive-table-panel">
+    <div class="section-head-row"><div><h2>آخر طلبات الصيانة</h2><p class="small">أحدث الطلبات المسجلة في النظام</p></div><a class="soft-link" href="/service-requests">عرض الكل ←</a></div>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>الطلب</th><th>العميل</th><th>الفرع</th><th>الأجهزة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>
+    @if(Recent.Count==0){<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">▱</div><b>لا توجد طلبات حاليًا</b><small>ابدأ بإنشاء طلب صيانة جديد</small></div></td></tr>}
+    else foreach(var r in Recent){var st=DisplayStatus(r);<tr><td>•</td><td>@r.RequestNumber</td><td>@r.CustomerName</td><td>@r.Branch</td><td>@r.Devices.Count</td><td><span class="pill @(st=="مغلق"?"green":st=="معلق"?"yellow":st=="ملغى"?"red":st=="جاهز للإرسال"?"yellow":"blue")">@st</span></td><td><a class="link" href="/service-requests/@r.Id">عرض ↗</a></td></tr>}
+    </tbody></table></div>
+  </section>
+
+  <div class="executive-bottom-grid">
+    <section class="panel executive-panel">
+      <div class="section-head-row"><div><h2>ملخص عام</h2><p class="small">مؤشرات سريعة لأداء النظام</p></div><span class="section-symbol">▥</span></div>
+      <div class="summary-cards">
+        <div class="summary-card"><span>◷</span><b>متوسط وقت الصيانة</b><strong>0</strong><small>ساعة</small></div>
+        <div class="summary-card"><span>✓</span><b>معدل الإنجاز</b><strong>0%</strong><small>هذا الشهر</small></div>
+        <div class="summary-card"><span>⚙</span><b>الأجهزة العاملة</b><strong>@Devices</strong><small>إجمالي الأجهزة</small></div>
+        <div class="summary-card"><span>▣</span><b>قطع الغيار</b><strong>0</strong><small>المخزون المتاح</small></div>
+      </div>
+    </section>
+
+    <section class="panel executive-panel">
+      <div class="section-head-row"><div><h2>أسرع الإجراءات</h2><p class="small">الوصول السريع للمهام الأكثر استخدامًا</p></div><span class="section-symbol">ϟ</span></div>
+      <div class="quick-actions executive-actions">
+        @if(IsSystemAdmin || IsBranch){<a class="quick-action qa-blue" href="/service-requests/new"><span class="quick-icon">▤</span><div><b>إنشاء طلب صيانة</b><small>تسجيل طلب صيانة جديد</small></div><i>←</i></a>}
+        @if(IsSystemAdmin || IsMaintenanceManager){<a class="quick-action qa-purple" href="/shipping"><span class="quick-icon">▣</span><div><b>شحن أجهزة الصيانة</b><small>إرسال الأجهزة للفرع أو العميل</small></div><i>←</i></a>}
+        @if(IsSystemAdmin || IsMaintenanceManager){<a class="quick-action qa-teal" href="/warehouse-receiving"><span class="quick-icon">⇄</span><div><b>استلام المستودع</b><small>استلام الأجهزة وقطع الغيار</small></div><i>←</i></a>}
+        <a class="quick-action qa-amber" href="/devices"><span class="quick-icon">▣</span><div><b>عرض الأجهزة</b><small>استعراض جميع الأجهزة</small></div><i>←</i></a>
+      </div>
+    </section>
+
+    <section class="panel executive-panel alerts-panel">
+      <div class="section-head-row"><div><h2>تنبيهات وإشعارات</h2><p class="small">ما يحتاج إلى متابعة الآن</p></div><span class="section-symbol">♧</span></div>
+      <div class="modern-alert danger"><div><b>طلبات الصيانة</b><small>طلبات مسجلة في النظام</small></div><span class="alert-num">@Requests</span><i>›</i></div>
+      <div class="modern-alert info"><div><b>أجهزة جاهزة للإرسال</b><small>جاهزة للإرجاع للجهة الأصلية</small></div><span class="alert-num">@Ready</span><i>›</i></div>
+      <div class="modern-alert neutral"><div><b>الأجهزة المسجلة</b><small>إجمالي الأجهزة في النظام</small></div><span class="alert-num">@Devices</span><i>›</i></div>
+    </section>
+  </div>
+</div>
+@code {int Requests,Devices,Ready,Excluded;bool IsBranch,IsTechnician,IsSystemAdmin,IsMaintenanceManager;UserAccount? CurrentUser;List<ServiceRequest> Recent = new();protected override async Task OnInitializedAsync(){var username=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db, username);IsBranch=CurrentUser?.Role=="مستخدم فرع";IsSystemAdmin=ArmsAuth.IsSystemAdminRole(CurrentUser?.Role);IsMaintenanceManager=CurrentUser?.Role is "مشرف صيانة" or "مدير صيانة" || IsSystemAdmin;IsTechnician=CurrentUser?.Role is "فني صيانة" or "فني متنقل";var branch=IsBranch?CurrentUser!.Branch:"الرياض";Requests=IsSystemAdmin?await db.ServiceRequests.CountAsync():IsTechnician?await db.ServiceRequests.CountAsync(x=>x.Devices.Any(d=>d.AssignedTechnicianId==CurrentUser!.Id||d.DeviceStatusHistories.Any(h=>h.ChangedBy==CurrentUser!.FullName))):await db.ServiceRequests.CountAsync(x=>x.Branch==branch);Devices=IsSystemAdmin?await db.ServiceDevices.CountAsync(x=>x.ServiceRequest!=null):IsTechnician?await db.ServiceDevices.CountAsync(x=>x.AssignedTechnicianId==CurrentUser!.Id):await db.ServiceDevices.CountAsync(x=>x.ServiceRequest!=null&&x.ServiceRequest.Branch==branch);Ready=IsSystemAdmin?await db.ServiceDevices.CountAsync(x=>x.CurrentLocation=="مستودع الأجهزة الجاهزة للإرجاع"&&x.CurrentStatus=="جاهز للإرسال"&&x.SentAt==null&&x.Decision!="مستبعد"&&x.Decision!="مهلك"&&x.Decision!="مستبدل"):IsTechnician?0:await db.ServiceDevices.CountAsync(x=>x.ServiceRequest!=null&&x.ServiceRequest.Branch==branch&&x.CurrentLocation=="مستودع الأجهزة الجاهزة للإرجاع"&&x.CurrentStatus=="جاهز للإرسال"&&x.SentAt==null&&x.Decision!="مستبعد"&&x.Decision!="مهلك"&&x.Decision!="مستبدل");Excluded=IsSystemAdmin?await db.ServiceDevices.CountAsync(x=>x.Decision=="مستبعد"):IsTechnician?0:await db.ServiceDevices.CountAsync(x=>x.ServiceRequest!=null&&x.ServiceRequest.Branch==branch&&x.Decision=="مستبعد");Recent=IsSystemAdmin?await db.ServiceRequests.Include(x=>x.Devices).OrderByDescending(x=>x.Id).Take(8).ToListAsync():IsTechnician?await db.ServiceRequests.Include(x=>x.Devices).ThenInclude(d=>d.DeviceStatusHistories).Where(x=>x.Devices.Any(d=>d.AssignedTechnicianId==CurrentUser!.Id||d.DeviceStatusHistories.Any(h=>h.ChangedBy==CurrentUser!.FullName))).OrderByDescending(x=>x.Id).Take(8).ToListAsync():await db.ServiceRequests.Include(x=>x.Devices).Where(x=>x.Branch==branch).OrderByDescending(x=>x.Id).Take(8).ToListAsync();}
+string DisplayStatus(ServiceRequest r)=>RequestStatusHelper.Calculate(r.Devices);}

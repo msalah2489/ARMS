@@ -1,0 +1,11 @@
+namespace ARMS.Web.Models;
+
+public class Customer
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Branch { get; set; } = "الرياض";
+    public string Notes { get; set; } = "";
+}

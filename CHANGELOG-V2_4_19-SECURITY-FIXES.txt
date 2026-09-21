@@ -1,0 +1,57 @@
+ARMS V2.4.19 - Security & Logic Fixes (applied by Claude, not tested with dotnet build)
+
+1. CRITICAL: Replaced the localStorage-username login system with real server-side sessions.
+   - New table UserSessions (Models/UserSession.cs) stores a random 256-bit Token per login.
+   - New helper Data/ArmsAuth.cs: CreateSessionAsync (on login), ResolveUserAsync (on every
+     page load), InvalidateSessionAsync (on logout).
+   - Login.razor now issues a session token instead of storing the username in the browser.
+     Every page that used to do `db.UserAccounts.FirstOrDefaultAsync(x=>x.Username==username)`
+     now does `ArmsAuth.ResolveUserAsync(db, token)`, which only succeeds if a live,
+     unexpired session row exists. Sessions expire after 12 hours.
+   - Logout (MainLayout.razor) now deletes the session row on the server, not just the
+     browser copy.
+   - Impact: a username alone (even one shown on the login screen as a demo account) is no
+     longer enough to access any page. A real, unexpired session token issued at a
+     successful login is required.
+
+2. File uploads (receipt photos, device photos, spare-part receiving) are now validated
+   before being saved: Data/UploadGuard.cs whitelists .jpg/.jpeg/.png/.webp by both file
+   extension and browser-reported content type, checks the 8MB size limit, and always
+   writes the file to disk using a safe, whitelisted extension rather than trusting the
+   name the browser sent. Applied in BranchReceiving.razor, NewServiceRequest.razor (both
+   the device-photo and customer-receipt uploads), and SparePartReceiving.razor.
+
+3. NewServiceRequest.razor: CreateRequest() (used when adding more than one device to the
+   same request) is now wrapped in try/catch and retries up to 3 times with a fresh request
+   number if two branches happen to generate the same request number at the same instant.
+   Previously this path had no error handling at all and an unhandled exception here would
+   disconnect the user's whole session.
+
+4. TechnicianWorkspace.razor: added a final stock check immediately before deducting spare
+   parts, so a part that has just become insufficiently stocked (e.g. consumed by another
+   technician a moment earlier) aborts the save with a clear message instead of silently
+   allowing negative stock.
+
+5. Program.cs: the ahmed.mohamed / ahmed.tech / maintenance.manager demo accounts were being
+   force-reset to their original name/role/branch on every single application restart. This
+   meant any changes a real admin made to these specific accounts from the /admin page were
+   silently discarded on the next restart. These accounts are now only created once (if
+   missing) and are left alone afterwards, exactly like every other account.
+
+NOT covered in this pass (documented separately, needs a maintainer's judgment call):
+   - Password hashing is still plain SHA-256 without a salt. Recommend migrating to
+     BCrypt/PBKDF2 in a future update; this is lower urgency now that item 1 above closes
+     the impersonation hole.
+   - SaveRequest() (the single-device save path) already had a try/catch but does not retry
+     on a duplicate request-number collision the way CreateRequest() now does; left as-is to
+     minimize the size of this change.
+   - Most other state-changing methods across the app still lack try/catch. Any unhandled
+     exception in a Blazor Server app disconnects that user's session. A full pass adding
+     try/catch everywhere was judged too large and too risky to make blindly (this
+     environment has no .NET SDK, so none of these changes could be compiled or run).
+
+IMPORTANT: none of the above could be verified with `dotnet build` or `dotnet run` in this
+environment (no .NET SDK, no internet access). Please build and smoke-test this on a machine
+with the .NET 10 SDK before deploying, and pay particular attention to: logging in as each
+of the demo roles, logging out and confirming a copied/old token no longer works, and
+uploading a non-image file to confirm it is rejected.

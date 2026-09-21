@@ -1,0 +1,82 @@
+@page "/shipping"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+<PageTitle>البوالص والشحن</PageTitle>
+
+@if (CurrentUser is null) { <div class="empty">جارٍ التحميل...</div> }
+else if (!CanView) { <div class="notice danger-notice">هذه الصفحة غير متاحة لهذا الحساب.</div> }
+else
+{
+<div class="page-head"><div><h1>البوالص والشحن</h1><p>إنشاء بوالص الإرسال للصيانة وبوالص الإرجاع بعد انتهاء الصيانة.</p></div></div>
+@if(!string.IsNullOrWhiteSpace(Message)){<div class="notice @(Message.StartsWith("خطأ")?"danger-notice":"success-notice")">@Message</div>}
+
+@if(CanManage){
+<div class="panel">
+ <div class="section-title">① إنشاء بوليصة إرسال من فرع إلى المستودع</div>
+ <div class="form-grid">
+  <div class="field"><label>الفرع *</label><select @bind="SelectedBranch"><option value="">اختر الفرع</option>@foreach(var b in Branches.Where(x=>x.IsActive)){<option value="@b.City">@b.Name</option>}</select></div>
+  <div class="field"><label>شركة الشحن *</label><input @bind="Carrier" placeholder="مثال: DHL" /></div>
+  <div class="field"><label>رقم البوليصة *</label><input @bind="ShipmentNumber" /></div>
+ </div>
+ <div class="actions-bottom"><button class="btn primary" @onclick="LoadBranchDevices">عرض الأجهزة الموجودة بالفرع</button></div>
+</div>
+@if(BranchDevices.Any())
+{
+<div class="panel"><div class="section-title">الأجهزة المتاحة للشحن من @SelectedBranch</div>
+<table><thead><tr><th><input type="checkbox" checked="@(SelectedDeviceIds.Count==BranchDevices.Count)" @onchange="ToggleAllBranch" /></th><th>الجهاز</th><th>الموديل</th><th>اللون</th><th>العميل</th><th>الطلب</th><th>الحالة</th></tr></thead><tbody>
+@foreach(var d in BranchDevices){<tr><td><input type="checkbox" checked="@SelectedDeviceIds.Contains(d.Id)" @onchange="e=>ToggleBranchDevice(d.Id,(bool)e.Value!)" /></td><td><b>@d.DeviceCode</b></td><td>@d.Model</td><td>@(string.IsNullOrWhiteSpace(d.Color)?"—":d.Color)</td><td>@d.ServiceRequest?.CustomerName</td><td>@d.ServiceRequest?.RequestNumber</td><td>@d.CurrentStatus</td></tr>}
+</tbody></table>
+<div class="actions-bottom"><button class="btn green" disabled="@(SelectedDeviceIds.Count==0)" @onclick="CreateBranchShipment">إنشاء البوليصة وسند الإرسال (@SelectedDeviceIds.Count)</button></div>
+</div>
+}
+
+<div class="panel"><div class="section-title">② أجهزة جاهزة للإرجاع</div>
+<p class="small">يتم تحديد الوجهة تلقائيًا من جهة استلام الجهاز الأصلية. لا يتم إدخال وجهة جديدة يدويًا.</p>
+@if(ReadyReturn.Any()){
+<table><thead><tr><th>الجهاز</th><th>الموديل</th><th>المصدر الأصلي</th><th>الوجهة</th><th>الطلب</th><th>اختيار</th></tr></thead><tbody>
+@foreach(var d in ReadyReturn){<tr><td><b>@d.DeviceCode</b></td><td>@d.Model</td><td>@d.ServiceRequest?.IntakeSource</td><td>@ReturnDestination(d)</td><td>@d.ServiceRequest?.RequestNumber</td><td><input type="checkbox" checked="@ReturnIds.Contains(d.Id)" @onchange="e=>ToggleReturn(d.Id,(bool)e.Value!)" /></td></tr>}
+</tbody></table>
+<div class="form-grid" style="margin-top:14px"><div class="field"><label>شركة الشحن *</label><input @bind="ReturnCarrier" /></div><div class="field"><label>رقم بوليصة الإرجاع *</label><input @bind="ReturnShipmentNumber" /></div></div>
+<div class="actions-bottom"><button class="btn primary" disabled="@(ReturnIds.Count==0)" @onclick="CreateReturnShipment">إنشاء بوليصة الإرجاع (@ReturnIds.Count)</button></div>
+}else{<div class="empty">لا توجد أجهزة جاهزة للإرجاع حاليًا.</div>}
+</div>
+}
+
+<div class="panel"><div class="section-title">البوالص الأخيرة</div>
+@if(Batches.Any()){
+<table><thead><tr><th>رقم النظام</th><th>رقم البوليصة</th><th>الاتجاه</th><th>المصدر</th><th>الوجهة</th><th>الأجهزة</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>@foreach(var b in Batches){<tr><td>@b.BatchNumber</td><td>@b.ShipmentNumber</td><td>@b.Direction</td><td>@b.SourceName</td><td>@b.DestinationName</td><td>@b.Items.Count</td><td>@b.Status @if(CanManage && b.Direction=="إرجاع" && b.Status=="جاهز للتسليم لشركة الشحن"){<button class="btn small" @onclick="()=>ConfirmReturnHandover(b.Id)">تم التسليم للشحن</button>} @if(CanManage && b.Direction=="إرسال للصيانة" && b.Status=="بانتظار تسليم الفرع"){<button class="btn small" @onclick="()=>OpenEditBatch(b.Id)">تعديل</button><button class="btn small danger" style="margin-right:4px" @onclick="()=>DeleteBatch(b.Id)">حذف</button>}</td><td>@b.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td></tr>}</tbody></table>
+}else{<div class="empty">لا توجد بوالص مسجلة.</div>}
+</div>
+}
+@if(EditingBatch is not null)
+{
+<div class="modal-backdrop"><div class="modal modal-wide"><div class="modal-head"><h3>تعديل البوليصة @EditingBatch.BatchNumber</h3><button class="btn gray" @onclick="CloseEditBatch">×</button></div>
+<div class="form-grid"><div class="field"><label>شركة الشحن *</label><input @bind="EditCarrier" /></div><div class="field"><label>رقم البوليصة *</label><input @bind="EditShipmentNumber" /></div></div>
+<div class="small" style="margin-bottom:10px">يمكن تعديل بيانات البوليصة أو استبعاد أجهزة منها قبل تسليمها لشركة الشحن.</div>
+<table><thead><tr><th>الجهاز</th><th>الموديل</th><th>اللون</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>@foreach(var item in EditingBatch.Items.Where(x=>x.RemovedAt==null)){<tr><td>@item.DeviceCodeSnapshot</td><td>@item.ModelSnapshot</td><td>@item.ColorSnapshot</td><td>ضمن الشحنة</td><td><button class="btn small danger" @onclick="()=>RemoveFromEdit(item.Id)">استبعاد</button></td></tr>}</tbody></table>
+<div class="actions-bottom"><button class="btn primary" @onclick="SaveEditBatch">حفظ التعديل</button><button class="btn gray" @onclick="CloseEditBatch">إلغاء</button></div></div></div>
+}
+@code {
+ UserAccount? CurrentUser; bool CanManage=>CurrentUser?.Role is "مدير صيانة" or "مدير عام ARMS" or "مدير رئيسي"; bool CanView=>CurrentUser?.Role is "مشرف صيانة" or "مدير صيانة" or "مدير عام ARMS" or "مدير رئيسي"; ShippingBatch? EditingBatch; string EditCarrier="",EditShipmentNumber="";
+ List<Branch> Branches=new(); List<ServiceDevice> BranchDevices=new(); List<ServiceDevice> ReadyReturn=new(); List<ShippingBatch> Batches=new(); HashSet<int> SelectedDeviceIds=new(); HashSet<int> ReturnIds=new();
+ string SelectedBranch="",Carrier="",ShipmentNumber="",ReturnCarrier="",ReturnShipmentNumber="",Message="";
+ protected override async Task OnInitializedAsync(){await Load();}
+ async Task Load(){var token=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db,token);if(!CanView)return;Branches=await db.Branches.OrderBy(x=>x.Name).ToListAsync();ReadyReturn=await db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>x.CurrentLocation=="مستودع الأجهزة الجاهزة للإرجاع"&&x.CurrentStatus=="جاهز للإرسال"&&!x.MaintenancePaused&&x.AssignedTechnicianId==null&&x.Decision!="مستبعد"&&x.Decision!="مهلك"&&x.Decision!="مستبدل"&&x.CustomerDeliveredAt==null).OrderBy(x=>x.Id).ToListAsync();Batches=await db.ShippingBatches.Include(x=>x.Items).OrderByDescending(x=>x.Id).Take(30).ToListAsync();}
+ async Task LoadBranchDevices(){Message="";SelectedDeviceIds.Clear();if(string.IsNullOrWhiteSpace(SelectedBranch)){Message="خطأ: اختر الفرع.";return;}BranchDevices=await GetBranchDevices(SelectedBranch);}
+ async Task<List<ServiceDevice>> GetBranchDevices(string branch){await using var db=await DbFactory.CreateDbContextAsync();return await db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>x.ServiceRequest!.Branch==branch&&x.CurrentLocation=="الفرع"&&x.CustomerDeliveredAt==null&&x.MaintenanceReceivedAt==null&&x.AssignedTechnicianId==null&&string.IsNullOrWhiteSpace(x.DispatchBatchCode)&&x.Decision!="مستبعد"&&x.Decision!="مهلك"&&x.Decision!="مستبدل"&&x.Decision!="مرتجع").OrderBy(x=>x.Id).ToListAsync();}
+ void ToggleBranchDevice(int id,bool on){if(on)SelectedDeviceIds.Add(id);else SelectedDeviceIds.Remove(id);} void ToggleAllBranch(ChangeEventArgs e){if((bool)e.Value!)foreach(var d in BranchDevices)SelectedDeviceIds.Add(d.Id);else SelectedDeviceIds.Clear();}
+ async Task CreateBranchShipment(){Message="";if(SelectedDeviceIds.Count==0){Message="خطأ: اختر جهازًا واحدًا على الأقل.";return;}if(string.IsNullOrWhiteSpace(Carrier)||string.IsNullOrWhiteSpace(ShipmentNumber)){Message="خطأ: شركة الشحن ورقم البوليصة إجباريان.";return;}await using var db=await DbFactory.CreateDbContextAsync();var alreadyBatched=await db.ShippingBatchItems.Include(x=>x.ShippingBatch).AnyAsync(x=>SelectedDeviceIds.Contains(x.ServiceDeviceId)&&x.RemovedAt==null&&x.ShippingBatch!=null&&x.ShippingBatch.Direction=="إرسال للصيانة"&&x.ShippingBatch.Status!="مكتمل");if(alreadyBatched){Message="خطأ: جهاز واحد أو أكثر مرتبط بالفعل ببوليصة نشطة ولا يمكن إدخاله في بوليصة أخرى.";return;}var rows=await db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>SelectedDeviceIds.Contains(x.Id)&&x.ServiceRequest!.Branch==SelectedBranch&&x.CurrentLocation=="الفرع"&&string.IsNullOrWhiteSpace(x.DispatchBatchCode)).ToListAsync();if(!rows.Any()){Message="خطأ: لا توجد أجهزة صالحة للإرسال.";return;}var batch=new ShippingBatch{BatchNumber=$"SB-{DateTime.Now:yyyyMMddHHmmss}",ShipmentNumber=ShipmentNumber.Trim(),Carrier=Carrier.Trim(),Direction="إرسال للصيانة",SourceType="فرع",SourceName=SelectedBranch,DestinationType="مستودع",DestinationName="المستودع",Status="بانتظار تسليم الفرع",CreatedAt=DateTime.Now,CreatedBy=CurrentUser!.FullName};db.ShippingBatches.Add(batch);await db.SaveChangesAsync();foreach(var d in rows){d.DispatchBatchCode=batch.BatchNumber;db.ShippingBatchItems.Add(new ShippingBatchItem{ShippingBatchId=batch.Id,ServiceDeviceId=d.Id,DeviceCodeSnapshot=d.DeviceCode,ModelSnapshot=d.Model,ColorSnapshot=d.Color});}await db.SaveChangesAsync();Message=$"تم إنشاء البوليصة {batch.ShipmentNumber} وسند الإرسال المجمع. الفرع سيؤكد التسليم لشركة الشحن.";SelectedDeviceIds.Clear();BranchDevices=await GetBranchDevices(SelectedBranch);await Load();}
+ string ReturnDestination(ServiceDevice d)=>d.ServiceRequest?.IntakeSource=="عميل مباشر"?d.ServiceRequest.CustomerName:(d.ServiceRequest?.IntakeSource=="خدمة التعطير"?d.ServiceRequest.OriginName:d.ServiceRequest?.Branch??"الفرع");
+ void ToggleReturn(int id,bool on){if(on)ReturnIds.Add(id);else ReturnIds.Remove(id);}
+ async Task ConfirmReturnHandover(int id){Message="";await using var db=await DbFactory.CreateDbContextAsync();var b=await db.ShippingBatches.Include(x=>x.Items).FirstOrDefaultAsync(x=>x.Id==id&&x.Direction=="إرجاع"&&x.Status=="جاهز للتسليم لشركة الشحن");if(b is null){Message="خطأ: بوليصة الإرجاع غير متاحة.";return;}var ids=b.Items.Where(x=>x.RemovedAt==null).Select(x=>x.ServiceDeviceId).ToList();var rows=await db.ServiceDevices.Where(x=>ids.Contains(x.Id)).ToListAsync();var now=DateTime.Now;foreach(var d in rows){d.CurrentLocation="في الطريق للفرع";d.CurrentStatus="مع مندوب التوصيل";d.SentAt=now;db.DeviceStatusHistories.Add(new DeviceStatusHistory{ServiceDeviceId=d.Id,ServiceRequestId=d.ServiceRequestId,Status="مع مندوب التوصيل",Location="في الطريق للفرع",StartedAt=now,ChangedBy=CurrentUser!.FullName,Notes=$"بوليصة إرجاع {b.ShipmentNumber}"});}b.Status="تم التسليم لشركة الشحن";b.HandedToCarrierAt=now;b.HandedToCarrierBy=CurrentUser!.FullName;await db.SaveChangesAsync();Message=$"تم تسليم {rows.Count} جهاز لشركة الشحن للإرجاع.";await Load();}
+ async Task CreateReturnShipment(){Message="";if(ReturnIds.Count==0){Message="خطأ: اختر جهازًا واحدًا على الأقل.";return;}if(string.IsNullOrWhiteSpace(ReturnCarrier)||string.IsNullOrWhiteSpace(ReturnShipmentNumber)){Message="خطأ: شركة الشحن ورقم البوليصة إجباريان.";return;}await using var db=await DbFactory.CreateDbContextAsync();var rows=await db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>ReturnIds.Contains(x.Id)&&x.CurrentLocation=="مستودع الأجهزة الجاهزة للإرجاع"&&x.CurrentStatus=="جاهز للإرسال").ToListAsync();if(!rows.Any()){Message="خطأ: الأجهزة المختارة لم تعد جاهزة للإرجاع.";return;}var destinations=rows.Select(ReturnDestination).Distinct(StringComparer.OrdinalIgnoreCase).ToList();if(destinations.Count>1){Message="خطأ: الأجهزة المختارة لها وجهات مختلفة. أنشئ بوليصة مستقلة لكل وجهة.";return;}var batch=new ShippingBatch{BatchNumber=$"SB-{DateTime.Now:yyyyMMddHHmmss}",ShipmentNumber=ReturnShipmentNumber.Trim(),Carrier=ReturnCarrier.Trim(),Direction="إرجاع",SourceType="مركز الصيانة",SourceName="المستودع",DestinationType=rows.First().ServiceRequest?.IntakeSource??"",DestinationName=destinations[0],Status="جاهز للتسليم لشركة الشحن",CreatedAt=DateTime.Now,CreatedBy=CurrentUser!.FullName};db.ShippingBatches.Add(batch);await db.SaveChangesAsync();foreach(var d in rows){d.DispatchBatchCode=batch.BatchNumber;db.ShippingBatchItems.Add(new ShippingBatchItem{ShippingBatchId=batch.Id,ServiceDeviceId=d.Id,DeviceCodeSnapshot=d.DeviceCode,ModelSnapshot=d.Model,ColorSnapshot=d.Color});d.CurrentStatus="جاهز للتسليم";}await db.SaveChangesAsync();ReturnIds.Clear();Message=$"تم إنشاء بوليصة الإرجاع {batch.ShipmentNumber} إلى {batch.DestinationName}.";await Load();}
+ async Task OpenEditBatch(int id){if(!CanManage)return;await using var db=await DbFactory.CreateDbContextAsync();EditingBatch=await db.ShippingBatches.Include(x=>x.Items).FirstOrDefaultAsync(x=>x.Id==id&&x.Direction=="إرسال للصيانة"&&x.Status=="بانتظار تسليم الفرع");if(EditingBatch is not null){EditCarrier=EditingBatch.Carrier;EditShipmentNumber=EditingBatch.ShipmentNumber;}}
+ void CloseEditBatch(){EditingBatch=null;EditCarrier="";EditShipmentNumber="";}
+ async Task RemoveFromEdit(int itemId){if(EditingBatch is null)return;await using var db=await DbFactory.CreateDbContextAsync();var item=await db.ShippingBatchItems.Include(x=>x.ShippingBatch).FirstOrDefaultAsync(x=>x.Id==itemId&&x.ShippingBatchId==EditingBatch.Id);if(item is null||item.RemovedAt.HasValue||item.ShippingBatch?.Status!="بانتظار تسليم الفرع")return;item.RemovedAt=DateTime.Now;item.RemovedBy=CurrentUser!.FullName;item.Status="محذوف من الشحنة";item.RemovalReason="استبعاد أثناء تعديل البوليصة";var d=await db.ServiceDevices.FindAsync(item.ServiceDeviceId);if(d is not null&&d.DispatchBatchCode==EditingBatch.BatchNumber)d.DispatchBatchCode="";await db.SaveChangesAsync();await OpenEditBatch(EditingBatch.Id);await Load();}
+ async Task SaveEditBatch(){Message="";if(EditingBatch is null)return;if(string.IsNullOrWhiteSpace(EditCarrier)||string.IsNullOrWhiteSpace(EditShipmentNumber)){Message="خطأ: شركة الشحن ورقم البوليصة إجباريان.";return;}await using var db=await DbFactory.CreateDbContextAsync();var b=await db.ShippingBatches.Include(x=>x.Items).FirstOrDefaultAsync(x=>x.Id==EditingBatch.Id&&x.Status=="بانتظار تسليم الفرع");if(b is null){Message="خطأ: البوليصة لم تعد قابلة للتعديل.";CloseEditBatch();await Load();return;}var n=EditShipmentNumber.Trim();if(await db.ShippingBatches.AnyAsync(x=>x.Id!=b.Id&&x.ShipmentNumber==n)){Message=$"خطأ: رقم البوليصة {n} مستخدم مسبقًا.";return;}b.Carrier=EditCarrier.Trim();b.ShipmentNumber=n;await db.SaveChangesAsync();Message="تم حفظ تعديل البوليصة.";CloseEditBatch();await Load();}
+ async Task DeleteBatch(int id){Message="";if(!CanManage)return;var ok=await JS.InvokeAsync<bool>("confirm","هل أنت متأكد من حذف البوليصة؟ سيتم تحرير الأجهزة منها لتصبح متاحة لبوليصة أخرى.");if(!ok)return;await using var db=await DbFactory.CreateDbContextAsync();var b=await db.ShippingBatches.Include(x=>x.Items).FirstOrDefaultAsync(x=>x.Id==id&&x.Direction=="إرسال للصيانة"&&x.Status=="بانتظار تسليم الفرع");if(b is null){Message="خطأ: لا يمكن حذف البوليصة بعد تسليمها لشركة الشحن.";return;}foreach(var item in b.Items.Where(x=>x.RemovedAt==null)){var d=await db.ServiceDevices.FindAsync(item.ServiceDeviceId);if(d is not null&&d.DispatchBatchCode==b.BatchNumber)d.DispatchBatchCode="";}db.ShippingBatchItems.RemoveRange(b.Items);db.ShippingBatches.Remove(b);await db.SaveChangesAsync();Message="تم حذف البوليصة وتحرير الأجهزة.";await Load();}
+
+}

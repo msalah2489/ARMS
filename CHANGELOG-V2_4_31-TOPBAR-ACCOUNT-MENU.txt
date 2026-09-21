@@ -1,0 +1,7 @@
+ARMS V2.4.31 – Topbar Account Menu Fix
+
+- Restored the account identity area to the LEFT side of the top header, as in earlier ARMS versions.
+- Kept the ARMS/company branding on the RIGHT side in RTL.
+- Reordered account controls so the account identity is on the left with notifications beside it.
+- Changed the account dropdown to open inward from the left (left:0/right:auto) so it cannot be hidden underneath the right sidebar.
+- No workflow, database, permissions, or business-rule changes.

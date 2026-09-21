@@ -1,0 +1,108 @@
+ARMS V2.4.20 - Logic Fixes, UX Improvements & Customer Service Role
+(applied by Claude, not tested with dotnet build)
+
+1. Item #2/#3 — TechnicianWorkspace.razor: "ما زالت المشكلة قائمة" (problem persists) now
+   correctly routes the device to the supervisor's "معلق" queue instead of silently being
+   treated as a success when no individual test happened to fail. Fixed for both the central
+   maintenance route and the local/mobile-technician route. "غير قابل للإصلاح" now also works
+   correctly on the local/mobile route (previously ignored there).
+
+2. Item #7 — Account.razor / Admin.razor: added maxlength/inputmode/pattern to phone number
+   inputs so the field itself guides correct 05xxxxxxxx entry. The server-side regex check
+   was already correct and is unchanged.
+
+3. Item #9 — MaintenanceReceiving.razor: added "تحديد الكل" / "إلغاء التحديد" buttons to the
+   "ready to send to branch" list.
+
+4. Item #10 — MaintenanceReceiving.razor: fixed the root cause of a replacement device
+   appearing simultaneously as "incoming to maintenance" and "in transit to branch". The
+   "incoming to maintenance" queries matched on CurrentStatus=="مع مندوب التوصيل" alone,
+   which is used identically for couriers travelling in *either* direction; only
+   CurrentLocation actually encodes direction. Fixed in all 4 places this pattern appeared
+   (Load's IncomingForMaintenance query, LoadBatch, ConfirmBatchReceipt's row fetch, and
+   ReceiveMaintenance's validation guard).
+
+5. Item #12 — mobile layout: the sidebar used to be `display:none` below 650px with nothing
+   to replace it, making most of the app unreachable on a phone. Added a hamburger button in
+   the topbar, turned the sidebar into a slide-in drawer (CSS transform + backdrop), and
+   wired up open/close state in MainLayout.razor.
+
+6. Item #8 — Reports.razor: the existing sort was a generic client-side JS DOM-reorder
+   (window.armsTableSort) that gets silently overwritten the next time Blazor Server
+   re-renders the table (which happens on every filter/page change on the Reports page).
+   Replaced with real C# sorting (SortColumn/SortAsc + LINQ, same pattern already used
+   correctly in SpareParts.razor) for the two main tables: Requests and Devices. The four
+   smaller tables (spare-part usage, spare-part movements, complaint/fault analysis, model
+   analysis) still use the old client-side sort — not fixed in this pass.
+
+7. Guest-account flash — MainLayout.razor: added a CurrentUserChecked flag so the header
+   shows "جاري التحميل..." instead of "زائر" during the brief window before the session
+   check completes. Also added a real redirect to /login if the check completes and finds no
+   valid session (previously it just silently stayed on "زائر" forever with no redirect).
+
+8. Item #1 — MaintenanceReceiving.razor: this feature (warn when a request has other
+   unfinished devices; offer "send now" or "defer") already existed in the code
+   (ConfirmSendSelected / SendConflictOpen modal / ResolveSendConflict), but had a bug: once
+   a device was deferred (Decision="مؤجل للإرسال"), it could never be sent again, even after
+   every other device on the same request became ready — the initial `selected` query
+   permanently excluded that Decision value. Removed that exclusion so a deferred device
+   becomes sendable again as soon as its siblings are ready; the existing notReady check
+   already re-validates this correctly. Also added a small "مؤجل لحين اكتمال الطلب" marker
+   in the list so staff understand why a device is sitting there.
+
+9. Item #4/#5 — BranchReceiving.razor: rewrote the receive/deliver flow.
+   - "استلام الجهاز" (receiving a repaired device back from the courier) is now a plain
+     one-click confirmation. It no longer asks for a "customer receipt" number/photo, no
+     longer overwrites the original intake receipt fields, and no longer creates a second
+     DeviceReceipts row mislabeled "استلام من العميل".
+   - "تسليم للعميل" (delivering to the customer) now actually requires and records a real,
+     separate receipt (number + photo), stored in the previously-unused
+     CustomerDeliveryReceiptNumber/ImagePath/At fields and logged as a DeviceReceipts row
+     with ReceiptType="تسليم للعميل". A device's history now correctly shows one "استلام من
+     العميل" (intake) and one "تسليم للعميل" (delivery) instead of two receipts both labeled
+     "استلام من العميل".
+   - The "received at branch" list now has per-row checkboxes and a "select all" checkbox,
+     plus a single "تسليم الأجهزة المحددة للعميل" action: staff can select several devices
+     (e.g. all devices on one request) and record ONE shared receipt number/photo that gets
+     applied to every selected device.
+
+10. Item #6 — DeviceHistory.razor: replaced the admin's two independent raw dropdowns
+    (location + maintenance route) with a single "الوضع الفعلي الصحيح للجهاز" scenario
+    picker (9 options covering the states actually used across the app: received at branch,
+    en route to maintenance, waiting for a technician, ready to return, en route to branch,
+    ready to deliver, delivered, paused pending supervisor decision, ready-for-return from
+    branch). Picking a scenario now sets CurrentLocation + CurrentStatus + MaintenanceRoute
+    (and clears the assigned technician where relevant) together, atomically, instead of
+    letting the two fields drift out of sync with each other.
+
+11. New "خدمة العملاء" (Customer Service) restricted page — CustomerService.razor rewritten
+    from scratch to match exactly the 3 requested capabilities:
+    (a) browse all devices filtered by one of 6 statuses (incoming to maintenance / ready for
+        maintenance / ready to send to branch / paused / ready for return / in transit to
+        branch) via a top dropdown;
+    (b) search by customer name, phone, device code, request number, and a from/to date
+        range;
+    (c) add a free-text comment on a device — nothing else (no edit, no status changes, no
+        access to other data beyond what's shown).
+    New DeviceComment model + DeviceComments table (Program.cs migration + ArmsDbContext
+    DbSet). Comments also display (and can be added) from the device history page
+    (/device-history/{id}), which the technician, supervisor, manager, and branch roles
+    already had access to — so a note left by Customer Service becomes visible to them there.
+    Removed Customer Service's access to /reports (both the sidebar link and a direct-URL
+    redirect guard were added) since reporting is not one of the 3 stated capabilities.
+
+NOT covered in this pass:
+   - Reports.razor: 4 of its 6 tables still use the old, unreliable client-side sort.
+   - Password hashing is still plain SHA-256 without a salt (documented previously in
+     CHANGELOG-V2_4_19-SECURITY-FIXES.txt).
+   - Most state-changing methods across the app still lack try/catch, so an unhandled
+     exception in a Blazor Server component still disconnects that user's whole session
+     (documented previously; only NewServiceRequest.razor's CreateRequest was hardened).
+
+IMPORTANT: none of the above could be verified with `dotnet build` or `dotnet run` in this
+environment (no .NET SDK, no internet access). Every edit was checked manually for brace/
+paren balance and for consistency with surrounding code, but that is not a substitute for an
+actual compile. Please build and smoke-test on a machine with the .NET 10 SDK before
+deploying — in particular: log in as each demo role, try the new customer-service account
+end-to-end, walk a device through a partial-request defer-then-send cycle, and test the
+mobile drawer menu on an actual small screen.

@@ -1,0 +1,123 @@
+@page "/service-requests/new"
+@rendermode InteractiveServer
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IWebHostEnvironment Env
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>إنشاء طلب صيانة للعميل</PageTitle>
+<div class="page-head"><div><h1>إنشاء طلب صيانة للعميل</h1><p>تسجيل طلب العميل والأجهزة والشكوى والحالة الخارجية والمرفقات.</p></div><div class="toolbar"><button class="btn outline" @onclick="Reset">↻ مسح الشاشة</button><button type="button" class="btn primary" @onclick="SaveDraft">▣ حفظ كمسودة</button></div></div>
+<div class="panel"><div class="section-title">بيانات الاستلام</div><div class="form-grid">
+<div class="field"><label>رقم الطلب</label><input value="@RequestNumber" readonly /></div><div class="field"><label>تاريخ ووقت الاستلام</label><input type="datetime-local" @bind="ReceivedAt" /></div><div class="field"><label>الفرع</label>@if(IsSystemAdmin){<select @bind="Branch"><option value="">اختر الفرع</option>@foreach(var b in BranchOptions){<option value="@b.Name">@b.Name</option>}</select>}else{<input value="@Branch" readonly />}</div><div class="field"><label>تم الإنشاء بواسطة</label><input value="@CreatedBy" readonly /></div>
+<div class="field"><label>أولوية الطلب</label><div class="actions"><label><input type="radio" name="p" @onchange="SetNormal" checked="@(Priority == "عادي")" /> عادي</label><label><input type="radio" name="p" @onchange="SetUrgent" checked="@(Priority == "عاجل")" /> عاجل</label></div></div>
+<div class="field"><label>رقم الجوال *</label><input @bind="Phone" maxlength="10" inputmode="numeric" pattern="05[0-9]{8}" placeholder="05xxxxxxxx" /></div><div class="field"><label>اسم جهة التواصل *</label><div class="search-row"><input @bind="CustomerName" /><button class="btn primary" @onclick="SearchCustomer">بحث</button></div></div><div class="field"><label>رقم فاتورة الشراء (اختياري)</label><input @bind="InvoiceNumber" /></div>
+<div class="field full"><label>ملاحظات عامة على الطلب</label><textarea @bind="Notes" placeholder="اكتب أي ملاحظات عامة هنا..."></textarea></div></div>
+@if(!string.IsNullOrWhiteSpace(CustomerMessage)){<div class="notice @(CustomerFound?"success-notice":"danger-notice")">@CustomerMessage</div>}
+</div>
+<div class="panel"><div class="page-head"><h2>الأجهزة المستلمة في هذا الطلب</h2><div class="toolbar"><button class="btn primary" @onclick="AddDevice">+ إضافة جهاز جديد</button></div></div>
+<div class="table-wrap"><table><thead><tr><th>#</th><th>الخدمة / QR</th><th>السيريال</th><th>موديل الجهاز</th><th>شكوى العميل</th><th>الحالة الخارجية</th><th>الملحقات</th><th>صور</th><th>الإجراء</th></tr></thead><tbody>@for(int i=0;i<Devices.Count;i++){var d=Devices[i];<tr><td>@(i+1)</td><td><b>@d.DeviceCode</b><div class="small">QR جاهز للطباعة</div></td><td>@d.SerialNumber</td><td>@d.Model</td><td>@d.ComplaintDetails</td><td><span class="pill @(d.ExternalCondition=="سليم"?"green":"yellow")">@d.ExternalCondition</span></td><td>@d.Accessories.Replace(';','،')</td><td>@(string.IsNullOrWhiteSpace(d.DeviceImagePath)?"—":"📷")</td><td><div class="actions"><button class="btn outline" @onclick="()=>EditDevice(d)">✎</button><button class="btn danger" @onclick="()=>DeleteDevice(d)">🗑</button></div></td></tr>}</tbody></table></div></div>
+@if(Editing is not null){<div class="modal-back"><div class="modal modal-wide"><div class="modal-head"><h3>@(Editing.Id==0?"إضافة جهاز":"تعديل الجهاز")</h3><button class="btn gray" @onclick="CloseEditor">×</button></div><div class="form-grid">
+<div class="field"><label>كود الجهاز</label><input @bind="Editing.DeviceCode" readonly /></div><div class="field"><label>نوع الجهاز *</label><input @bind="Editing.DeviceType" /></div><div class="field"><label>البراند *</label><input @bind="Editing.Brand" /></div><div class="field"><label>الموديل *</label><select @bind="Editing.Model" @bind:after="ApplySelectedModel"><option value="">اختر الموديل</option>@foreach(var m in DeviceModelOptions){<option value="@m.Name">@m.Name</option>}</select></div><div class="field"><label>الرقم التسلسلي</label><input @bind="Editing.SerialNumber" @bind:after="LookupSerial" /><div class="small">إذا كان السيريال مسجلًا مسبقًا سيعرض ARMS بيانات الجهاز تلقائيًا، ولن يسمح بتسجيل نفس السيريال لجهاز آخر.</div>@if(!string.IsNullOrWhiteSpace(SerialLookupMessage)){<div class="small">@SerialLookupMessage</div>}</div><div class="field"><label>شكوى العميل *</label><input @bind="Editing.ComplaintDetails" /></div><div class="field"><label>العطل</label><input @bind="Editing.Problem" /></div>
+<div class="field"><label>الحالة الخارجية *</label><select @bind="Editing.ExternalCondition"><option>سليم</option><option>خدوش</option><option>كسر</option><option>آثار سقوط</option><option>مفقود أجزاء</option><option>آثار زيت / ماء</option><option>صدأ</option></select></div>
+<div class="field full form-section"><div class="section-title">الملحقات</div><div class="check-grid">@foreach(var a in AccessoryOptions){<label><input type="checkbox" checked="@HasAccessory(a)" @onchange="e=>ToggleAccessory(a,(bool)e.Value!)" /> @a</label>}</div></div>
+<div class="field full form-section"><div class="section-title">تفاصيل إضافية</div><textarea @bind="Editing.AdditionalDetails"></textarea></div>
+<div class="field full form-section"><div class="section-title">صورة الجهاز</div><InputFile OnChange="OnFileSelected" accept="image/*" /><div class="small">يمكن رفع صورة للجهاز وتخزينها داخل المشروع.</div></div><div class="field"><label>رقم سند استلام الجهاز من العميل *</label><input @bind="Editing.CustomerReceiptNumber" /></div><div class="field"><label>صورة سند الاستلام *</label><InputFile OnChange="OnReceiptSelected" accept="image/*" /></div>
+@if(!string.IsNullOrWhiteSpace(EditorMessage)){<div class="notice danger-notice full">@EditorMessage</div>}
+</div><div class="actions-bottom"><button class="btn green" @onclick="SaveDevice">حفظ الجهاز</button><button class="btn gray" @onclick="CloseEditor">إلغاء</button></div></div></div>}
+@if(!string.IsNullOrWhiteSpace(Message)){<div class="notice @(Message.StartsWith("خطأ")?"danger-notice":"success-notice")">@Message</div>}
+<div class="actions-bottom"><button type="button" class="btn green" @onclick="SaveRequestAndPrint">حفظ وفتح الطلب</button><button type="button" class="btn outline" @onclick="SaveRequestAndReset">حفظ وإضافة جهاز آخر</button><button type="button" class="btn gray" @onclick="Reset">إلغاء</button></div>
+@code {
+ UserAccount? CurrentUser;
+ bool IsSystemAdmin => ArmsAuth.IsSystemAdminRole(CurrentUser?.Role);
+ List<Branch> BranchOptions=new();
+ string RequestNumber=""; string ServiceType="صيانة جهاز"; string CustomerName=""; string SerialLookupMessage=""; string Phone=""; string Branch="الرياض"; string Priority="عادي"; string CreatedBy="أحمد محمد"; string InvoiceNumber=""; string Notes=""; string CustomerMessage=""; string Message=""; string EditorMessage=""; DateTime ReceivedAt=DateTime.Now; bool CustomerFound; int? CurrentRequestId;
+ List<ServiceDevice> Devices=new(); ServiceDevice? Editing; IBrowserFile? PendingFile; IBrowserFile? PendingReceiptFile;
+ List<DeviceModel> DeviceModelOptions=new(); List<string> AccessoryOptions=new();
+ protected override async Task OnInitializedAsync(){var username=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db, username);if(CurrentUser is null || (!IsSystemAdmin && CurrentUser.Role!="مستخدم فرع")){Nav.NavigateTo("/");return;}Branch=IsSystemAdmin?"":CurrentUser.Branch;CreatedBy=CurrentUser.FullName;BranchOptions=await db.Branches.Where(x=>x.IsActive).OrderBy(x=>x.Name).ToListAsync();if(IsSystemAdmin && BranchOptions.Count>0)Branch=BranchOptions[0].Name;DeviceModelOptions=await db.DeviceModels.Where(x=>x.IsActive).OrderBy(x=>x.Name).ToListAsync();AccessoryOptions=await db.Accessories.Where(x=>x.IsActive&&x.Name!="الجهاز").OrderBy(x=>x.Name=="أخرى").ThenBy(x=>x.Name).Select(x=>x.Name).ToListAsync();Reset();}
+ void Reset(){RequestNumber="SR-2026-"+Random.Shared.Next(100000,999999);ServiceType="صيانة جهاز";ReceivedAt=DateTime.Now;CustomerName="";Phone="";InvoiceNumber="";Notes="";Devices.Clear();Message="";CustomerMessage="";CustomerFound=false;CurrentRequestId=null;Editing=null;EditorMessage="";}
+ void AddDevice(){EditorMessage="";SerialLookupMessage="";Editing=new ServiceDevice{Id=0,DeviceCode="DEV-"+Guid.NewGuid().ToString("N")[..8].ToUpper(),Decision="جاهز للإرسال",CurrentLocation="الفرع",CurrentStatus="مستلم بالفرع",DeviceType="Diffuser",Brand="Aromatic",Model="",ExternalCondition="سليم",Accessories=""};}
+ void EditDevice(ServiceDevice d){EditorMessage="";SerialLookupMessage="";var clean=string.Join(';',d.Accessories.Split(';',StringSplitOptions.RemoveEmptyEntries).Select(x=>x.Trim()).Where(x=>!string.IsNullOrWhiteSpace(x)&&x!="الجهاز"));Editing=new ServiceDevice{Id=d.Id,DeviceCode=d.DeviceCode,DeviceType=d.DeviceType,Brand=d.Brand,Model=d.Model,SerialNumber=d.SerialNumber,Problem=d.Problem,Decision=d.Decision,ExternalCondition=d.ExternalCondition,Accessories=clean,ComplaintDetails=d.ComplaintDetails,DeviceImagePath=d.DeviceImagePath,AdditionalDetails=d.AdditionalDetails,CustomerReceiptNumber=d.CustomerReceiptNumber,CustomerReceiptImagePath=d.CustomerReceiptImagePath,CustomerReceiptReceivedAt=d.CustomerReceiptReceivedAt};}
+ void ApplySelectedModel(){if(Editing is null)return;var m=DeviceModelOptions.FirstOrDefault(x=>x.Name==Editing.Model);if(m is not null){Editing.DeviceType=m.DeviceType;Editing.Brand=m.Brand;}}
+ void CloseEditor(){Editing=null;PendingFile=null;PendingReceiptFile=null;EditorMessage="";}
+ bool HasAccessory(string a)=>Editing?.Accessories.Split(';',StringSplitOptions.RemoveEmptyEntries).Contains(a)==true;
+ void ToggleAccessory(string a,bool on){if(Editing is null)return;var list=Editing.Accessories.Split(';',StringSplitOptions.RemoveEmptyEntries).ToList();if(on&&!list.Contains(a))list.Add(a);if(!on)list.Remove(a);Editing.Accessories=string.Join(';',list);}
+ async Task OnFileSelected(InputFileChangeEventArgs e){PendingFile=e.File;}
+ async Task OnReceiptSelected(InputFileChangeEventArgs e){PendingReceiptFile=e.File;}
+ async Task LookupSerial(){
+   SerialLookupMessage="";
+   if(Editing is null || string.IsNullOrWhiteSpace(Editing.SerialNumber)) return;
+   var serial=Editing.SerialNumber.Trim();
+   await using var db=await DbFactory.CreateDbContextAsync();
+   var existing=await db.ServiceDevices.Include(x=>x.ServiceRequest).FirstOrDefaultAsync(x=>x.SerialNumber==serial);
+   if(existing is null){SerialLookupMessage="السيريال غير مسجل سابقًا — يمكن تسجيله لهذا الجهاز.";return;}
+   Editing.DeviceType=existing.DeviceType; Editing.Brand=existing.Brand; Editing.Model=existing.Model; Editing.Color=existing.Color; Editing.Accessories=existing.Accessories;
+   SerialLookupMessage=$"تم العثور على الجهاز المسجل: {existing.DeviceCode} — {existing.Model} — اللون: {(string.IsNullOrWhiteSpace(existing.Color)?"غير محدد":existing.Color)}. لن يسمح النظام بإنشاء جهاز آخر بنفس السيريال.";
+ }
+ async Task SaveDevice(){
+   EditorMessage=""; if(Editing is null)return;
+   if(string.IsNullOrWhiteSpace(Editing.Model)){EditorMessage="خطأ: موديل الجهاز إجباري.";return;}
+   if(string.IsNullOrWhiteSpace(Editing.DeviceType)){EditorMessage="خطأ: نوع الجهاز إجباري.";return;}
+   if(string.IsNullOrWhiteSpace(Editing.Brand)){EditorMessage="خطأ: البراند إجباريّة.";return;}
+   if(string.IsNullOrWhiteSpace(Editing.ComplaintDetails)){EditorMessage="خطأ: شكوى العميل إجباريّة.";return;}
+   if(string.IsNullOrWhiteSpace(Editing.CustomerReceiptNumber)){EditorMessage="خطأ: رقم سند استلام الجهاز من العميل إجباري.";return;}
+   await using(var checkDb=await DbFactory.CreateDbContextAsync()){
+     var serial=Editing.SerialNumber?.Trim()??"";
+     if(!string.IsNullOrWhiteSpace(serial) && await checkDb.ServiceDevices.AnyAsync(x=>x.SerialNumber==serial && x.Id!=Editing.Id)){EditorMessage="خطأ: الرقم التسلسلي مسجل مسبقًا لجهاز آخر. تم استرجاع بياناته بالأعلى ولا يمكن إنشاء جهاز مكرر.";return;}
+     var receipt=Editing.CustomerReceiptNumber.Trim();
+     if(await checkDb.DeviceReceipts.AnyAsync(x=>x.ReceiptNumber==receipt && x.ServiceDeviceId!=Editing.Id)){EditorMessage=$"خطأ: رقم سند الاستلام {receipt} مستخدم مسبقًا ولا يمكن ربطه بجهاز آخر.";return;}
+     if(Editing.Id==0 && Devices.Any(x=>!string.IsNullOrWhiteSpace(serial)&&x.SerialNumber==serial)){EditorMessage="خطأ: السيريال مكرر داخل الأجهزة الحالية.";return;}
+     if(Editing.Id==0 && Devices.Any(x=>x.CustomerReceiptNumber==receipt)){EditorMessage="خطأ: رقم سند الاستلام مكرر داخل الأجهزة الحالية.";return;}
+   }
+   if(Editing.Id==0 && PendingReceiptFile is null){EditorMessage="خطأ: صورة سند الاستلام إجباريّة عند تسجيل الجهاز.";return;}
+   if(PendingFile is not null){var pendingFileError=UploadGuard.Validate(PendingFile);if(pendingFileError is not null){EditorMessage=pendingFileError;return;}var dir=Path.Combine(Env.WebRootPath,"uploads");Directory.CreateDirectory(dir);var file=Path.Combine(dir,$"{Guid.NewGuid()}{UploadGuard.SafeExtension(PendingFile)}");await using var fs=File.Create(file);await PendingFile.OpenReadStream(UploadGuard.MaxFileSizeBytes).CopyToAsync(fs);Editing.DeviceImagePath="/uploads/"+Path.GetFileName(file);}
+   if(PendingReceiptFile is not null){var pendingReceiptError=UploadGuard.Validate(PendingReceiptFile);if(pendingReceiptError is not null){EditorMessage=pendingReceiptError;return;}var dir=Path.Combine(Env.WebRootPath,"uploads","customer-receipts");Directory.CreateDirectory(dir);var file=Path.Combine(dir,$"{Guid.NewGuid()}{UploadGuard.SafeExtension(PendingReceiptFile)}");await using var fs=File.Create(file);await PendingReceiptFile.OpenReadStream(UploadGuard.MaxFileSizeBytes).CopyToAsync(fs);Editing.CustomerReceiptImagePath="/uploads/customer-receipts/"+Path.GetFileName(file);}if(string.IsNullOrWhiteSpace(Editing.CustomerReceiptImagePath)){EditorMessage="خطأ: صورة سند الاستلام مطلوبة.";return;}Editing.CustomerReceiptReceivedAt=ReceivedAt;
+   Editing.Accessories=string.Join(';',Editing.Accessories.Split(';',StringSplitOptions.RemoveEmptyEntries).Select(x=>x.Trim()).Where(x=>!string.IsNullOrWhiteSpace(x)&&x!="الجهاز"));
+   if(CurrentRequestId.HasValue){await using var db=await DbFactory.CreateDbContextAsync();var existing=await db.ServiceDevices.FirstOrDefaultAsync(x=>x.Id==Editing.Id&&x.ServiceRequestId==CurrentRequestId.Value);if(existing is null){Editing.ServiceRequestId=CurrentRequestId.Value;db.ServiceDevices.Add(Editing);}else{db.Entry(existing).CurrentValues.SetValues(Editing);}await db.SaveChangesAsync();Devices=await db.ServiceDevices.Where(x=>x.ServiceRequestId==CurrentRequestId.Value).OrderBy(x=>x.Id).ToListAsync();}
+   else {var existing=Devices.FirstOrDefault(x=>x.DeviceCode==Editing.DeviceCode);if(existing is null)Devices.Add(Editing);else Devices[Devices.IndexOf(existing)]=Editing;}
+   Message="تم حفظ بيانات الجهاز.";CloseEditor();
+ }
+ async Task DeleteDevice(ServiceDevice d){var ok=await JS.InvokeAsync<bool>("confirm", $"هل أنت متأكد من حذف الجهاز {d.DeviceCode}؟");if(!ok)return;if(CurrentRequestId.HasValue&&d.Id>0){await using var db=await DbFactory.CreateDbContextAsync();var x=await db.ServiceDevices.FindAsync(d.Id);if(x is not null){db.ServiceDevices.Remove(x);await db.SaveChangesAsync();}Devices.RemoveAll(x=>x.Id==d.Id);}else Devices.Remove(d);Message="تم حذف الجهاز.";}
+ void SetNormal(){Priority="عادي";} void SetUrgent(){Priority="عاجل";}
+ async Task SearchCustomer(){CustomerMessage="";CustomerFound=false;var term=CustomerName.Trim();if(string.IsNullOrWhiteSpace(term)&&string.IsNullOrWhiteSpace(Phone)){CustomerMessage="خطأ: اكتب اسم العميل أو رقم الجوال أولاً.";return;}await using var db=await DbFactory.CreateDbContextAsync();var q=db.Customers.AsQueryable();if(!string.IsNullOrWhiteSpace(term))q=q.Where(x=>x.Name.Contains(term)||x.Phone.Contains(term));else q=q.Where(x=>x.Phone.Contains(Phone.Trim()));var customer=await q.OrderBy(x=>x.Id).FirstOrDefaultAsync();if(customer is null){CustomerMessage="خطأ: لم يتم العثور على عميل مسجل بهذه البيانات.";return;}CustomerName=customer.Name;Phone=customer.Phone;Branch=CurrentUser!.Branch;CustomerFound=true;CustomerMessage=$"تم العثور على العميل: {customer.Name} — {customer.Phone}";}
+ async Task SaveDraft(){await SaveRequest(true,"مسودة");}
+ async Task SaveRequestAndPrint(){if(CurrentRequestId.HasValue){Nav.NavigateTo($"/service-requests/{CurrentRequestId.Value}");return;}await SaveRequest(false,"جديد");}
+ async Task SaveRequestAndReset(){
+   if(!CurrentRequestId.HasValue){if(!ValidateRequest())return;await CreateRequest();}
+   else {Message="تم حفظ الطلب. يمكنك الآن إضافة جهاز آخر إلى نفس الطلب.";}
+   AddDevice();
+ }
+ bool ValidateRequest(){if(IsSystemAdmin&&string.IsNullOrWhiteSpace(Branch)){Message="خطأ: اختر الفرع أولاً.";return false;}if(string.IsNullOrWhiteSpace(CustomerName)||string.IsNullOrWhiteSpace(Phone)){Message="خطأ: يجب إدخال اسم جهة التواصل ورقم الجوال.";return false;}if(!System.Text.RegularExpressions.Regex.IsMatch(Phone.Trim(),@"^05\d{8}$")){Message="خطأ: رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.";return false;}if(Devices.Count==0){Message="خطأ: أضف جهازاً واحداً على الأقل قبل الحفظ.";return false;}return true;}
+ async Task CreateRequest(){
+  for(var attempt=1;attempt<=3;attempt++){
+   try{
+    await using var db=await DbFactory.CreateDbContextAsync();var r=new ServiceRequest{RequestNumber=await NextRequestNumber(db),CustomerName=CustomerName,Phone=Phone,Branch=CurrentUser!.Branch,Priority=Priority,Status="جديد",CreatedBy=CurrentUser!.FullName,InvoiceNumber=InvoiceNumber,Notes=Notes,ServiceType=ServiceType,IntakeSource="فرع",OriginName=CurrentUser!.Branch,ReceivedAt=ReceivedAt,CreatedAt=DateTime.Now};foreach(var d in Devices){d.Id=0;r.Devices.Add(d);}var existingCustomer=await db.Customers.FirstOrDefaultAsync(x=>x.Phone==Phone.Trim());
+    if(existingCustomer is null) db.Customers.Add(new Customer{Name=CustomerName.Trim(),Phone=Phone.Trim(),Branch=CurrentUser!.Branch});
+    else { existingCustomer.Name=CustomerName.Trim(); existingCustomer.Email=existingCustomer.Email??""; }
+    db.ServiceRequests.Add(r);await db.SaveChangesAsync();foreach(var rd in r.Devices){if(!string.IsNullOrWhiteSpace(rd.CustomerReceiptNumber)&&!string.IsNullOrWhiteSpace(rd.CustomerReceiptImagePath))db.DeviceReceipts.Add(new DeviceReceipt{ServiceDeviceId=rd.Id,ReceiptType="استلام من العميل",ReceiptNumber=rd.CustomerReceiptNumber,ImagePath=rd.CustomerReceiptImagePath,ReceiptDate=rd.CustomerReceiptReceivedAt??ReceivedAt,RecordedBy=CurrentUser!.FullName});}await db.SaveChangesAsync();CurrentRequestId=r.Id;RequestNumber=r.RequestNumber;Devices=await db.ServiceDevices.Where(x=>x.ServiceRequestId==r.Id).OrderBy(x=>x.Id).ToListAsync();Message="تم حفظ الطلب. يمكنك الآن إضافة أجهزة أخرى إلى نفس الطلب.";
+    return;
+   }catch(DbUpdateException) when (attempt<3){
+    // Two branches generated the same request number at the same instant. Try again with a fresh number.
+    continue;
+   }catch(Exception ex){
+    Message="خطأ أثناء حفظ الطلب: "+ex.Message;
+    return;
+   }
+  }
+  Message="تعذر حفظ الطلب بسبب تعارض مؤقت في رقم الطلب. حاول مرة أخرى.";
+ }
+ async Task SaveRequest(bool stay,string status){
+ try{
+  if(CurrentRequestId.HasValue){Message="تم حفظ الطلب بالفعل ويمكن متابعة إضافة الأجهزة لنفس الطلب.";return;}
+  if(!ValidateRequest())return;
+  await using var db=await DbFactory.CreateDbContextAsync();
+  var r=new ServiceRequest{RequestNumber=await NextRequestNumber(db),CustomerName=CustomerName.Trim(),Phone=Phone.Trim(),Branch=CurrentUser!.Branch,Priority=Priority,Status=status,CreatedBy=CurrentUser!.FullName,InvoiceNumber=InvoiceNumber.Trim(),Notes=Notes.Trim(),ServiceType=ServiceType,IntakeSource="فرع",OriginName=CurrentUser!.Branch,ReceivedAt=ReceivedAt,CreatedAt=DateTime.Now};
+  foreach(var source in Devices){var d=new ServiceDevice{DeviceCode=source.DeviceCode,DeviceType=source.DeviceType,Brand=source.Brand,Model=source.Model,SerialNumber=source.SerialNumber,Problem=source.Problem,Decision=source.Decision,ExternalCondition=source.ExternalCondition,Accessories=string.Join(';',source.Accessories.Split(';',StringSplitOptions.RemoveEmptyEntries).Select(x=>x.Trim()).Where(x=>!string.IsNullOrWhiteSpace(x)&&x!="الجهاز")),ComplaintDetails=source.ComplaintDetails,DeviceImagePath=source.DeviceImagePath,AdditionalDetails=source.AdditionalDetails,CustomerReceiptNumber=source.CustomerReceiptNumber,CustomerReceiptImagePath=source.CustomerReceiptImagePath,CustomerReceiptReceivedAt=source.CustomerReceiptReceivedAt,CurrentLocation="الفرع",CurrentStatus="مستلم بالفرع"};r.Devices.Add(d);}
+  var existingCustomer=await db.Customers.FirstOrDefaultAsync(x=>x.Phone==Phone.Trim());
+  if(existingCustomer is null) db.Customers.Add(new Customer{Name=CustomerName.Trim(),Phone=Phone.Trim(),Branch=CurrentUser!.Branch});
+  else existingCustomer.Name=CustomerName.Trim();
+  db.ServiceRequests.Add(r);await db.SaveChangesAsync();foreach(var rd in r.Devices){if(!string.IsNullOrWhiteSpace(rd.CustomerReceiptNumber)&&!string.IsNullOrWhiteSpace(rd.CustomerReceiptImagePath))db.DeviceReceipts.Add(new DeviceReceipt{ServiceDeviceId=rd.Id,ReceiptType="استلام من العميل",ReceiptNumber=rd.CustomerReceiptNumber,ImagePath=rd.CustomerReceiptImagePath,ReceiptDate=rd.CustomerReceiptReceivedAt??ReceivedAt,RecordedBy=CurrentUser!.FullName});}await db.SaveChangesAsync();
+  Message="تم حفظ طلب الصيانة بنجاح.";
+  if(stay){Reset();Message="تم حفظ الطلب وإعداد شاشة طلب جديد.";}else{Nav.NavigateTo($"/service-requests/{r.Id}");}
+ }catch(Exception ex){Message="خطأ أثناء حفظ الطلب: "+ex.Message;}
+}
+ async Task<string> NextRequestNumber(ArmsDbContext db){var count=await db.ServiceRequests.CountAsync()+1;return $"SR-{DateTime.Now:yyyy}-{count:000000}";}
+}

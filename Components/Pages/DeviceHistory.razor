@@ -1,0 +1,114 @@
+@page "/device-history/{DeviceId:int}"
+@rendermode InteractiveServer
+@using System.IO.Compression
+@using System.Text
+@using System.Xml.Linq
+@using System.Xml
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+<PageTitle>تاريخ الجهاز</PageTitle>
+@if(Device is null){<div class="empty">جارٍ تحميل بطاقة الجهاز...</div>}else{
+<div class="page-head"><div><h1>بطاقة الجهاز وتاريخ الصيانة</h1><p><b>@Device.DeviceCode</b> — @Device.Model — @Device.SerialNumber</p></div><div class="toolbar"><a class="btn primary" href="/device-scan">📷 سكان جهاز آخر</a><a class="btn outline" href="/devices">الأجهزة</a></div></div>
+<div class="stats history-stats"><div class="stat"><span>الجهاز</span><b>@Device.DeviceCode</b></div><div class="stat"><span>العميل</span><b>@Device.ServiceRequest?.CustomerName</b></div><div class="stat"><span>الفرع</span><b>@Device.ServiceRequest?.Branch</b></div><div class="stat"><span>الحالة الحالية</span><b>@DisplayStatus(Device)</b></div></div>
+<div class="panel"><h3>بيانات الجهاز الحالية</h3><div class="detail-grid"><div><small>النوع</small><b>@Device.DeviceType</b></div><div><small>البراند</small><b>@Device.Brand</b></div><div><small>الموديل</small><b>@Device.Model</b></div><div><small>السيريال</small><b>@(string.IsNullOrWhiteSpace(Device.SerialNumber)?"—":Device.SerialNumber)</b></div><div><small>الشكوى الحالية</small><b>@Complaint(Device)</b></div><div><small>التشخيص</small><b>@(string.IsNullOrWhiteSpace(Device.FaultCause)?"—":Device.FaultCause)</b></div><div><small>الإجراء</small><b>@(string.IsNullOrWhiteSpace(Device.RepairAction)?"—":Device.RepairAction)</b></div></div></div>
+<div class="panel"><div class="page-head"><h3>سجل طلبات الصيانة المرتبطة</h3><button class="btn green" @onclick="ExportHistoryExcel">📊 Excel كامل للسجل</button></div>
+@if(HistoryRequests.Count==0){<div class="empty">لا توجد طلبات صيانة مرتبطة بهذا الجهاز.</div>}else{<table><thead><tr><th>رقم الطلب</th><th>تاريخ الطلب</th><th>الحالة</th><th>عدد الأجهزة</th><th>التفاصيل</th></tr></thead><tbody>@foreach(var item in HistoryRequests){<tr><td><b>@item.RequestNumber</b></td><td>@item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td><td><span class="pill">@item.Status</span></td><td>@item.Devices.Count</td><td><button class="btn small @(ExpandedRequestId==item.RequestId?"danger":"outline")" @onclick="()=>ToggleRequest(item.RequestId)">@(ExpandedRequestId==item.RequestId?"إخفاء":"تفاصيل")</button></td></tr>@if(ExpandedRequestId==item.RequestId){<tr><td colspan="5"><div class="panel" style="margin:0;background:#f8fafc"><div class="detail-grid"><div><small>رقم الطلب</small><b>@item.RequestNumber</b></div><div><small>تاريخ الطلب</small><b>@item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</b></div><div><small>العميل</small><b>@item.CustomerName</b></div><div><small>الفرع</small><b>@item.Branch</b></div><div><small>الحالة</small><b>@item.Status</b></div></div><h4 style="margin-top:14px">تفاصيل الجهاز في هذا الطلب</h4><table><thead><tr><th>الجهاز</th><th>الشكوى</th><th>التشخيص</th><th>الإجراء</th><th>الحالة</th></tr></thead><tbody>@foreach(var d in item.Devices){<tr><td>@d.DeviceCode — @d.Model</td><td>@Complaint(d)</td><td>@(string.IsNullOrWhiteSpace(d.FaultCause)?"—":d.FaultCause)</td><td>@(string.IsNullOrWhiteSpace(d.RepairAction)?"—":d.RepairAction)</td><td>@DisplayStatus(d)</td></tr>}</tbody></table></div></td></tr>}}</tbody></table>}</div>
+<div class="panel"><h3>سندات العميل المرتبطة بالجهاز</h3>@if(Receipts.Count==0){<div class="empty">لا توجد سندات مسجلة.</div>}else{<table><thead><tr><th>النوع</th><th>رقم السند</th><th>التاريخ</th><th>الصورة</th><th>بواسطة</th></tr></thead><tbody>@foreach(var r in Receipts){<tr><td>@r.ReceiptType</td><td>@r.ReceiptNumber</td><td>@r.ReceiptDate.ToString("yyyy-MM-dd HH:mm")</td><td><a href="@r.ImagePath" target="_blank">عرض</a></td><td>@r.RecordedBy</td></tr>}</tbody></table>}</div><div class="panel"><h3>💬 ملاحظات وتعليقات على الجهاز</h3><div class="small">تظهر هذه الملاحظات لكل من يفتح بطاقة هذا الجهاز (الفني، المشرف، المدير، موظف الفرع، خدمة العملاء).</div>@if(Comments.Count==0){<div class="empty">لا توجد ملاحظات بعد.</div>}else{<div class="comments-list">@foreach(var c in Comments){<div class="comment-item"><div class="comment-head"><b>@c.CreatedBy</b> <span class="small">(@c.CreatedByRole)</span> <span class="small">— @c.CreatedAt.ToString("yyyy-MM-dd HH:mm")</span></div><div>@c.Text</div></div>}</div>}<div class="field full" style="margin-top:10px"><label>إضافة ملاحظة</label><textarea @bind="NewComment" placeholder="اكتب ملاحظتك هنا..."></textarea></div><div class="actions-bottom"><button class="btn primary" @onclick="AddComment">إضافة الملاحظة</button></div></div><div class="panel">
+@if(IsAdmin){<div class="section-title">صلاحيات المدير — تصحيح دورة الجهاز</div><div class="notice">اختر الوضع الفعلي الصحيح للجهاز من القائمة، وسيقوم النظام بضبط كل الحقول المرتبطة به تلقائيًا (الموقع، الحالة، مسار الصيانة) بشكل متسق دفعة واحدة، بدل تعديلها كل على حدة.</div><div class="form-grid"><div class="field wide"><label>الوضع الفعلي الصحيح للجهاز *</label><select @bind="AdminScenario"><option value="">— اختر —</option><option value="at_branch_received">بالفرع — مستلم من العميل وبانتظار الإرسال للصيانة</option><option value="to_maintenance">في الطريق لمركز الصيانة (مع مندوب التوصيل)</option><option value="waiting_technician">بمركز الصيانة — بانتظار فني (بدون فني معيّن حاليًا)</option><option value="ready_to_return">بمركز الصيانة — جاهز للإرسال للفرع</option><option value="to_branch">في الطريق للفرع (مع مندوب التوصيل)</option><option value="at_branch_ready_deliver">بالفرع — مستلم وجاهز لتسليم العميل</option><option value="delivered">بالفرع — تم تسليمه للعميل بالفعل</option><option value="paused">معلق بمركز الصيانة — بانتظار قرار المشرف</option><option value="pending_return_from_branch">بمركز الصيانة — جاهز للإرجاع (طلب إرجاع من الفرع)</option></select></div><div class="field full"><label>سبب التعديل *</label><input @bind="AdminReason" placeholder="سبب التصحيح الإداري" /></div></div><div class="actions-bottom"><button class="btn primary" @onclick="SaveAdminCorrection">حفظ التصحيح وتسجيل الحركة</button></div>}
+@if(!string.IsNullOrWhiteSpace(AdminMessage)){<div class="notice @(AdminMessage.StartsWith("خطأ")?"danger-notice":"success-notice")" style="margin-top:10px">@AdminMessage</div>}
+</div>
+<div class="panel"><h3>الخط الزمني لحركة الجهاز</h3>@if(StatusHistory.Count==0){<div class="empty">لا توجد حركات مسجلة.</div>}else{<table><thead><tr><th>من</th><th>إلى</th><th>الحالة</th><th>الموقع</th><th>بواسطة</th><th>ملاحظات</th></tr></thead><tbody>@foreach(var h in StatusHistory){<tr><td>@h.StartedAt.ToString("yyyy-MM-dd HH:mm")</td><td>@(h.EndedAt?.ToString("yyyy-MM-dd HH:mm")??"—")</td><td>@h.Status</td><td>@h.Location</td><td>@h.ChangedBy</td><td>@h.Notes</td></tr>}</tbody></table>}</div>
+<div class="panel"><h3>قطع الغيار المستخدمة</h3>@if(PartUsages.Count==0){<div class="empty">لا توجد قطع غيار مسجلة لهذا الجهاز.</div>}else{<table><thead><tr><th>التاريخ</th><th>القطعة</th><th>اللون</th><th>الكمية</th><th>الفني</th></tr></thead><tbody>@foreach(var u in PartUsages){<tr><td>@u.UsedAt.ToString("yyyy-MM-dd HH:mm")</td><td>@u.SparePart?.Name</td><td>@(string.IsNullOrWhiteSpace(u.SparePart?.Color)?"—":u.SparePart!.Color)</td><td>@u.Quantity</td><td>@u.TechnicianName</td></tr>}</tbody></table>}</div>
+}
+@code { [Parameter]public int DeviceId{get;set;} ServiceDevice? Device; UserAccount? CurrentUser; bool IsAdmin=>ArmsAuth.IsSystemAdminRole(CurrentUser?.Role); string AdminScenario="",AdminReason="",AdminMessage=""; List<ServiceDevice> HistoryDevices=new(); List<DeviceStatusHistory> StatusHistory=new(); List<SparePartUsage> PartUsages=new(); List<DeviceReceipt> Receipts=new(); List<HistoryRequestVm> HistoryRequests=new(); int? ExpandedRequestId; List<DeviceComment> Comments=new(); string NewComment="";
+protected override async Task OnParametersSetAsync(){var username=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db, username);Device=await db.ServiceDevices.Include(x=>x.ServiceRequest).FirstOrDefaultAsync(x=>x.Id==DeviceId);if(Device is null)return;var serial=Device.SerialNumber?.Trim();var q=db.ServiceDevices.Include(x=>x.ServiceRequest).AsQueryable();if(!string.IsNullOrWhiteSpace(serial))HistoryDevices=await q.Where(x=>x.SerialNumber==serial).OrderByDescending(x=>x.Id).ToListAsync();else HistoryDevices=await q.Where(x=>x.Id==Device.Id||x.DeviceCode==Device.DeviceCode).OrderByDescending(x=>x.Id).ToListAsync();var ids=HistoryDevices.Select(x=>x.Id).Distinct().ToList();StatusHistory=await db.DeviceStatusHistories.Where(x=>ids.Contains(x.ServiceDeviceId)).OrderBy(x=>x.StartedAt).ToListAsync();PartUsages=await db.SparePartUsages.Include(x=>x.SparePart).Where(x=>ids.Contains(x.ServiceDeviceId)).OrderByDescending(x=>x.UsedAt).ToListAsync();Receipts=await db.DeviceReceipts.Where(x=>ids.Contains(x.ServiceDeviceId)).OrderByDescending(x=>x.ReceiptDate).ToListAsync();Comments=await db.DeviceComments.Where(x=>ids.Contains(x.ServiceDeviceId)).OrderByDescending(x=>x.CreatedAt).ToListAsync();HistoryRequests=HistoryDevices.Where(x=>x.ServiceRequest!=null).GroupBy(x=>x.ServiceRequestId).Select(g=>new HistoryRequestVm{RequestId=g.Key,RequestNumber=g.First().ServiceRequest!.RequestNumber,CreatedAt=g.First().ServiceRequest!.CreatedAt,CustomerName=g.First().ServiceRequest!.CustomerName,Branch=g.First().ServiceRequest!.Branch,Status=RequestStatusHelper.Calculate(g.ToList()),Devices=g.OrderBy(x=>x.Id).ToList()}).OrderByDescending(x=>x.CreatedAt).ToList();}
+void ToggleRequest(int id)=>ExpandedRequestId=ExpandedRequestId==id?null:id;
+async Task AddComment(){
+ if(Device is null||CurrentUser is null)return;
+ if(string.IsNullOrWhiteSpace(NewComment)){AdminMessage="خطأ: نص الملاحظة إجباري.";return;}
+ await using var db=await DbFactory.CreateDbContextAsync();
+ db.DeviceComments.Add(new DeviceComment{ServiceDeviceId=Device.Id,Text=NewComment.Trim(),CreatedBy=CurrentUser.FullName,CreatedByRole=CurrentUser.Role,CreatedAt=DateTime.Now});
+ await db.SaveChangesAsync();
+ NewComment="";
+ await OnParametersSetAsync();
+}
+async Task SaveAdminCorrection(){
+ AdminMessage="";
+ if(!IsAdmin||Device is null){AdminMessage="خطأ: هذه العملية متاحة لمدير النظام فقط.";return;}
+ if(string.IsNullOrWhiteSpace(AdminScenario)){AdminMessage="خطأ: يجب اختيار الوضع الصحيح للجهاز.";return;}
+ if(string.IsNullOrWhiteSpace(AdminReason)){AdminMessage="خطأ: يجب إدخال سبب التعديل.";return;}
+ await using var db=await DbFactory.CreateDbContextAsync();
+ var d=await db.ServiceDevices.FindAsync(Device.Id);
+ if(d is null)return;
+ var oldLocation=d.CurrentLocation; var oldStatus=d.CurrentStatus; var oldRoute=d.MaintenanceRoute;
+ string newLocation=oldLocation, newStatus=oldStatus, newRoute=oldRoute; bool clearTech=false;
+ switch(AdminScenario){
+  case "at_branch_received": newLocation="الفرع"; newStatus="مستلم بالفرع"; clearTech=true; break;
+  case "to_maintenance": newLocation="في الطريق للصيانة"; newStatus="مع مندوب التوصيل"; clearTech=true; break;
+  case "waiting_technician": newLocation="مركز الصيانة"; newStatus="انتظار"; newRoute="مركز الصيانة"; clearTech=true; break;
+  case "ready_to_return": newLocation="مستودع الأجهزة الجاهزة للإرجاع"; newStatus="جاهز للإرسال"; clearTech=true; break;
+  case "to_branch": newLocation="في الطريق للفرع"; newStatus="مع مندوب التوصيل"; clearTech=true; break;
+  case "at_branch_ready_deliver": newLocation="الفرع"; newStatus="مستلم بالفرع"; clearTech=true; break;
+  case "delivered": newLocation="الفرع"; newStatus="تم التسليم للعميل"; clearTech=true; break;
+  case "paused": newLocation="مركز الصيانة"; newStatus="معلق"; clearTech=true; break;
+  case "pending_return_from_branch": newLocation="مركز الصيانة"; newStatus="جاهز للإرجاع"; clearTech=true; break;
+  default: AdminMessage="خطأ: وضع غير معروف."; return;
+ }
+ var changed=oldLocation!=newLocation||oldStatus!=newStatus||oldRoute!=newRoute;
+ if(!changed){AdminMessage="لا يوجد تغيير لحفظه.";return;}
+ var now=DateTime.Now;
+ d.CurrentLocation=newLocation; d.CurrentStatus=newStatus; d.MaintenanceRoute=newRoute;
+ if(clearTech){d.AssignedTechnicianId=null;d.AssignedTechnicianName="";}
+ if(AdminScenario=="paused")d.MaintenancePaused=true; else if(oldStatus=="معلق"&&AdminScenario!="paused")d.MaintenancePaused=false;
+ db.DeviceStatusHistories.Add(new DeviceStatusHistory{ServiceDeviceId=d.Id,ServiceRequestId=d.ServiceRequestId,Status=d.CurrentStatus,Location=d.CurrentLocation,StartedAt=now,ChangedBy=CurrentUser!.FullName,Notes=$"تصحيح إداري. الموقع: {oldLocation} ← {d.CurrentLocation}. الحالة: {oldStatus} ← {d.CurrentStatus}. مسار الصيانة: {oldRoute} ← {d.MaintenanceRoute}. السبب: {AdminReason.Trim()}"});
+ await db.SaveChangesAsync();
+ AdminMessage="تم تصحيح وضع الجهاز وتسجيل الحركة في السجل.";
+ AdminReason=""; AdminScenario="";
+ Device=d;
+ await OnParametersSetAsync();
+}
+string Complaint(ServiceDevice d)=>string.IsNullOrWhiteSpace(d.ComplaintDetails)?d.Problem:d.ComplaintDetails;
+string DisplayStatus(ServiceDevice d){if(d.CurrentStatus=="تمت الصيانة محليًا")return "تمت الصيانة محليًا";if(d.CurrentStatus=="تعذر الصيانة المحلية")return "تعذر الصيانة المحلية";if(d.Decision=="مستبعد")return "مستبعد";if(d.Decision=="مستبدل")return "مستبدل";if(d.CustomerDeliveredAt.HasValue)return "تم التسليم للعميل";if(d.MaintenancePaused||d.CurrentStatus=="معلق")return "معلق";if(d.CurrentLocation=="في الطريق للصيانة"||d.CurrentLocation=="في الطريق للفرع")return "مع مندوب التوصيل";if(d.MaintenanceCompletedAt.HasValue)return "تمت الصيانة";if(d.MaintenanceStartedAt.HasValue)return "جاري الصيانة";if(d.MaintenanceReceivedAt.HasValue)return "انتظار";if(d.SentAt.HasValue)return "تم الإرسال";return d.CurrentStatus;}
+async Task ExportHistoryExcel(){var rows=new List<string[]> {new[]{"رقم الطلب","تاريخ الطلب","العميل","الفرع","الحالة","الجهاز","الموديل","السيريال","الشكوى","التشخيص","الإجراء","حالة الجهاز"}};foreach(var r in HistoryRequests)foreach(var d in r.Devices)rows.Add(new[]{r.RequestNumber,r.CreatedAt.ToString("yyyy-MM-dd HH:mm"),r.CustomerName,r.Branch,r.Status,d.DeviceCode,d.Model,d.SerialNumber,Complaint(d),d.FaultCause,d.RepairAction,DisplayStatus(d)});var bytes=CreateXlsx(rows);await JS.InvokeVoidAsync("armsDownload.downloadBase64",$"ARMS-Device-History-{Device?.DeviceCode}-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",Convert.ToBase64String(bytes));}
+static byte[] CreateXlsx(List<string[]> rows)
+{
+    using var ms = new MemoryStream();
+    using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
+    {
+        Add(zip, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>");
+        Add(zip, "_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+        Add(zip, "xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"ARMS Report\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+        Add(zip, "xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var sheetData = new XElement(ns + "sheetData");
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = new XElement(ns + "row", new XAttribute("r", i + 1));
+            for (var j = 0; j < rows[i].Length; j++)
+            {
+                row.Add(new XElement(ns + "c",
+                    new XAttribute("r", Col(j + 1) + (i + 1)),
+                    new XAttribute("t", "inlineStr"),
+                    new XElement(ns + "is", new XElement(ns + "t", rows[i][j] ?? string.Empty))));
+            }
+            sheetData.Add(row);
+        }
+        var doc = new XDocument(new XDeclaration("1.0", "UTF-8", null), new XElement(ns + "worksheet", sheetData));
+        Add(zip, "xl/worksheets/sheet1.xml", doc.ToString(SaveOptions.DisableFormatting));
+    }
+    return ms.ToArray();
+}
+static string Col(int n){var s="";while(n>0){n--;s=(char)('A'+n%26)+s;n/=26;}return s;}
+static void Add(ZipArchive z,string path,string text){var e=z.CreateEntry(path);using var w=new StreamWriter(e.Open(),new UTF8Encoding(false));w.Write(text);}
+
+public class HistoryRequestVm
+{
+    public int RequestId { get; set; }
+    public string RequestNumber { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public string CustomerName { get; set; } = "";
+    public string Branch { get; set; } = "";
+    public string Status { get; set; } = "";
+    public List<ServiceDevice> Devices { get; set; } = new();
+}
+}

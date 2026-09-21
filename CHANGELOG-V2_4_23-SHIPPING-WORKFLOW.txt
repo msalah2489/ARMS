@@ -1,0 +1,14 @@
+ARMS V2.4.23 - Shipping / Warehouse Workflow
+
+- Added ShippingBatch and ShippingBatchItem for inbound/outbound shipment tracking.
+- Branch -> warehouse flow: maintenance manager selects branch devices and creates shipment; branch receives a prebuilt consolidated dispatch sheet, may remove a device before handover, then confirms handover to carrier.
+- Warehouse receiving: maintenance manager records the incoming bill, adds/matches devices, confirms actual receipt, and hands devices to maintenance supervisor.
+- Added direct-customer request flow with QR creation before shipment.
+- Added fragrance-service quantity/color receiving support while preserving blank device code until ARMS QR policy step.
+- Return flow: maintenance manager creates a separate return shipment to the original intake destination and confirms carrier handover.
+- Added device Color and service-request IntakeSource/OriginName fields.
+- Device QR print now produces two copies: one for the device and one for the receipt.
+- Added test account: maintenance.director / 123456.
+- Added role label: مدير عام ARMS (legacy مدير رئيسي remains recognized for backward compatibility).
+
+Build note: this environment does not have the .NET SDK, so the ZIP is source-prepared but not locally build-verified here.

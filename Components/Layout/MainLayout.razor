@@ -1,0 +1,218 @@
+@inherits LayoutComponentBase
+@rendermode InteractiveServer
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+
+<div class="app-shell" @onclick="CloseMenus">
+<header class="topbar">
+  <button class="mobile-menu-btn" title="القائمة" @onclick:stopPropagation="true" @onclick="ToggleMobileMenu">☰</button>
+  <div class="top-brand"><img src="/images/company-logo.png" alt="الشركة" /><div class="top-title">نظام إدارة الصيانة</div></div>
+  <div class="top-user" @onclick:stopPropagation="true">
+    <button class="top-action" title="الإشعارات" @onclick="ToggleNotifications">🔔@if(UnreadCount>0){<span class="badge">@UnreadCount</span>}</button>
+    <button class="top-identity" @onclick="ToggleUserMenu"><b>@(!CurrentUserChecked?"جاري التحميل...":(CurrentUser?.FullName ?? "زائر"))</b><small>@(!CurrentUserChecked?"":(CurrentUser?.Role ?? "غير مسجل"))</small></button>
+    @if (NotificationsOpen)
+    {
+      <div class="top-dropdown notifications" @onclick:stopPropagation="true">
+        <div class="dropdown-title">الإشعارات</div>
+        @if (Notifications.Count==0){<div class="small">لا توجد إشعارات جديدة.</div>}
+        else foreach (var n in Notifications)
+        {
+          <button class="drop-item @(n.Type=="danger"?"notification-danger":"")" @onclick="()=>OpenNotification(n)">@n.Message<div class="small">@n.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div></button>
+        }
+      </div>
+    }
+    @if (UserMenuOpen)
+    {
+      <div class="top-dropdown user-menu" @onclick:stopPropagation="true">
+        <div class="dropdown-user"><b>@(!CurrentUserChecked?"جاري التحميل...":(CurrentUser?.FullName ?? "زائر"))</b><small>@(!CurrentUserChecked?"":(CurrentUser?.Role ?? "غير مسجل"))</small></div>
+        <button @onclick="GoAccount">👤 حسابي</button>
+        <button @onclick="GoSettings">⚙ الإعدادات</button>
+        <button @onclick="Logout">↪ تسجيل الخروج</button>
+      </div>
+    }
+  </div>
+</header>
+<div class="body">
+@if(MobileMenuOpen){<div class="sidebar-backdrop"></div>}
+<aside class="sidebar @(MobileMenuOpen?"sidebar-open":"")">
+  <div class="sidebar-top">
+    <div class="sidebar-logo"><img src="/images/arms-icon.png" alt="ARMS" /></div>
+    <div class="sidebar-caption">ARMS</div>
+  </div>
+
+  <nav class="nav-primary" @onclick:stopPropagation="true">
+    <a href="/" class="nav-item @(IsActive("/", true)?"active":"")" title="الرئيسية"><span class="nav-icon">⌂</span><span>الرئيسية</span></a>
+
+    @* مدير عام ARMS / مدير IT: خمسة أقسام أساسية ثابتة قبل «المزيد» *@
+    @if (IsMainManager)
+    {
+      <a href="/service-requests/new" class="nav-item @(IsActive("/service-requests/new")?"active":"")" title="إنشاء طلب"><span class="nav-icon">＋</span><span>إنشاء طلب</span></a>
+      <a href="/service-requests" class="nav-item @(IsActive("/service-requests")?"active":"")" title="طلبات الصيانة"><span class="nav-icon">▤</span><span>الطلبات</span></a>
+      <a href="/devices" class="nav-item @(IsActive("/devices")?"active":"")" title="الأجهزة"><span class="nav-icon">▣</span><span>الأجهزة</span></a>
+      <a href="/shipping" class="nav-item @(IsActive("/shipping")?"active":"")" title="شحن أجهزة الصيانة"><span class="nav-icon">▣</span><span>شحن الأجهزة</span></a>
+      <a href="/warehouse-receiving" class="nav-item @(IsActive("/warehouse-receiving")?"active":"")" title="استلام المستودع"><span class="nav-icon">↓</span><span>استلام المستودع</span></a>
+    }
+    else
+    {
+      @if (IsBranchUser)
+      {
+        <a href="/service-requests/new" class="nav-item @(IsActive("/service-requests/new")?"active":"")" title="إنشاء طلب"><span class="nav-icon">＋</span><span>إنشاء طلب</span></a>
+        <a href="/branch/receiving" class="nav-item @(IsActive("/branch/receiving")?"active":"")" title="استلام الصيانة"><span class="nav-icon">⇄</span><span>استلام الصيانة</span></a>
+        <a href="/branch/shipping" class="nav-item @(IsActive("/branch/shipping")?"active":"")" title="شحن أجهزة الصيانة"><span class="nav-icon">▣</span><span>شحن الأجهزة</span></a>
+      }
+      @if ((IsBranchUser || IsTechnician || IsMaintenanceManager) && !IsCustomerService)
+      {
+        <a href="/service-requests" class="nav-item @(IsActive("/service-requests")?"active":"")" title="طلبات الصيانة"><span class="nav-icon">▤</span><span>@(IsMaintenanceManager && !IsBranchUser && !IsTechnician ? "الطلبات" : "طلبات الصيانة")</span></a>
+        <a href="/devices" class="nav-item @(IsActive("/devices")?"active":"")" title="الأجهزة"><span class="nav-icon">▣</span><span>الأجهزة</span></a>
+      }
+      @if (IsCustomerService)
+      {
+        <a href="/customer-service" class="nav-item @(IsActive("/customer-service")?"active":"")" title="خدمة العملاء"><span class="nav-icon">☎</span><span>خدمة العملاء</span></a>
+        <a href="/diagnostic-guide" class="nav-item @(IsActive("/diagnostic-guide")?"active":"")" title="دليل التشخيص"><span class="nav-icon">?</span><span>دليل التشخيص</span></a>
+      }
+      @if (IsTechnician)
+      {
+        <a href="/technician" class="nav-item @(IsActive("/technician")?"active":"")" title="عمل الفني"><span class="nav-icon">⚒</span><span>@(IsMobileTechnician ? "عملي الميداني" : "عمل الفني")</span></a>
+      }
+    }
+
+    @if (IsMainManager || IsMaintenanceManager || IsBranchUser || IsTechnician)
+    {
+      <button type="button" class="nav-item nav-more @(MoreMenuOpen?"active":"")" title="المزيد" @onclick="ToggleMoreMenu"><span class="nav-icon">•••</span><span>المزيد</span></button>
+    }
+  </nav>
+
+  @if (MoreMenuOpen)
+  {
+    <div class="more-menu" @onclick:stopPropagation="true">
+      <div class="more-menu-head"><b>كل أقسام ARMS</b><button type="button" @onclick="ToggleMoreMenu">×</button></div>
+      <div class="more-menu-grid">
+        @if (CanAccessReceiving)
+        {
+          <a href="/service-requests/receiving" class="more-item"><span>⇄</span><b>إرسال واستلام الصيانة</b><small>حركة الأجهزة مع مركز الصيانة</small></a>
+          <a href="/direct-service-request" class="more-item"><span>👤</span><b>عميل مباشر</b><small>طلب وشحن جهاز العميل</small></a>
+          <a href="/shipping" class="more-item"><span>▣</span><b>البوالص والشحن</b><small>إنشاء ومتابعة البوالص</small></a>
+          <a href="/warehouse-receiving" class="more-item"><span>↓</span><b>استلام المستودع</b><small>مطابقة الأجهزة الواردة</small></a>
+          <a href="/technicians" class="more-item"><span>⚒</span><b>متابعة الفنيين</b><small>التوزيع والمتابعة</small></a>
+          <a href="/spare-parts/receiving" class="more-item"><span>↓</span><b>استلام قطع الغيار</b><small>إضافة الكميات الواردة</small></a>
+          <a href="/replacement-warehouse" class="more-item"><span>□</span><b>مستودع الاستبدال</b><small>إدارة أجهزة الاستبدال</small></a>
+        }
+        @if (IsBranchUser || IsTechnician || IsMaintenanceManager || IsMainManager)
+        {
+          <a href="/device-scan" class="more-item"><span>⌾</span><b>سكان الجهاز</b><small>البحث بالـ QR أو الكود</small></a>
+          <a href="/reports" class="more-item"><span>▥</span><b>التقارير</b><small>تقارير التشغيل والمخزون</small></a>
+        }
+        @if (IsMaintenanceManager)
+        {
+          <a href="/settings" class="more-item"><span>⚙</span><b>الإعدادات</b><small>إعدادات التشغيل</small></a>
+        }
+        @if (IsMainManager)
+        {
+          <a href="/admin" class="more-item"><span>♙</span><b>إدارة النظام</b><small>المستخدمون والصلاحيات</small></a>
+          <a href="/diagnostic-guide-admin" class="more-item"><span>?</span><b>إدارة دليل التشخيص</b><small>الأسئلة والقواعد</small></a>
+          <a href="/device-catalog" class="more-item"><span>▦</span><b>الأجهزة والملحقات</b><small>الموديلات والملحقات</small></a>
+          <a href="/spare-parts" class="more-item"><span>⚒</span><b>قطع الغيار والمخزون</b><small>الأصناف والكميات</small></a>
+        }
+      </div>
+    </div>
+  }
+  <div class="sidebar-bottom">
+    <div class="version">ARMS · v2.4.34</div>
+  </div>
+</aside>
+<main class="content" @onclick="CloseMenus">@Body</main>
+</div></div>
+
+@code {
+    bool NotificationsOpen;
+    bool CurrentUserChecked;
+    bool UserMenuOpen;
+    bool MobileMenuOpen;
+    bool MoreMenuOpen;
+    int UnreadCount;
+    List<Notification> Notifications = new();
+    UserAccount? CurrentUser;
+    string CurrentRole => (CurrentUser?.Role ?? "").Trim();
+    bool IsTechnician => CurrentRole is "فني صيانة" or "فني متنقل";
+    bool IsMobileTechnician => CurrentRole == "فني متنقل";
+    bool IsMainManager => ArmsAuth.IsSystemAdminRole(CurrentRole);
+    bool IsMaintenanceManager => CurrentRole == "مشرف صيانة" || CurrentRole == "مدير صيانة" || ArmsAuth.IsSystemAdminRole(CurrentRole);
+    bool IsBranchUser => CurrentRole == "مستخدم فرع";
+    bool IsCustomerService => CurrentRole == "خدمة العملاء";
+    // Receiving is a maintenance-supervisor function only. Explicitly deny technicians and branches.
+    bool CanAccessReceiving => CurrentUser is not null && IsMaintenanceManager;
+
+    bool _loadingClientState;
+
+    protected override Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loadingClientState) return;
+
+        _loadingClientState = true;
+        try
+        {
+            // JavaScript interop is not available during prerendering.
+            // Run all browser-dependent initialization only after the first interactive render.
+            await JS.InvokeVoidAsync("armsTheme.init");
+            await LoadCurrentUser();
+            await LoadNotifications();
+        }
+        finally
+        {
+            _loadingClientState = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task LoadCurrentUser(){var username=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db, username);CurrentUserChecked=true;if(CurrentUser is null&&!Nav.Uri.Contains("/login")){Nav.NavigateTo("/login",forceLoad:true);}}
+
+    async Task LoadNotifications()
+    {
+        await using var db=await DbFactory.CreateDbContextAsync();
+        Notifications=await db.Notifications.Where(x=>!x.IsRead).OrderByDescending(x=>x.CreatedAt).Take(20).ToListAsync();
+        UnreadCount=Notifications.Count;
+    }
+
+    async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        NotificationsOpen=false; UserMenuOpen=false;
+        await LoadNotifications();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void ToggleNotifications(){NotificationsOpen=!NotificationsOpen;UserMenuOpen=false;}
+    void ToggleUserMenu(){UserMenuOpen=!UserMenuOpen;NotificationsOpen=false;}
+    void ToggleMobileMenu(){MobileMenuOpen=!MobileMenuOpen;MoreMenuOpen=false;NotificationsOpen=false;UserMenuOpen=false;}
+    void ToggleMoreMenu(){MoreMenuOpen=!MoreMenuOpen;NotificationsOpen=false;UserMenuOpen=false;}
+    void CloseMenus(){if(!NotificationsOpen&&!UserMenuOpen&&!MobileMenuOpen&&!MoreMenuOpen)return;NotificationsOpen=false;UserMenuOpen=false;MobileMenuOpen=false;MoreMenuOpen=false;StateHasChanged();}
+
+    async Task OpenNotification(Notification n)
+    {
+        await using var db=await DbFactory.CreateDbContextAsync();
+        var x=await db.Notifications.FindAsync(n.Id);
+        if(x is not null){x.IsRead=true;await db.SaveChangesAsync();}
+        NotificationsOpen=false;
+        await LoadNotifications();
+        Nav.NavigateTo(n.TargetUrl);
+    }
+    void GoAccount(){CloseMenus();Nav.NavigateTo("/account");}
+    void GoSettings(){CloseMenus();Nav.NavigateTo("/settings");}
+    async void Logout(){CloseMenus();try{var token=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();await ArmsAuth.InvalidateSessionAsync(db,token);}catch{}await JS.InvokeVoidAsync("armsTheme.clearUser");Nav.NavigateTo("/login");}
+    bool IsActive(string path,bool exact=false)
+    {
+        var uri=new Uri(Nav.Uri); var current=uri.AbsolutePath.TrimEnd('/'); if(current=="")current="/";
+        if(exact)return current==path;
+        if(path=="/service-requests") return current==path || (current.StartsWith(path+"/") && !current.StartsWith("/service-requests/new") && !current.StartsWith("/service-requests/receiving"));
+        return current==path || current.StartsWith(path+"/");
+    }
+    public void Dispose()=>Nav.LocationChanged-=OnLocationChanged;
+}

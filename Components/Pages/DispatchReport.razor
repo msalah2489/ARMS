@@ -1,0 +1,12 @@
+@page "/service-requests/{RequestId:int}/dispatch-report"
+@rendermode InteractiveServer
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+@using QRCoder
+@inject NavigationManager Nav
+<PageTitle>تقرير الأجهزة المرسلة</PageTitle>
+@if(Request is null){<div class="empty">جارٍ التحميل...</div>}else{
+<div class="print-toolbar no-print"><button class="btn primary" @onclick="PrintAndMark">🖨 طباعة التقرير واعتماده</button><a class="btn outline" href="/service-requests/@Request.Id/prepare">رجوع للتجهيز</a></div>
+<div class="qr-sheet"><img class="company-print-logo" src="/images/company-logo.png" alt="الشركة"/><h1>تقرير الأجهزة المرسلة</h1><div class="qr-card" style="margin:auto;max-width:180px"><img src="@QrData(Request.RequestNumber)" /><b>@Request.RequestNumber</b></div><p>طلب: <b>@Request.RequestNumber</b> — العميل: <b>@Request.CustomerName</b> — الفرع: <b>@Request.Branch</b></p><table><thead><tr><th>كود الجهاز</th><th>الموديل</th><th>السيريال</th><th>العطل</th><th>القرار</th></tr></thead><tbody>@foreach(var d in Request.Devices.Where(x=>x.Decision=="جاهز للإرسال"&&x.MaintenanceRoute=="مركز الصيانة")){<tr><td>@d.DeviceCode</td><td>@d.Model</td><td>@d.SerialNumber</td><td>@d.Problem</td><td>مرسل</td></tr>}</tbody></table><p style="margin-top:20px">تاريخ التقرير: @DateTime.Now.ToString("yyyy-MM-dd HH:mm")</p></div>}
+@code{[Parameter]public int RequestId{get;set;}ServiceRequest? Request;protected override async Task OnParametersSetAsync(){await using var db=await DbFactory.CreateDbContextAsync();Request=await db.ServiceRequests.Include(x=>x.Devices).FirstOrDefaultAsync(x=>x.Id==RequestId);}string QrData(string value){using var gen=new QRCodeGenerator();using var data=gen.CreateQrCode(value,QRCodeGenerator.ECCLevel.Q);var qr=new PngByteQRCode(data);var bytes=qr.GetGraphic(6);return "data:image/png;base64,"+Convert.ToBase64String(bytes);}
+async Task PrintAndMark(){await using var db=await DbFactory.CreateDbContextAsync();var r=await db.ServiceRequests.FindAsync(RequestId);if(r is not null){r.DispatchReportPrintedAt=DateTime.Now;await db.SaveChangesAsync();}await JS.InvokeVoidAsync("window.print");}}

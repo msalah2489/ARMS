@@ -1,0 +1,7 @@
+ARMS V8 Technician Workflow
+
+One application with role-based login.
+Demo accounts: ahmed.mohamed / 123456 (branch), ahmed.tech / 123456 (technician), maintenance.manager / 123456 (maintenance supervisor).
+Technician workspace with waiting queue, exclusive assignment, maintenance start/complete/pause, and mandatory post-maintenance checklist. Reference test durations are stored in the test record and not displayed to the technician.
+DeviceStatusHistory records status/location start and end timestamps and actor.
+Branch receiving requires explicit confirmation before status becomes تم الاستلام.

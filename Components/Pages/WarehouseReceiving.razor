@@ -1,0 +1,62 @@
+@page "/warehouse-receiving"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ArmsDbContext> DbFactory
+@inject IJSRuntime JS
+<PageTitle>استلام المستودع</PageTitle>
+
+@if(CurrentUser is null){<div class="empty">جارٍ التحميل...</div>}
+else if(!CanView){<div class="notice danger-notice">هذه الصفحة غير متاحة لهذا الحساب.</div>}
+else{
+<div class="page-head"><div><h1>استلام المستودع</h1><p>تسجيل البوليصة عند وصولها، مطابقة الأجهزة، ثم تسليم الأجهزة المستلمة لقسم الصيانة.</p></div></div>
+@if(!string.IsNullOrWhiteSpace(Message)){<div class="notice @(Message.StartsWith("خطأ")?"danger-notice":"success-notice")">@Message</div>}
+
+@if(CanManage){
+<div class="panel"><div class="section-title">① تسجيل بوليصة واردة</div>
+<div class="form-grid">
+ <div class="field"><label>مصدر الشحنة *</label><select @bind="SourceType"><option value="فرع">فرع</option><option value="عميل مباشر">عميل مباشر</option><option value="خدمة التعطير">خدمة التعطير</option></select></div>
+ <div class="field"><label>الجهة المرسلة *</label><input @bind="SourceName" placeholder="اسم الفرع / العميل / خدمة التعطير" /></div>
+ <div class="field"><label>شركة الشحن / المندوب</label><input @bind="Carrier" /></div>
+ <div class="field"><label>رقم البوليصة / السند *</label><input @bind="ShipmentNumber" /></div>
+</div>
+<div class="actions-bottom"><button class="btn primary" @onclick="CreateInboundBatch">إنشاء سجل الاستلام</button></div>
+</div>
+
+@if(ActiveBatch is not null){
+<div class="panel"><div class="itemhead"><div><h2>الشحنة @ActiveBatch.ShipmentNumber</h2><div class="small">@ActiveBatch.SourceType — @ActiveBatch.SourceName — @ActiveBatch.Carrier</div></div><span class="pill yellow">@ActiveBatch.Status</span></div>
+<div class="form-grid">
+ <div class="field"><label>إضافة جهاز موجود بالـQR/الكود</label><input @bind="DeviceCodeToAdd" placeholder="DEV-..." /></div>
+</div>
+<div class="actions-bottom"><button class="btn outline" @onclick="AddExistingDevice">+ إضافة الجهاز للشحنة</button></div>
+@if(SourceType=="خدمة التعطير"){<div class="panel" style="margin-top:12px"><div class="section-title">إضافة كمية من سند خدمة التعطير</div><div class="form-grid"><div class="field"><label>الموديل *</label><input @bind="AromaModel" /></div><div class="field"><label>اللون *</label><input @bind="AromaColor" /></div><div class="field"><label>الكمية *</label><input type="number" min="1" @bind="AromaQuantity" /></div></div><div class="small">الأجهزة التي تصل بدون QR تبقى بدون كود هنا، ويتم إصدار QR وفق سياسة ARMS عند دخولها دورة الصيانة.</div><div class="actions-bottom"><button class="btn primary" @onclick="AddAromaQuantity">إضافة الكمية</button></div></div>}
+@if(ActiveBatch.Items.Any()){
+<table><thead><tr><th>الجهاز</th><th>الموديل</th><th>اللون</th><th>الطلب</th><th>مطابقة</th></tr></thead><tbody>@foreach(var item in ActiveBatch.Items){<tr><td><b>@item.DeviceCodeSnapshot</b></td><td>@item.ModelSnapshot</td><td>@(string.IsNullOrWhiteSpace(item.ColorSnapshot)?"—":item.ColorSnapshot)</td><td>@item.ServiceDevice?.ServiceRequest?.RequestNumber</td><td><input type="checkbox" checked="@(item.Status=="مستلم فعليًا")" @onchange="e=>SetReceived(item.Id,(bool)e.Value!)" /></td></tr>}</tbody></table>
+<div class="actions-bottom"><button class="btn green" @onclick="ConfirmWarehouseReceipt">✓ تأكيد الاستلام الفعلي</button></div>
+}else{<div class="empty">لم تتم إضافة أجهزة لهذه البوليصة بعد.</div>}
+</div>}
+
+}
+
+<div class="panel"><div class="section-title">② بوالص وصلت ولم تُستلم نهائيًا</div>
+@if(Pending.Any()){
+<table><thead><tr><th>البوليصة</th><th>المصدر</th><th>الجهة</th><th>شركة الشحن</th><th>عدد الأجهزة</th><th>الحالة</th><th>فتح</th></tr></thead><tbody>@foreach(var b in Pending){<tr><td>@b.BatchNumber</td><td>@b.Direction</td><td>@b.SourceName</td><td>@b.Carrier</td><td>@b.Items.Count</td><td>@b.Status</td><td>@if(CanManage){<button class="btn outline" @onclick="()=>OpenBatch(b.Id)">فتح</button>}else{<span class="small">عرض فقط</span>}</td></tr>}</tbody></table>
+}else{<div class="empty">لا توجد بوالص معلقة للاستلام.</div>}
+</div>
+
+<div class="panel"><div class="section-title">③ أجهزة مستلمة بالمستودع ولم تُسلّم للصيانة</div>
+@if(WarehouseDevices.Any()){
+<table><thead><tr><th>الجهاز</th><th>الموديل</th><th>الطلب</th><th>المصدر</th><th>الحالة</th></tr></thead><tbody>@foreach(var d in WarehouseDevices){<tr><td><b>@(string.IsNullOrWhiteSpace(d.DeviceCode)?"بدون QR":d.DeviceCode)</b></td><td>@d.Model</td><td>@d.ServiceRequest?.RequestNumber</td><td>@d.ServiceRequest?.IntakeSource — @d.ServiceRequest?.OriginName</td><td><span class="pill yellow">مستلم بالمستودع</span></td></tr>}</tbody></table>
+}else{<div class="empty">لا توجد أجهزة بانتظار تسليمها للصيانة.</div>}
+</div>
+}
+@code{
+ UserAccount? CurrentUser; bool CanManage=>CurrentUser?.Role is "مدير صيانة" or "مدير عام ARMS" or "مدير رئيسي"; bool CanView=>CurrentUser?.Role is "مشرف صيانة" or "مدير صيانة" or "مدير عام ARMS" or "مدير رئيسي"; string SourceType="فرع",SourceName="",Carrier="",ShipmentNumber="",DeviceCodeToAdd="",AromaModel="",AromaColor="",Message=""; int AromaQuantity=1; ShippingBatch? ActiveBatch; List<ShippingBatch> Pending=new(); List<ServiceDevice> WarehouseDevices=new();
+ protected override async Task OnInitializedAsync(){await Load();}
+ async Task Load(){var token=await JS.InvokeAsync<string>("armsTheme.getUser");await using var db=await DbFactory.CreateDbContextAsync();CurrentUser=await ArmsAuth.ResolveUserAsync(db,token);if(!CanView)return;Pending=await db.ShippingBatches.Include(x=>x.Items).Where(x=>x.Direction=="إرسال للصيانة"&&(x.Status=="تم التسليم لشركة الشحن"||x.Status=="جاري النقل")).OrderBy(x=>x.Id).ToListAsync();WarehouseDevices=await db.ServiceDevices.Include(x=>x.ServiceRequest).Where(x=>x.CurrentLocation=="المستودع"&&x.CurrentStatus=="مستلم بالمستودع").OrderBy(x=>x.Id).ToListAsync();}
+ async Task AddAromaQuantity(){Message="";if(ActiveBatch is null||SourceType!="خدمة التعطير"){Message="خطأ: أنشئ سجل بوليصة خدمة التعطير أولًا.";return;}if(string.IsNullOrWhiteSpace(AromaModel)||string.IsNullOrWhiteSpace(AromaColor)||AromaQuantity<1){Message="خطأ: الموديل واللون والكمية مطلوبة.";return;}await using var db=await DbFactory.CreateDbContextAsync();var request=new ServiceRequest{RequestNumber="AROMA-"+DateTime.Now.ToString("yyyyMMddHHmmss")+Random.Shared.Next(10,99),CustomerName="خدمة التعطير",Branch="خدمة التعطير",Priority="عادي",Status="مستلم بالمستودع",CreatedBy=CurrentUser!.FullName,ServiceType="خدمة التعطير",IntakeSource="خدمة التعطير",OriginName=SourceName.Trim(),CreatedAt=DateTime.Now,ReceivedAt=DateTime.Now};db.ServiceRequests.Add(request);for(var i=0;i<AromaQuantity;i++){request.Devices.Add(new ServiceDevice{DeviceCode="",Model=AromaModel.Trim(),Color=AromaColor.Trim(),DeviceType="Diffuser",Brand="Aromatic",Decision="جاهز للإرسال",CurrentLocation="المستودع",CurrentStatus="مستلم بالمستودع",MaintenanceRoute="مركز الصيانة"});}await db.SaveChangesAsync();foreach(var d in request.Devices)db.ShippingBatchItems.Add(new ShippingBatchItem{ShippingBatchId=ActiveBatch.Id,ServiceDeviceId=d.Id,DeviceCodeSnapshot=d.DeviceCode,ModelSnapshot=d.Model,ColorSnapshot=d.Color,Status="مستلم فعليًا"});await db.SaveChangesAsync();Message=$"تم تسجيل {AromaQuantity} جهاز خدمة تعطير ({AromaModel} / {AromaColor}) ضمن البوليصة.";AromaQuantity=1;AromaModel="";AromaColor="";await OpenBatch(ActiveBatch.Id);await Load();}
+ async Task CreateInboundBatch(){Message="";if(string.IsNullOrWhiteSpace(SourceName)||string.IsNullOrWhiteSpace(ShipmentNumber)){Message="خطأ: الجهة المرسلة ورقم البوليصة/السند إجباريان.";return;}await using var db=await DbFactory.CreateDbContextAsync();ActiveBatch=new ShippingBatch{BatchNumber=$"IN-{DateTime.Now:yyyyMMddHHmmss}",ShipmentNumber=ShipmentNumber.Trim(),Carrier=Carrier.Trim(),Direction="وارد",SourceType=SourceType,SourceName=SourceName.Trim(),DestinationType="مستودع",DestinationName="المستودع",Status="تحت المطابقة",CreatedAt=DateTime.Now,CreatedBy=CurrentUser!.FullName};db.ShippingBatches.Add(ActiveBatch);await db.SaveChangesAsync();Message="تم إنشاء سجل البوليصة. أضف الأجهزة الفعلية ثم أكد الاستلام.";await Load();}
+ async Task OpenBatch(int id){await using var db=await DbFactory.CreateDbContextAsync();ActiveBatch=await db.ShippingBatches.Include(x=>x.Items).ThenInclude(x=>x.ServiceDevice).ThenInclude(x=>x.ServiceRequest).FirstOrDefaultAsync(x=>x.Id==id);}
+ async Task AddExistingDevice(){Message="";if(ActiveBatch is null||string.IsNullOrWhiteSpace(DeviceCodeToAdd))return;await using var db=await DbFactory.CreateDbContextAsync();var d=await db.ServiceDevices.Include(x=>x.ServiceRequest).FirstOrDefaultAsync(x=>x.DeviceCode==DeviceCodeToAdd.Trim());if(d is null){Message="خطأ: لم يتم العثور على جهاز بهذا الكود.";return;}if(await db.ShippingBatchItems.AnyAsync(x=>x.ShippingBatchId==ActiveBatch.Id&&x.ServiceDeviceId==d.Id)){Message="خطأ: الجهاز موجود بالفعل في هذه البوليصة.";return;}db.ShippingBatchItems.Add(new ShippingBatchItem{ShippingBatchId=ActiveBatch.Id,ServiceDeviceId=d.Id,DeviceCodeSnapshot=d.DeviceCode,ModelSnapshot=d.Model,ColorSnapshot=d.Color,Status="ضمن الشحنة"});await db.SaveChangesAsync();DeviceCodeToAdd="";await OpenBatch(ActiveBatch.Id);}
+ async Task SetReceived(int itemId,bool on){if(ActiveBatch is null)return;await using var db=await DbFactory.CreateDbContextAsync();var item=await db.ShippingBatchItems.FindAsync(itemId);if(item is not null)item.Status=on?"مستلم فعليًا":"ضمن الشحنة";await db.SaveChangesAsync();await OpenBatch(ActiveBatch.Id);}
+ async Task ConfirmWarehouseReceipt(){Message="";if(ActiveBatch is null)return;await using var db=await DbFactory.CreateDbContextAsync();var b=await db.ShippingBatches.Include(x=>x.Items).FirstOrDefaultAsync(x=>x.Id==ActiveBatch.Id);if(b is null)return;var received=b.Items.Where(x=>x.Status=="مستلم فعليًا").ToList();if(!received.Any()){Message="خطأ: يجب تحديد جهاز واحد على الأقل كمستلم فعليًا.";return;}var ids=received.Select(x=>x.ServiceDeviceId).ToList();var rows=await db.ServiceDevices.Where(x=>ids.Contains(x.Id)).ToListAsync();var now=DateTime.Now;foreach(var d in rows){d.CurrentLocation="المستودع";d.CurrentStatus="مستلم بالمستودع";db.DeviceStatusHistories.Add(new DeviceStatusHistory{ServiceDeviceId=d.Id,ServiceRequestId=d.ServiceRequestId,Status="مستلم بالمستودع",Location="المستودع",StartedAt=now,ChangedBy=CurrentUser!.FullName,Notes=$"استلام مستودع — البوليصة {b.ShipmentNumber}"});}b.Status="مستلم بالمستودع";b.ReceivedAt=now;b.ReceivedBy=CurrentUser.FullName;await db.SaveChangesAsync();Message=$"تم استلام {rows.Count} جهاز بالمستودع. أصبحت جاهزة لتسليمها لمشرف الصيانة.";ActiveBatch=null;await Load();}
+}
