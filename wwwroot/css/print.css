@@ -1,2 +1,0 @@
-@media print{.topbar,.sidebar,.page-head .toolbar,.actions-bottom,.btn{display:none!important}.content{padding:0}.panel{box-shadow:none}}
-.print-only{display:none}.report-title{font-size:22px;font-weight:700;margin-bottom:15px}@media print{.no-print,.topbar,.sidebar,.page-head,.toolbar{display:none!important}.print-only{display:block}.content{padding:0!important}.panel{box-shadow:none;border:0}.panel table{font-size:11px}}
