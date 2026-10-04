@@ -37,8 +37,8 @@ export function Sidebar({ user }: { user: Profile }) {
         <p className="text-xs text-aroma-200">{ROLE_LABELS[user.role]}</p>
         <button
           type="button"
-          onClick={() => {
-            signOut();
+          onClick={async () => {
+            await signOut();
             router.replace("/login");
           }}
           className="mt-3 text-xs text-sand-200 underline-offset-2 hover:underline"

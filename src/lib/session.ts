@@ -1,4 +1,5 @@
-import { DEMO_USERS } from "@/lib/auth";
+import { DEMO_USERS, isDemoMode } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
 import type { AppRole, Profile } from "@/types/domain";
 
 const STORAGE_KEY = "arms_session";
@@ -21,23 +22,48 @@ export function clearSession() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
-export function signIn(email: string, password: string) {
-  const user = DEMO_USERS.find(
-    (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
-  );
-  if (!user) return { error: "Invalid email or password." };
+export async function signIn(email: string, password: string) {
+  if (isDemoMode()) {
+    const user = DEMO_USERS.find(
+      (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
+    );
+    if (!user) return { error: "Invalid email or password." };
 
-  const profile: Profile = {
-    id: user.role,
-    fullName: user.fullName,
-    role: user.role as AppRole,
-    email: user.email,
-  };
+    writeSession({
+      id: user.role,
+      fullName: user.fullName,
+      role: user.role as AppRole,
+      email: user.email,
+    });
+    return { error: null };
+  }
 
-  writeSession(profile);
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) {
+    return { error: error?.message ?? "Invalid email or password." };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, full_name, role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+
+  writeSession({
+    id: data.user.id,
+    fullName: profile?.full_name ?? data.user.email ?? "User",
+    role: (profile?.role as AppRole | undefined) ?? "branch_employee",
+    email: data.user.email ?? email,
+  });
+
   return { error: null };
 }
 
-export function signOut() {
+export async function signOut() {
   clearSession();
+  if (!isDemoMode()) {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+  }
 }

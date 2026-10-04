@@ -27,9 +27,9 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: "true"
-          NEXT_PUBLIC_USE_DEMO: "true"
-          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: public-anon-key
+          NEXT_PUBLIC_USE_DEMO: "false"
+          NEXT_PUBLIC_SUPABASE_URL: https://khjjfqqaeaeynnaizycq.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_JBRwZuqY4b37FqOrJ0tv7g_oLUnyLvU
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out
