@@ -1,8 +1,0 @@
-ARMS V2.4.32 - Topbar & Sidebar Final Fix
-
-- Account/user controls are explicitly anchored to the left side of the topbar.
-- Company/ARMS branding is explicitly anchored to the right side.
-- User and notification dropdowns open inward from the left and cannot hide behind the right sidebar.
-- Sidebar now has a fixed viewport height and vertical scrolling if needed, preventing primary tabs from being clipped.
-- Primary sidebar tabs remain visible above the More button; More remains the final primary item.
-- No workflow, database, business-rule, or permission logic changed.
