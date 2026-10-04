@@ -1,9 +1,0 @@
-ARMS V2.4.17 - Customer Service & Supportability Updates
-
-1. Added a dedicated "خدمة العملاء" role and page. Customer service can search customers globally by name or mobile number and view customer devices, current location/status, request information and device movement history with timestamps.
-2. Added fault/complaint analysis report with optional model, customer, device-code and date filters, including top customer complaints, top fault causes and model-level summaries. Excel export is supported.
-3. Removed "صيانة أجهزة التعطير" from the branch service-request type selector. Branches can no longer create that service type from the normal service request screen.
-4. Corrected customer delivery flow: returning a device to the customer uses the original customer receipt linked to that device; no new delivery receipt number/image is requested. The original receipt remains the traceability document.
-5. Existing V2.4.16 database is expected to remain compatible because these changes do not add database columns/tables.
-
-Important: Build validation could not be executed in this environment because the .NET SDK is not installed here. Run `dotnet build` or `dotnet run` on the target Windows machine before replacing the tested production folder.
