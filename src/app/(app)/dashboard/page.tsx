@@ -1,13 +1,31 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
-import { requireSession } from "@/lib/session";
-import { formatDate } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/auth";
+import { readSession } from "@/lib/session";
+import { formatDate } from "@/lib/utils";
+import type { DashboardStats, Profile, ServiceRequest } from "@/types/domain";
 
-export default async function DashboardPage() {
-  const user = await requireSession();
-  const [stats, requests] = await Promise.all([getDashboardStats(), getServiceRequests()]);
+export default function DashboardPage() {
+  const [user, setUser] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  useEffect(() => {
+    setUser(readSession());
+    void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
+      setStats(nextStats);
+      setRequests(nextRequests);
+    });
+  }, []);
+
+  if (!user || !stats) {
+    return <p className="text-sm text-ink-700/70">Loading dashboard…</p>;
+  }
 
   const cards = [
     { label: "Open requests", value: stats.openRequests },
@@ -35,7 +53,7 @@ export default async function DashboardPage() {
       <h2 className="mb-3 mt-10 font-display text-2xl">Recent service requests</h2>
       <div className="space-y-3">
         {requests.map((request) => (
-          <a
+          <Link
             key={request.id}
             href={`/service-requests/${request.id}`}
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-900/10 bg-white px-4 py-4 shadow-panel hover:border-aroma-400"
@@ -51,7 +69,7 @@ export default async function DashboardPage() {
               <StatusBadge value={request.status} />
               <span className="text-xs text-ink-700/60">{formatDate(request.requestedAt)}</span>
             </div>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

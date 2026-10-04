@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { getServiceRequests } from "@/lib/data";
-import { requireSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 
 const WORKFLOW = [
@@ -16,13 +15,17 @@ const WORKFLOW = [
   "Closure",
 ];
 
+export async function generateStaticParams() {
+  const requests = await getServiceRequests();
+  return requests.map((request) => ({ id: request.id }));
+}
+
 export default async function ServiceRequestDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireSession();
   const request = (await getServiceRequests()).find((item) => item.id === id);
   if (!request) notFound();
 

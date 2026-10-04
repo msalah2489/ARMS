@@ -1,9 +1,6 @@
 import { PageHeader } from "@/components/page-header";
-import { requireSession } from "@/lib/session";
 
-export default async function NewServiceRequestPage() {
-  await requireSession();
-
+export default function NewServiceRequestPage() {
   return (
     <div>
       <PageHeader

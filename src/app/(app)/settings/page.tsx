@@ -1,11 +1,29 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { ROLE_LABELS } from "@/lib/auth";
-import { requireSession } from "@/lib/session";
-import { redirect } from "next/navigation";
+import { readSession } from "@/lib/session";
+import type { Profile } from "@/types/domain";
 
-export default async function SettingsPage() {
-  const user = await requireSession();
-  if (user.role !== "manager") redirect("/dashboard");
+export default function SettingsPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    const session = readSession();
+    if (!session) return;
+    if (session.role !== "manager") {
+      router.replace("/dashboard");
+      return;
+    }
+    setUser(session);
+  }, [router]);
+
+  if (!user) {
+    return <p className="text-sm text-ink-700/70">Loading settings…</p>;
+  }
 
   return (
     <div>
@@ -26,7 +44,9 @@ export default async function SettingsPage() {
           </section>
         ))}
       </div>
-      <p className="mt-6 text-xs text-ink-700/50">Signed in as {user.email} · {ROLE_LABELS[user.role]}</p>
+      <p className="mt-6 text-xs text-ink-700/50">
+        Signed in as {user.email} · {ROLE_LABELS[user.role]}
+      </p>
     </div>
   );
 }

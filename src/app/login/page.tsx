@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { loginAction } from "@/app/actions";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { DEMO_USERS, ROLE_LABELS } from "@/lib/auth";
+import { signIn } from "@/lib/session";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState(DEMO_USERS[0].email);
   const [password, setPassword] = useState("demo");
-  const [error, action] = useActionState(loginAction, null);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <main className="grid min-h-screen md:grid-cols-2">
@@ -40,7 +42,18 @@ export default function LoginPage() {
               </button>
             ))}
           </div>
-          <form className="mt-8 space-y-4" action={action}>
+          <form
+            className="mt-8 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const result = signIn(email, password);
+              if (result.error) {
+                setError(result.error);
+                return;
+              }
+              router.replace("/dashboard");
+            }}
+          >
             <label className="block text-sm">
               Email
               <input

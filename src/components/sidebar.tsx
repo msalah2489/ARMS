@@ -1,10 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import { logoutAction } from "@/app/actions";
+import { useRouter } from "next/navigation";
 import { navForRole } from "@/lib/nav";
 import { ROLE_LABELS } from "@/lib/auth";
+import { signOut } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
 export function Sidebar({ user }: { user: Profile }) {
+  const router = useRouter();
   const items = navForRole(user.role);
 
   return (
@@ -31,14 +35,16 @@ export function Sidebar({ user }: { user: Profile }) {
       <div className="border-t border-white/10 p-4">
         <p className="text-sm font-medium">{user.fullName}</p>
         <p className="text-xs text-aroma-200">{ROLE_LABELS[user.role]}</p>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="mt-3 text-xs text-sand-200 underline-offset-2 hover:underline"
-          >
-            Sign out
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={() => {
+            signOut();
+            router.replace("/login");
+          }}
+          className="mt-3 text-xs text-sand-200 underline-offset-2 hover:underline"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
   );

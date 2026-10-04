@@ -1,10 +1,16 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+"use client";
 
-export default async function HomePage() {
-  const session = await getSession();
-  if (session) redirect("/dashboard");
+import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { readSession } from "@/lib/session";
+
+export default function HomePage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (readSession()) router.replace("/dashboard");
+  }, [router]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-950 text-sand-50">

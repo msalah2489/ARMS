@@ -4,6 +4,11 @@ import { StatusBadge } from "@/components/status-badge";
 import { getDevices, getServiceRequests } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
+export async function generateStaticParams() {
+  const devices = await getDevices();
+  return devices.map((device) => ({ id: device.id }));
+}
+
 export default async function DeviceDetailPage({
   params,
 }: {

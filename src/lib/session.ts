@@ -1,27 +1,27 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { DEMO_USERS } from "@/lib/auth";
 import type { AppRole, Profile } from "@/types/domain";
 
-const COOKIE = "arms_session";
+const STORAGE_KEY = "arms_session";
 
-export async function getSession(): Promise<Profile | null> {
-  const raw = (await cookies()).get(COOKIE)?.value;
-  if (!raw) return null;
+export function readSession(): Profile | null {
+  if (typeof window === "undefined") return null;
   try {
-    return JSON.parse(raw) as Profile;
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Profile) : null;
   } catch {
     return null;
   }
 }
 
-export async function requireSession() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  return session;
+export function writeSession(profile: Profile) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
 }
 
-export async function signIn(email: string, password: string) {
+export function clearSession() {
+  window.localStorage.removeItem(STORAGE_KEY);
+}
+
+export function signIn(email: string, password: string) {
   const user = DEMO_USERS.find(
     (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
   );
@@ -34,15 +34,10 @@ export async function signIn(email: string, password: string) {
     email: user.email,
   };
 
-  (await cookies()).set(COOKIE, JSON.stringify(profile), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-  });
-
+  writeSession(profile);
   return { error: null };
 }
 
-export async function signOut() {
-  (await cookies()).delete(COOKIE);
+export function signOut() {
+  clearSession();
 }
