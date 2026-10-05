@@ -105,6 +105,23 @@ export function deleteDeviceType(id: string): { ok: true } | { ok: false; error:
   return { ok: true };
 }
 
+export function updateDeviceType(
+  id: string,
+  name: string,
+): { ok: true } | { ok: false; error: string } {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "اسم التصنيف إلزامي." };
+  const catalog = getCatalog();
+  const item = catalog.deviceTypes.find((row) => row.id === id);
+  if (!item) return { ok: false, error: "التصنيف غير موجود." };
+  if (catalog.deviceTypes.some((row) => row.id !== id && row.name === trimmed)) {
+    return { ok: false, error: "هذا التصنيف موجود مسبقًا." };
+  }
+  item.name = trimmed;
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
 export function addBrand(name: string): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم البراند إلزامي." };
@@ -123,6 +140,23 @@ export function deleteBrand(id: string): { ok: true } | { ok: false; error: stri
     return { ok: false, error: "لا يمكن حذف براند مرتبط بموديلات." };
   }
   catalog.brands = catalog.brands.filter((item) => item.id !== id);
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
+export function updateBrand(
+  id: string,
+  name: string,
+): { ok: true } | { ok: false; error: string } {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "اسم البراند إلزامي." };
+  const catalog = getCatalog();
+  const item = catalog.brands.find((row) => row.id === id);
+  if (!item) return { ok: false, error: "البراند غير موجود." };
+  if (catalog.brands.some((row) => row.id !== id && row.name === trimmed)) {
+    return { ok: false, error: "هذا البراند موجود مسبقًا." };
+  }
+  item.name = trimmed;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -163,6 +197,36 @@ export function deleteModel(id: string): { ok: true } | { ok: false; error: stri
   return { ok: true };
 }
 
+export function updateModel(input: {
+  id: string;
+  name: string;
+  deviceTypeId: string;
+  brandId: string;
+}): { ok: true } | { ok: false; error: string } {
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
+  if (!input.deviceTypeId || !input.brandId) {
+    return { ok: false, error: "اختر التصنيف والبراند." };
+  }
+  const catalog = getCatalog();
+  const model = catalog.models.find((item) => item.id === input.id);
+  if (!model) return { ok: false, error: "الموديل غير موجود." };
+  if (!catalog.deviceTypes.some((item) => item.id === input.deviceTypeId)) {
+    return { ok: false, error: "التصنيف غير موجود." };
+  }
+  if (!catalog.brands.some((item) => item.id === input.brandId)) {
+    return { ok: false, error: "البراند غير موجود." };
+  }
+  if (catalog.models.some((item) => item.id !== input.id && item.name === name)) {
+    return { ok: false, error: "اسم الموديل مستخدم مسبقًا." };
+  }
+  model.name = name;
+  model.deviceTypeId = input.deviceTypeId;
+  model.brandId = input.brandId;
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
 export function addModelAccessory(
   modelId: string,
   name: string,
@@ -176,6 +240,26 @@ export function addModelAccessory(
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
   }
   model.accessories.push({ id: crypto.randomUUID(), name: trimmed });
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
+export function updateModelAccessory(
+  modelId: string,
+  accessoryId: string,
+  name: string,
+): { ok: true } | { ok: false; error: string } {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
+  const catalog = getCatalog();
+  const model = catalog.models.find((item) => item.id === modelId);
+  if (!model) return { ok: false, error: "الموديل غير موجود." };
+  const accessory = model.accessories.find((item) => item.id === accessoryId);
+  if (!accessory) return { ok: false, error: "الملحق غير موجود." };
+  if (model.accessories.some((item) => item.id !== accessoryId && item.name === trimmed)) {
+    return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
+  }
+  accessory.name = trimmed;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -205,6 +289,26 @@ export function addModelSparePart(
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   model.spareParts.push({ id: crypto.randomUUID(), name: trimmed });
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
+export function updateModelSparePart(
+  modelId: string,
+  partId: string,
+  name: string,
+): { ok: true } | { ok: false; error: string } {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
+  const catalog = getCatalog();
+  const model = catalog.models.find((item) => item.id === modelId);
+  if (!model) return { ok: false, error: "الموديل غير موجود." };
+  const part = model.spareParts.find((item) => item.id === partId);
+  if (!part) return { ok: false, error: "قطعة الغيار غير موجودة." };
+  if (model.spareParts.some((item) => item.id !== partId && item.name === trimmed)) {
+    return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
+  }
+  part.name = trimmed;
   saveCatalog(catalog);
   return { ok: true };
 }

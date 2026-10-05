@@ -16,6 +16,11 @@ import {
   deleteModelSparePart,
   getCatalog,
   resetCatalogToSeed,
+  updateBrand,
+  updateDeviceType,
+  updateModel,
+  updateModelAccessory,
+  updateModelSparePart,
   type DeviceCatalogState,
 } from "@/lib/catalog-store";
 
@@ -35,6 +40,19 @@ function CatalogAdminContent() {
   const [selectedModelId, setSelectedModelId] = useState("");
   const [accessoryName, setAccessoryName] = useState("");
   const [spareName, setSpareName] = useState("");
+
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editingTypeName, setEditingTypeName] = useState("");
+  const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
+  const [editingBrandName, setEditingBrandName] = useState("");
+  const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  const [editModelName, setEditModelName] = useState("");
+  const [editModelTypeId, setEditModelTypeId] = useState("");
+  const [editModelBrandId, setEditModelBrandId] = useState("");
+  const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(null);
+  const [editingAccessoryName, setEditingAccessoryName] = useState("");
+  const [editingSpareId, setEditingSpareId] = useState<string | null>(null);
+  const [editingSpareName, setEditingSpareName] = useState("");
 
   function refresh() {
     setCatalog(getCatalog());
@@ -57,10 +75,11 @@ function CatalogAdminContent() {
     const result = action();
     if (!result.ok) {
       setError(result.error);
-      return;
+      return false;
     }
     setMessage(success);
     refresh();
+    return true;
   }
 
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -73,7 +92,7 @@ function CatalogAdminContent() {
     <div className="space-y-6">
       <PageHeader
         title="كتالوج الأجهزة"
-        description="إدارة تصنيفات الأجهزة والبراندات والموديلات والملحقات وقطع الغيار — لمدير النظام."
+        description="إضافة وتعديل وحذف التصنيفات والبراندات والموديلات والملحقات وقطع الغيار."
         action={
           <button
             type="button"
@@ -81,6 +100,9 @@ function CatalogAdminContent() {
             onClick={() => {
               resetCatalogToSeed();
               setSelectedModelId("");
+              setEditingTypeId(null);
+              setEditingBrandId(null);
+              setEditingModelId(null);
               setMessage("تمت إعادة الكتالوج إلى القيم الافتراضية.");
               setError(null);
               refresh();
@@ -123,8 +145,7 @@ function CatalogAdminContent() {
               type="button"
               className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
               onClick={() => {
-                run(() => addDeviceType(typeName), "تمت إضافة التصنيف.");
-                setTypeName("");
+                if (run(() => addDeviceType(typeName), "تمت إضافة التصنيف.")) setTypeName("");
               }}
             >
               إضافة تصنيف
@@ -134,16 +155,56 @@ function CatalogAdminContent() {
             {catalog.deviceTypes.map((item) => (
               <li
                 key={item.id}
-                className="flex items-center justify-between rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
               >
-                <span>{item.name}</span>
-                <button
-                  type="button"
-                  className="text-rose-700"
-                  onClick={() => run(() => deleteDeviceType(item.id), "تم حذف التصنيف.")}
-                >
-                  حذف
-                </button>
+                {editingTypeId === item.id ? (
+                  <>
+                    <input
+                      value={editingTypeName}
+                      onChange={(e) => setEditingTypeName(e.target.value)}
+                      className="min-w-[180px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-aroma-700"
+                        onClick={() => {
+                          if (run(() => updateDeviceType(item.id, editingTypeName), "تم تعديل التصنيف.")) {
+                            setEditingTypeId(null);
+                          }
+                        }}
+                      >
+                        حفظ
+                      </button>
+                      <button type="button" className="text-ink-700/60" onClick={() => setEditingTypeId(null)}>
+                        إلغاء
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span>{item.name}</span>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className="text-ink-900"
+                        onClick={() => {
+                          setEditingTypeId(item.id);
+                          setEditingTypeName(item.name);
+                        }}
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        type="button"
+                        className="text-rose-700"
+                        onClick={() => run(() => deleteDeviceType(item.id), "تم حذف التصنيف.")}
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -164,8 +225,7 @@ function CatalogAdminContent() {
               type="button"
               className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
               onClick={() => {
-                run(() => addBrand(brandName), "تمت إضافة البراند.");
-                setBrandName("");
+                if (run(() => addBrand(brandName), "تمت إضافة البراند.")) setBrandName("");
               }}
             >
               إضافة براند
@@ -175,16 +235,56 @@ function CatalogAdminContent() {
             {catalog.brands.map((item) => (
               <li
                 key={item.id}
-                className="flex items-center justify-between rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
               >
-                <span>{item.name}</span>
-                <button
-                  type="button"
-                  className="text-rose-700"
-                  onClick={() => run(() => deleteBrand(item.id), "تم حذف البراند.")}
-                >
-                  حذف
-                </button>
+                {editingBrandId === item.id ? (
+                  <>
+                    <input
+                      value={editingBrandName}
+                      onChange={(e) => setEditingBrandName(e.target.value)}
+                      className="min-w-[180px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-aroma-700"
+                        onClick={() => {
+                          if (run(() => updateBrand(item.id, editingBrandName), "تم تعديل البراند.")) {
+                            setEditingBrandId(null);
+                          }
+                        }}
+                      >
+                        حفظ
+                      </button>
+                      <button type="button" className="text-ink-700/60" onClick={() => setEditingBrandId(null)}>
+                        إلغاء
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span>{item.name}</span>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className="text-ink-900"
+                        onClick={() => {
+                          setEditingBrandId(item.id);
+                          setEditingBrandName(item.name);
+                        }}
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        type="button"
+                        className="text-rose-700"
+                        onClick={() => run(() => deleteBrand(item.id), "تم حذف البراند.")}
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -231,16 +331,19 @@ function CatalogAdminContent() {
               type="button"
               className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
               onClick={() => {
-                run(
-                  () =>
-                    addModel({
-                      name: modelName,
-                      deviceTypeId: modelTypeId,
-                      brandId: modelBrandId,
-                    }),
-                  "تمت إضافة الموديل.",
-                );
-                setModelName("");
+                if (
+                  run(
+                    () =>
+                      addModel({
+                        name: modelName,
+                        deviceTypeId: modelTypeId,
+                        brandId: modelBrandId,
+                      }),
+                    "تمت إضافة الموديل.",
+                  )
+                ) {
+                  setModelName("");
+                }
               }}
             >
               إضافة موديل
@@ -253,38 +356,123 @@ function CatalogAdminContent() {
               {catalog.models.map((model) => {
                 const typeName =
                   catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ?? "—";
-                const brandNameLabel =
+                const brandLabel =
                   catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
+                const isEditing = editingModelId === model.id;
+
                 return (
                   <div
                     key={model.id}
-                    className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-3 text-sm ${
+                    className={`rounded-xl border px-3 py-3 text-sm ${
                       selectedModelId === model.id
                         ? "border-aroma-500 bg-aroma-50/40"
                         : "border-ink-900/10"
                     }`}
                   >
-                    <button
-                      type="button"
-                      className="text-right"
-                      onClick={() => setSelectedModelId(model.id)}
-                    >
-                      <p className="font-medium">{model.name}</p>
-                      <p className="text-xs text-ink-700/60">
-                        {typeName} · {brandNameLabel} · {model.accessories.length} ملحق ·{" "}
-                        {model.spareParts.length} قطعة غيار
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      className="text-rose-700"
-                      onClick={() => {
-                        run(() => deleteModel(model.id), "تم حذف الموديل.");
-                        if (selectedModelId === model.id) setSelectedModelId("");
-                      }}
-                    >
-                      حذف
-                    </button>
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="grid gap-2 md:grid-cols-3">
+                          <select
+                            value={editModelTypeId}
+                            onChange={(e) => setEditModelTypeId(e.target.value)}
+                            className="rounded-xl border border-ink-900/15 px-3 py-2"
+                          >
+                            {catalog.deviceTypes.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={editModelBrandId}
+                            onChange={(e) => setEditModelBrandId(e.target.value)}
+                            className="rounded-xl border border-ink-900/15 px-3 py-2"
+                          >
+                            {catalog.brands.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            value={editModelName}
+                            onChange={(e) => setEditModelName(e.target.value)}
+                            className="rounded-xl border border-ink-900/15 px-3 py-2"
+                          />
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            className="text-aroma-700"
+                            onClick={() => {
+                              if (
+                                run(
+                                  () =>
+                                    updateModel({
+                                      id: model.id,
+                                      name: editModelName,
+                                      deviceTypeId: editModelTypeId,
+                                      brandId: editModelBrandId,
+                                    }),
+                                  "تم تعديل الموديل.",
+                                )
+                              ) {
+                                setEditingModelId(null);
+                              }
+                            }}
+                          >
+                            حفظ التعديل
+                          </button>
+                          <button
+                            type="button"
+                            className="text-ink-700/60"
+                            onClick={() => setEditingModelId(null)}
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          className="text-right"
+                          onClick={() => setSelectedModelId(model.id)}
+                        >
+                          <p className="font-medium">{model.name}</p>
+                          <p className="text-xs text-ink-700/60">
+                            {typeName} · {brandLabel} · {model.accessories.length} ملحق ·{" "}
+                            {model.spareParts.length} قطعة غيار
+                          </p>
+                        </button>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            className="text-ink-900"
+                            onClick={() => {
+                              setEditingModelId(model.id);
+                              setEditModelName(model.name);
+                              setEditModelTypeId(model.deviceTypeId);
+                              setEditModelBrandId(model.brandId);
+                              setSelectedModelId(model.id);
+                            }}
+                          >
+                            تعديل
+                          </button>
+                          <button
+                            type="button"
+                            className="text-rose-700"
+                            onClick={() => {
+                              run(() => deleteModel(model.id), "تم حذف الموديل.");
+                              if (selectedModelId === model.id) setSelectedModelId("");
+                              if (editingModelId === model.id) setEditingModelId(null);
+                            }}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -309,11 +497,14 @@ function CatalogAdminContent() {
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
                       onClick={() => {
-                        run(
-                          () => addModelAccessory(selectedModel.id, accessoryName),
-                          "تمت إضافة الملحق.",
-                        );
-                        setAccessoryName("");
+                        if (
+                          run(
+                            () => addModelAccessory(selectedModel.id, accessoryName),
+                            "تمت إضافة الملحق.",
+                          )
+                        ) {
+                          setAccessoryName("");
+                        }
                       }}
                     >
                       إضافة
@@ -326,21 +517,75 @@ function CatalogAdminContent() {
                       selectedModel.accessories.map((item) => (
                         <li
                           key={item.id}
-                          className="flex items-center justify-between rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
                         >
-                          <span>{item.name}</span>
-                          <button
-                            type="button"
-                            className="text-rose-700"
-                            onClick={() =>
-                              run(
-                                () => deleteModelAccessory(selectedModel.id, item.id),
-                                "تم حذف الملحق.",
-                              )
-                            }
-                          >
-                            حذف
-                          </button>
+                          {editingAccessoryId === item.id ? (
+                            <>
+                              <input
+                                value={editingAccessoryName}
+                                onChange={(e) => setEditingAccessoryName(e.target.value)}
+                                className="min-w-[140px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className="text-aroma-700"
+                                  onClick={() => {
+                                    if (
+                                      run(
+                                        () =>
+                                          updateModelAccessory(
+                                            selectedModel.id,
+                                            item.id,
+                                            editingAccessoryName,
+                                          ),
+                                        "تم تعديل الملحق.",
+                                      )
+                                    ) {
+                                      setEditingAccessoryId(null);
+                                    }
+                                  }}
+                                >
+                                  حفظ
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-ink-700/60"
+                                  onClick={() => setEditingAccessoryId(null)}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span>{item.name}</span>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  className="text-ink-900"
+                                  onClick={() => {
+                                    setEditingAccessoryId(item.id);
+                                    setEditingAccessoryName(item.name);
+                                  }}
+                                >
+                                  تعديل
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-rose-700"
+                                  onClick={() =>
+                                    run(
+                                      () => deleteModelAccessory(selectedModel.id, item.id),
+                                      "تم حذف الملحق.",
+                                    )
+                                  }
+                                >
+                                  حذف
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </li>
                       ))
                     )}
@@ -360,11 +605,14 @@ function CatalogAdminContent() {
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
                       onClick={() => {
-                        run(
-                          () => addModelSparePart(selectedModel.id, spareName),
-                          "تمت إضافة قطعة الغيار.",
-                        );
-                        setSpareName("");
+                        if (
+                          run(
+                            () => addModelSparePart(selectedModel.id, spareName),
+                            "تمت إضافة قطعة الغيار.",
+                          )
+                        ) {
+                          setSpareName("");
+                        }
                       }}
                     >
                       إضافة
@@ -377,21 +625,75 @@ function CatalogAdminContent() {
                       selectedModel.spareParts.map((item) => (
                         <li
                           key={item.id}
-                          className="flex items-center justify-between rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
                         >
-                          <span>{item.name}</span>
-                          <button
-                            type="button"
-                            className="text-rose-700"
-                            onClick={() =>
-                              run(
-                                () => deleteModelSparePart(selectedModel.id, item.id),
-                                "تم حذف قطعة الغيار.",
-                              )
-                            }
-                          >
-                            حذف
-                          </button>
+                          {editingSpareId === item.id ? (
+                            <>
+                              <input
+                                value={editingSpareName}
+                                onChange={(e) => setEditingSpareName(e.target.value)}
+                                className="min-w-[140px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className="text-aroma-700"
+                                  onClick={() => {
+                                    if (
+                                      run(
+                                        () =>
+                                          updateModelSparePart(
+                                            selectedModel.id,
+                                            item.id,
+                                            editingSpareName,
+                                          ),
+                                        "تم تعديل قطعة الغيار.",
+                                      )
+                                    ) {
+                                      setEditingSpareId(null);
+                                    }
+                                  }}
+                                >
+                                  حفظ
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-ink-700/60"
+                                  onClick={() => setEditingSpareId(null)}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span>{item.name}</span>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  className="text-ink-900"
+                                  onClick={() => {
+                                    setEditingSpareId(item.id);
+                                    setEditingSpareName(item.name);
+                                  }}
+                                >
+                                  تعديل
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-rose-700"
+                                  onClick={() =>
+                                    run(
+                                      () => deleteModelSparePart(selectedModel.id, item.id),
+                                      "تم حذف قطعة الغيار.",
+                                    )
+                                  }
+                                >
+                                  حذف
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </li>
                       ))
                     )}
