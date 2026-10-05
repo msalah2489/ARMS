@@ -27,26 +27,28 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeUser(user: ManagedUser): ManagedUser {
+  const username =
+    user.username?.trim() ||
+    (user.email && !user.email.endsWith("@arms.local")
+      ? user.email.split("@")[0]
+      : user.mobile) ||
+    user.id.slice(0, 8);
+  return {
+    ...user,
+    username: username.toLowerCase(),
+    isActive: user.isActive !== false,
+  };
+}
+
 export function listManagedUsers(): ManagedUser[] {
-  return readJson<ManagedUser[]>(USERS_KEY, []).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
+  return readJson<ManagedUser[]>(USERS_KEY, [])
+    .map(normalizeUser)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function getManagedUser(id: string) {
   return listManagedUsers().find((user) => user.id === id) ?? null;
-}
-
-export function findManagedUserByEmail(email: string) {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return null;
-  return listManagedUsers().find((user) => user.email.toLowerCase() === normalized) ?? null;
-}
-
-export function findManagedUserByMobile(mobile: string) {
-  const normalized = mobile.trim();
-  if (!normalized) return null;
-  return listManagedUsers().find((user) => user.mobile === normalized) ?? null;
 }
 
 export function listBranchOptionsForUsers() {
@@ -56,25 +58,50 @@ export function listBranchOptionsForUsers() {
   }));
 }
 
+function isValidUsername(username: string) {
+  return /^[a-zA-Z0-9._-]{3,32}$/.test(username);
+}
+
 function validateUserInput(input: {
   fullName: string;
+  username?: string;
   email?: string;
   mobile: string;
   role: AssignableUserRole;
   opsBranchId?: string | null;
   excludeId?: string;
-}): { ok: true; email: string; branch: { id: string; name: string } | null } | { ok: false; error: string } {
+  requireUsername?: boolean;
+}):
+  | {
+      ok: true;
+      fullName: string;
+      username: string | null;
+      email: string;
+      mobile: string;
+      branch: { id: string; name: string } | null;
+    }
+  | { ok: false; error: string } {
   const fullName = input.fullName.trim();
   const mobile = input.mobile.trim();
   const email = (input.email ?? "").trim().toLowerCase();
+  const username = (input.username ?? "").trim().toLowerCase();
 
-  if (!fullName) return { ok: false, error: "اسم المستخدم إلزامي." };
+  if (!fullName) return { ok: false, error: "الاسم إلزامي." };
   if (!mobile) return { ok: false, error: "رقم الجوال إلزامي." };
   if (!isValidSaudiMobile(mobile)) {
     return { ok: false, error: "رقم الجوال يجب أن يكون بصيغة سعودية صحيحة (05xxxxxxxx)." };
   }
   if (!input.role || !ASSIGNABLE_ROLES.includes(input.role)) {
     return { ok: false, error: "صلاحية المستخدم إلزامية." };
+  }
+  if (input.requireUsername) {
+    if (!username) return { ok: false, error: "اسم المستخدم إلزامي." };
+    if (!isValidUsername(username)) {
+      return {
+        ok: false,
+        error: "اسم المستخدم: 3–32 حرفًا (إنجليزي/أرقام . _ - فقط).",
+      };
+    }
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "صيغة البريد الإلكتروني غير صحيحة." };
@@ -83,6 +110,12 @@ function validateUserInput(input: {
   const all = listManagedUsers();
   if (all.some((user) => user.id !== input.excludeId && user.mobile === mobile)) {
     return { ok: false, error: "رقم الجوال مستخدم لحساب آخر." };
+  }
+  if (
+    username &&
+    all.some((user) => user.id !== input.excludeId && user.username.toLowerCase() === username)
+  ) {
+    return { ok: false, error: "اسم المستخدم مستخدم مسبقًا." };
   }
   if (email && all.some((user) => user.id !== input.excludeId && user.email.toLowerCase() === email)) {
     return { ok: false, error: "البريد الإلكتروني مستخدم لحساب آخر." };
@@ -99,31 +132,41 @@ function validateUserInput(input: {
     branch = listBranchOptionsForUsers().find((item) => item.id === input.opsBranchId) ?? null;
   }
 
-  return { ok: true, email, branch };
+  return {
+    ok: true,
+    fullName,
+    username: username || null,
+    email,
+    mobile,
+    branch,
+  };
 }
 
 export function createManagedUser(input: {
   fullName: string;
+  username: string;
   email?: string;
   mobile: string;
   role: AssignableUserRole;
   opsBranchId?: string | null;
   password?: string;
 }): { ok: true; user: ManagedUser } | { ok: false; error: string } {
-  const checked = validateUserInput(input);
+  const checked = validateUserInput({ ...input, requireUsername: true });
   if (!checked.ok) return checked;
 
   const now = new Date().toISOString();
   const password = (input.password?.trim() || "demo").slice(0, 64);
   const user: ManagedUser = {
     id: crypto.randomUUID(),
-    fullName: input.fullName.trim(),
-    email: checked.email || `${input.mobile.trim()}@arms.local`,
-    mobile: input.mobile.trim(),
+    fullName: checked.fullName,
+    username: checked.username!,
+    email: checked.email || `${checked.username}@arms.local`,
+    mobile: checked.mobile,
     role: input.role,
     opsBranchId: checked.branch?.id ?? null,
     opsBranchName: checked.branch?.name ?? null,
     password,
+    isActive: true,
     createdAt: now,
     updatedAt: now,
   };
@@ -132,7 +175,7 @@ export function createManagedUser(input: {
   return { ok: true, user };
 }
 
-/** Admin update — may change role. */
+/** Admin update — username is immutable; branch/role/active can change. */
 export function updateManagedUserByAdmin(
   id: string,
   input: {
@@ -142,24 +185,32 @@ export function updateManagedUserByAdmin(
     role: AssignableUserRole;
     opsBranchId?: string | null;
     password?: string;
+    isActive?: boolean;
   },
 ): { ok: true; user: ManagedUser } | { ok: false; error: string } {
   const all = listManagedUsers();
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
 
-  const checked = validateUserInput({ ...input, excludeId: id });
+  const checked = validateUserInput({
+    ...input,
+    username: existing.username,
+    excludeId: id,
+    requireUsername: false,
+  });
   if (!checked.ok) return checked;
 
   const next: ManagedUser = {
     ...existing,
-    fullName: input.fullName.trim(),
+    fullName: checked.fullName,
+    // username never changes
     email: checked.email || existing.email,
-    mobile: input.mobile.trim(),
+    mobile: checked.mobile,
     role: input.role,
     opsBranchId: checked.branch?.id ?? null,
     opsBranchName: checked.branch?.name ?? null,
     password: input.password?.trim() ? input.password.trim() : existing.password,
+    isActive: input.isActive ?? existing.isActive,
     updatedAt: new Date().toISOString(),
   };
 
@@ -170,26 +221,71 @@ export function updateManagedUserByAdmin(
   return { ok: true, user: next };
 }
 
-/** Self-service update — role cannot change. */
-export function updateManagedUserSelf(
+export function setManagedUserActive(
   id: string,
-  input: {
-    fullName: string;
-    email?: string;
-    mobile: string;
-    opsBranchId?: string | null;
-  },
+  isActive: boolean,
 ): { ok: true; user: ManagedUser } | { ok: false; error: string } {
   const existing = getManagedUser(id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
-
   return updateManagedUserByAdmin(id, {
-    fullName: input.fullName,
-    email: input.email,
-    mobile: input.mobile,
+    fullName: existing.fullName,
+    email: existing.email,
+    mobile: existing.mobile,
     role: existing.role,
-    opsBranchId: input.opsBranchId ?? existing.opsBranchId,
+    opsBranchId: existing.opsBranchId,
+    isActive,
   });
+}
+
+/** Employee self-service: mobile + password only. No branch/role/username. */
+export function updateManagedUserSelf(
+  id: string,
+  input: {
+    mobile: string;
+    currentPassword?: string;
+    newPassword?: string;
+  },
+): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+  const all = listManagedUsers();
+  const existing = all.find((user) => user.id === id);
+  if (!existing) return { ok: false, error: "المستخدم غير موجود." };
+  if (!existing.isActive) return { ok: false, error: "الحساب معطّل. راجع مدير النظام." };
+
+  const mobile = input.mobile.trim();
+  if (!mobile) return { ok: false, error: "رقم الجوال إلزامي." };
+  if (!isValidSaudiMobile(mobile)) {
+    return { ok: false, error: "رقم الجوال يجب أن يكون بصيغة سعودية صحيحة (05xxxxxxxx)." };
+  }
+  if (all.some((user) => user.id !== id && user.mobile === mobile)) {
+    return { ok: false, error: "رقم الجوال مستخدم لحساب آخر." };
+  }
+
+  let password = existing.password;
+  if (input.newPassword?.trim()) {
+    if (!input.currentPassword?.trim()) {
+      return { ok: false, error: "أدخل كلمة المرور الحالية لتغييرها." };
+    }
+    if (input.currentPassword !== existing.password) {
+      return { ok: false, error: "كلمة المرور الحالية غير صحيحة." };
+    }
+    if (input.newPassword.trim().length < 4) {
+      return { ok: false, error: "كلمة المرور الجديدة يجب ألا تقل عن 4 أحرف." };
+    }
+    password = input.newPassword.trim();
+  }
+
+  const next: ManagedUser = {
+    ...existing,
+    mobile,
+    password,
+    updatedAt: new Date().toISOString(),
+  };
+
+  writeJson(
+    USERS_KEY,
+    all.map((user) => (user.id === id ? next : user)),
+  );
+  return { ok: true, user: next };
 }
 
 export function deleteManagedUser(id: string): { ok: true } | { ok: false; error: string } {
@@ -206,6 +302,7 @@ export function managedUserToProfile(user: ManagedUser): Profile {
   return {
     id: user.id,
     fullName: user.fullName,
+    username: user.username,
     role: user.role,
     email: user.email,
     mobile: user.mobile,
@@ -213,22 +310,24 @@ export function managedUserToProfile(user: ManagedUser): Profile {
     opsBranchName:
       user.opsBranchName ??
       (user.role === "technician" ? "مركز الصيانة" : null),
+    isActive: user.isActive,
   };
 }
 
 export function authenticateManagedUser(
-  emailOrMobile: string,
+  login: string,
   password: string,
 ): ManagedUser | null {
-  const key = emailOrMobile.trim().toLowerCase();
-  const mobileKey = emailOrMobile.trim();
+  const key = login.trim().toLowerCase();
+  const mobileKey = login.trim();
   const user = listManagedUsers().find(
     (item) =>
+      item.username.toLowerCase() === key ||
       item.email.toLowerCase() === key ||
-      item.mobile === mobileKey ||
-      item.mobile === key,
+      item.mobile === mobileKey,
   );
   if (!user) return null;
+  if (!user.isActive) return null;
   if (user.password !== password) return null;
   return user;
 }

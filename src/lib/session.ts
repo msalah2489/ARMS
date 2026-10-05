@@ -1,6 +1,10 @@
 import { DEMO_USERS, isBranchRole, isDemoMode, isTechnicianRole, normalizeRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
-import { authenticateManagedUser, managedUserToProfile } from "@/lib/users-store";
+import {
+  authenticateManagedUser,
+  listManagedUsers,
+  managedUserToProfile,
+} from "@/lib/users-store";
 import type { AppRole, Profile } from "@/types/domain";
 
 const STORAGE_KEY = "arms_session";
@@ -33,19 +37,33 @@ export async function signIn(email: string, password: string) {
       return { error: null };
     }
 
+    const key = email.trim().toLowerCase();
+    const disabled = listManagedUsers().find(
+      (item) =>
+        !item.isActive &&
+        (item.username.toLowerCase() === key ||
+          item.email.toLowerCase() === key ||
+          item.mobile === email.trim()),
+    );
+    if (disabled) {
+      return { error: "هذا الحساب معطّل. راجع مدير النظام." };
+    }
+
     const user = DEMO_USERS.find(
       (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
     );
-    if (!user) return { error: "البريد أو كلمة المرور غير صحيحة." };
+    if (!user) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
 
     writeSession({
       id: user.role,
       fullName: user.fullName,
+      username: user.email.split("@")[0],
       role: normalizeRole(user.role),
       email: user.email,
       mobile: null,
       opsBranchId: user.opsBranchId ?? null,
       opsBranchName: user.opsBranchName ?? null,
+      isActive: true,
     });
     return { error: null };
   }
@@ -69,6 +87,7 @@ export async function signIn(email: string, password: string) {
   writeSession({
     id: data.user.id,
     fullName: profile?.full_name ?? data.user.email ?? "مستخدم",
+    username: (data.user.email ?? email).split("@")[0],
     role,
     email: data.user.email ?? email,
     mobile: null,
@@ -78,6 +97,7 @@ export async function signIn(email: string, password: string) {
       : isTechnicianRole(role)
         ? "مركز الصيانة"
         : null,
+    isActive: true,
   });
 
   return { error: null };

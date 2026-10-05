@@ -17,37 +17,49 @@ export default function LoginPage() {
       writeSession({
         id: "branch-local",
         fullName: "نورة الفرع",
+        username: "branch",
         role: "branch",
         email: "branch@arms.local",
+        mobile: null,
         opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
         opsBranchName: "فرع الرياض",
+        isActive: true,
       });
     } else if (role === "technician") {
       writeSession({
         id: "tech-local",
         fullName: "كريم الفني",
+        username: "tech",
         role: "technician",
         email: "tech@arms.local",
+        mobile: null,
         opsBranchId: null,
         opsBranchName: "مركز الصيانة",
+        isActive: true,
       });
     } else if (role === "maintenance_manager") {
       writeSession({
         id: "maint-manager-local",
         fullName: "سارة مدير الصيانة",
+        username: "maint-manager",
         role: "maintenance_manager",
         email: "maint-manager@arms.local",
+        mobile: null,
         opsBranchId: null,
         opsBranchName: null,
+        isActive: true,
       });
     } else {
       writeSession({
         id: "admin-local",
         fullName: "أحمد المدير",
+        username: "admin",
         role: "system_admin",
         email: "admin@arms.local",
+        mobile: null,
         opsBranchId: null,
         opsBranchName: null,
+        isActive: true,
       });
     }
     router.replace("/dashboard");
@@ -69,7 +81,7 @@ export default function LoginPage() {
           <h1 className="font-display text-3xl text-ink-900">تسجيل الدخول</h1>
           <p className="mt-2 text-sm text-ink-700/70">
             {demo
-              ? "اختر دورًا تجريبيًا أو سجّل بمستخدم أنشأه مدير النظام (البريد أو الجوال + كلمة المرور)."
+              ? "اختر دورًا تجريبيًا أو سجّل باسم المستخدم الذي أنشأه مدير النظام + كلمة المرور."
               : "اختر الحساب المناسب لصلاحياتك."}
           </p>
 
@@ -144,11 +156,13 @@ export default function LoginPage() {
             }}
           >
             <label className="block text-sm">
-              البريد
+              اسم المستخدم
               <input
-                name="email"
+                name="username"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                placeholder="مثال: nora.branch"
+                autoComplete="username"
                 className="mt-1 w-full rounded-xl border border-ink-900/15 bg-white px-3 py-2"
               />
             </label>

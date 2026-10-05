@@ -121,11 +121,13 @@ export type RequestPriority = "low" | "normal" | "high" | "urgent";
 export type Profile = {
   id: string;
   fullName: string;
+  username?: string | null;
   role: AppRole;
   email: string;
   mobile?: string | null;
   opsBranchId?: string | null;
   opsBranchName?: string | null;
+  isActive?: boolean;
 };
 
 /** Roles an admin can assign when creating users */
@@ -138,12 +140,14 @@ export type AssignableUserRole =
 export type ManagedUser = {
   id: string;
   fullName: string;
+  username: string;
   email: string;
   mobile: string;
   role: AssignableUserRole;
   opsBranchId: string | null;
   opsBranchName: string | null;
   password: string;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };

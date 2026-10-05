@@ -10,6 +10,7 @@ import {
   deleteManagedUser,
   listBranchOptionsForUsers,
   listManagedUsers,
+  setManagedUserActive,
   updateManagedUserByAdmin,
 } from "@/lib/users-store";
 import type { AssignableUserRole, ManagedUser } from "@/types/domain";
@@ -17,11 +18,13 @@ import type { AssignableUserRole, ManagedUser } from "@/types/domain";
 function emptyForm() {
   return {
     fullName: "",
+    username: "",
     email: "",
     mobile: "",
     role: "" as AssignableUserRole | "",
     opsBranchId: "",
     password: "demo",
+    isActive: true,
   };
 }
 
@@ -51,7 +54,7 @@ function AdminUsersContent() {
     <div className="space-y-6">
       <PageHeader
         title="إدارة المستخدمين"
-        description="إضافة مستخدمين بصلاحيات: مدير، مشرف، فرع، أو فني. الاسم والجوال والصلاحية إلزامية."
+        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول فقط ولا يُعدَّل بعد الإنشاء. يمكن تعطيل الحساب أو تغيير الفرع."
       />
 
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
@@ -59,16 +62,29 @@ function AdminUsersContent() {
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
         <h2 className="font-display text-xl">
-          {editingId ? "تعديل مستخدم" : "إضافة مستخدم"}
+          {editingId ? "تعديل موظف" : "إضافة مستخدم"}
         </h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block text-sm">
-            اسم المستخدم *
+            الاسم (اسم الشخص) *
             <input
               value={form.fullName}
               onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             />
+          </label>
+          <label className="block text-sm">
+            اسم المستخدم (للدخول) *
+            <input
+              value={form.username}
+              onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+              disabled={Boolean(editingId)}
+              placeholder="مثال: nora.branch"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 disabled:bg-sand-50"
+            />
+            {editingId ? (
+              <span className="mt-1 block text-xs text-ink-700/50">لا يمكن تعديل اسم المستخدم.</span>
+            ) : null}
           </label>
           <label className="block text-sm">
             رقم الجوال *
@@ -84,7 +100,6 @@ function AdminUsersContent() {
             <input
               value={form.email}
               onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-              placeholder="اختياري — يُولَّد من الجوال إن تُرك فارغًا"
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             />
           </label>
@@ -124,13 +139,23 @@ function AdminUsersContent() {
             </select>
           </label>
           <label className="block text-sm">
-            كلمة المرور الأولية
+            كلمة المرور {editingId ? "(اتركها إن لم تتغير)" : "الأولية"}
             <input
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             />
           </label>
+          {editingId ? (
+            <label className="flex items-center gap-2 text-sm self-end pb-2">
+              <input
+                type="checkbox"
+                checked={form.isActive}
+                onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+              />
+              الحساب نشط (غير معطّل)
+            </label>
+          ) : null}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3">
@@ -144,26 +169,39 @@ function AdminUsersContent() {
                 setError("صلاحية المستخدم إلزامية.");
                 return;
               }
-              const payload = {
-                fullName: form.fullName,
-                email: form.email,
-                mobile: form.mobile,
-                role: form.role,
-                opsBranchId: form.opsBranchId || null,
-                password: form.password,
-              };
-              const result = editingId
-                ? updateManagedUserByAdmin(editingId, payload)
-                : createManagedUser(payload);
-              if (!result.ok) {
-                setError(result.error);
-                return;
+              if (editingId) {
+                const result = updateManagedUserByAdmin(editingId, {
+                  fullName: form.fullName,
+                  email: form.email,
+                  mobile: form.mobile,
+                  role: form.role,
+                  opsBranchId: form.opsBranchId || null,
+                  password: form.password,
+                  isActive: form.isActive,
+                });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
+                setMessage(`تم تحديث بيانات ${result.user.fullName}.`);
+              } else {
+                const result = createManagedUser({
+                  fullName: form.fullName,
+                  username: form.username,
+                  email: form.email,
+                  mobile: form.mobile,
+                  role: form.role,
+                  opsBranchId: form.opsBranchId || null,
+                  password: form.password,
+                });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
+                setMessage(
+                  `تم إنشاء ${result.user.fullName}. الدخول باسم المستخدم: ${result.user.username} / ${result.user.password}`,
+                );
               }
-              setMessage(
-                editingId
-                  ? `تم تحديث بيانات ${result.user.fullName}.`
-                  : `تم إنشاء المستخدم ${result.user.fullName}. الدخول: ${result.user.email} / ${result.user.password}`,
-              );
               resetForm();
               refresh();
             }}
@@ -197,7 +235,8 @@ function AdminUsersContent() {
                   <p className="font-medium">
                     {user.fullName}{" "}
                     <span className="text-xs text-ink-700/60">
-                      · {ASSIGNABLE_ROLE_LABELS[user.role]}
+                      · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
+                      {!user.isActive ? " · معطّل" : ""}
                     </span>
                   </p>
                   <p className="text-xs text-ink-700/60">
@@ -206,7 +245,7 @@ function AdminUsersContent() {
                     {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
                   </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
                     className="text-ink-900"
@@ -214,17 +253,38 @@ function AdminUsersContent() {
                       setEditingId(user.id);
                       setForm({
                         fullName: user.fullName,
+                        username: user.username,
                         email: user.email.endsWith("@arms.local") ? "" : user.email,
                         mobile: user.mobile,
                         role: user.role,
                         opsBranchId: user.opsBranchId ?? "",
-                        password: user.password,
+                        password: "",
+                        isActive: user.isActive,
                       });
                       setMessage(null);
                       setError(null);
                     }}
                   >
                     تعديل
+                  </button>
+                  <button
+                    type="button"
+                    className={user.isActive ? "text-amber-700" : "text-aroma-700"}
+                    onClick={() => {
+                      const result = setManagedUserActive(user.id, !user.isActive);
+                      if (!result.ok) {
+                        setError(result.error);
+                        return;
+                      }
+                      setMessage(
+                        result.user.isActive
+                          ? `تم تفعيل حساب ${result.user.fullName}.`
+                          : `تم تعطيل حساب ${result.user.fullName}.`,
+                      );
+                      refresh();
+                    }}
+                  >
+                    {user.isActive ? "تعطيل" : "تفعيل"}
                   </button>
                   <button
                     type="button"
