@@ -2,6 +2,7 @@ import {
   listAllRequestDevices,
   listAwaitingMaintenanceDevices,
   listMaintenanceRequests,
+  repairStaleTechnicianAssignments,
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
@@ -33,7 +34,43 @@ export function listTechnicianWork() {
 }
 
 export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
-  const awaiting = listAwaitingMaintenanceDevices();
+  repairStaleTechnicianAssignments();
+
+  const awaiting = listAllRequestDevices().filter((item) => {
+    const status = (item.device.lifecycleStatus ?? "").trim();
+    if (!["at_service_center", "awaiting_maintenance"].includes(status)) {
+      // Recover devices already at the service center with a mismatched status.
+      if (
+        (item.device.currentLocation ?? "").trim() === "service_center" &&
+        ["in_transit_to_service", "handed_to_carrier", "received_at_warehouse"].includes(status)
+      ) {
+        updateDeviceLifecycle(item.request.id, item.device.localId, {
+          lifecycleStatus: "awaiting_maintenance",
+          currentLocation: "service_center",
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+        });
+        return true;
+      }
+      return false;
+    }
+    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+    if (!assigned) return true;
+    // Assigned but still "ready" means stale claim — free it.
+    const openWork = listTechnicianWork().some(
+      (work) =>
+        work.deviceLocalId === item.device.localId &&
+        work.status === "in_progress" &&
+        work.technicianId === assigned,
+    );
+    if (openWork) return false;
+    updateDeviceLifecycle(item.request.id, item.device.localId, {
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+    });
+    return true;
+  });
+
   return [...awaiting].sort((a, b) => {
     const aUrgent = a.request.priority === "urgent" ? 0 : 1;
     const bUrgent = b.request.priority === "urgent" ? 0 : 1;
@@ -258,7 +295,8 @@ export function markDeliveredToCustomer(input: {
 }
 
 export function getTechnicianDashboardStats(technicianId: string) {
-  const awaiting = listAwaitingMaintenanceDevices();
+  repairStaleTechnicianAssignments();
+  const awaiting = getSortedAwaitingDevices();
   const allDevices = listAllRequestDevices();
   const work = listTechnicianWork().filter((item) => item.technicianId === technicianId);
 

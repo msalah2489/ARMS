@@ -356,11 +356,26 @@ export function ensureTechnicianQueue(): TechnicianQueueItem[] {
 }
 
 export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
-  return listAllRequestDevices().filter(
-    (item) =>
-      ["at_service_center", "awaiting_maintenance"].includes(item.device.lifecycleStatus ?? "") &&
-      !item.device.assignedTechnicianId,
-  );
+  return listAllRequestDevices().filter((item) => {
+    const status = (item.device.lifecycleStatus ?? "").trim();
+    if (!["at_service_center", "awaiting_maintenance"].includes(status)) return false;
+    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+    return !assigned;
+  });
+}
+
+/** Clear stale technician assignment when device is still marked ready for maintenance. */
+export function repairStaleTechnicianAssignments() {
+  for (const item of listAllRequestDevices()) {
+    const status = (item.device.lifecycleStatus ?? "").trim();
+    if (!["at_service_center", "awaiting_maintenance"].includes(status)) continue;
+    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+    if (!assigned) continue;
+    updateDeviceLifecycle(item.request.id, item.device.localId, {
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+    });
+  }
 }
 
 /** Default / technician-facing lifecycle labels. */

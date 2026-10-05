@@ -38,7 +38,7 @@ function TechnicianWorkContent() {
     <div className="space-y-6">
       <PageHeader
         title="عمل الفني"
-        description="أجهزة جاهزة للصيانة بعد استلام مدير الصيانة للبوليصة — العاجلة أولًا. يمكنك استئناف عمل قيد التنفيذ."
+        description="أجهزة بحالة «جاهز للصيانة» بعد استلام مدير الصيانة للبوليصة. إن لم تظهر أجهزة معروفة، حدّث الصفحة بعد الاستلام."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -158,7 +158,7 @@ function TechnicianWorkContent() {
 
 export default function TechnicianWorkPage() {
   return (
-    <RoleGuard allow="technician">
+    <RoleGuard allow={["technician", "mobile_technician"]}>
       <TechnicianWorkContent />
     </RoleGuard>
   );

@@ -440,12 +440,16 @@ export function confirmReceivedAtService(input: {
   batch.receivedByName = input.user.fullName;
 
   for (const item of activeItems) {
-    const match = listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId);
+    const match = listAllRequestDevices().find(
+      (row) =>
+        row.device.localId === item.requestDeviceId ||
+        row.device.deviceCode === item.deviceCode,
+    );
     if (match) {
       updateDeviceLifecycle(match.request.id, match.device.localId, {
         lifecycleStatus: "awaiting_maintenance",
         currentLocation: "service_center",
-        lockedAfterShip: true,
+        lockedAfterShip: false,
         assignedTechnicianId: null,
         assignedTechnicianName: null,
       });
