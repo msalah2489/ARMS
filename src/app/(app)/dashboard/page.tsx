@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { ROLE_LABELS, isBranchRole, isTechnicianRole } from "@/lib/auth";
 import {
-  DEVICE_STATUS_LABELS,
+  deviceStatusLabel,
   listAllRequestDevices,
   listMaintenanceRequests,
 } from "@/lib/branch-store";
@@ -83,7 +83,7 @@ export default function DashboardPage() {
                 <p className="font-medium">{request.requestNumber}</p>
                 <p className="text-sm text-ink-700/70">
                   {request.contactName} · {request.opsBranchName} · {device.deviceTypeName} ·{" "}
-                  {DEVICE_STATUS_LABELS[device.lifecycleStatus ?? "at_service_center"]}
+                  {deviceStatusLabel(device.lifecycleStatus, "technician")}
                 </p>
               </div>
             ))
@@ -134,6 +134,14 @@ export default function DashboardPage() {
                     <p className="font-medium">{request.requestNumber}</p>
                     <p className="text-sm text-ink-700/70">
                       {request.contactName} · {request.customerMobile} · {request.devices.length} جهاز
+                    </p>
+                    <p className="mt-1 text-xs text-ink-700/60">
+                      {request.devices
+                        .map(
+                          (device) =>
+                            `${device.deviceCode}: ${deviceStatusLabel(device.lifecycleStatus, "branch")}`,
+                        )
+                        .join(" · ")}
                     </p>
                   </div>
                   <div className="text-sm text-ink-700/70">

@@ -214,14 +214,15 @@ export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
   );
 }
 
+/** Default / technician-facing lifecycle labels. */
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
   received_at_branch: "مستلم بالفرع",
   awaiting_branch_handover: "بانتظار تسليم الفرع للشحن",
   handed_to_carrier: "تم التسليم لشركة الشحن",
   in_transit_to_service: "في الطريق إلى الصيانة",
   received_at_warehouse: "مستلم بالمستودع",
-  at_service_center: "بانتظار الصيانة",
-  awaiting_maintenance: "انتظار",
+  at_service_center: "جاهز للصيانة",
+  awaiting_maintenance: "جاهز للصيانة",
   in_maintenance: "قيد الصيانة",
   ready_to_return: "جاهز للإرجاع",
   in_return_transit: "في طريق الإرجاع",
@@ -235,3 +236,23 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   ready_to_send: "جاهز للإرسال",
   excluded: "مستبعد",
 };
+
+/** Branch-facing labels: once at service center, show "في الصيانة". */
+const BRANCH_IN_SERVICE_STATUSES = new Set([
+  "received_at_warehouse",
+  "at_service_center",
+  "awaiting_maintenance",
+  "in_maintenance",
+  "under_maintenance",
+]);
+
+export function deviceStatusLabel(
+  status: string | null | undefined,
+  audience: "technician" | "branch" | "default" = "default",
+) {
+  const key = status ?? "received_at_branch";
+  if (audience === "branch" && BRANCH_IN_SERVICE_STATUSES.has(key)) {
+    return "في الصيانة";
+  }
+  return DEVICE_STATUS_LABELS[key] ?? key;
+}

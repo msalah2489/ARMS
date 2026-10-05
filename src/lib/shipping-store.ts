@@ -12,6 +12,7 @@ import type {
 
 const BATCHES_KEY = "arms_shipping_batches_v1";
 const AUDIT_KEY = "arms_audit_events_v1";
+const RECEIVE_MIGRATION_KEY = "arms_migrate_receive_v1";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -25,6 +26,72 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function markDevicesAwaitingMaintenance(requestDeviceIds: string[]) {
+  for (const deviceId of requestDeviceIds) {
+    const match = listAllRequestDevices().find((row) => row.device.localId === deviceId);
+    if (!match) continue;
+    const status = match.device.lifecycleStatus ?? "";
+    if (["awaiting_maintenance", "in_maintenance", "under_maintenance"].includes(status)) {
+      continue;
+    }
+    updateDeviceLifecycle(match.request.id, match.device.localId, {
+      lifecycleStatus: "awaiting_maintenance",
+      currentLocation: "service_center",
+      lockedAfterShip: true,
+    });
+  }
+}
+
+/**
+ * One-time: apply receive status to previously saved waybills (ready / handed_to_carrier)
+ * so devices become جاهز للصيانة for technicians and في الصيانة for branches.
+ */
+export function migrateExistingShippingToReceived() {
+  if (typeof window === "undefined") return;
+  if (readJson(RECEIVE_MIGRATION_KEY, false)) {
+    // Keep received batches' devices in sync even after migration flag is set.
+    const batches = readJson<ShippingBatch[]>(BATCHES_KEY, []);
+    for (const batch of batches) {
+      if (batch.status !== "received") continue;
+      markDevicesAwaitingMaintenance(
+        batch.items.filter((item) => item.status === "active").map((item) => item.requestDeviceId),
+      );
+    }
+    return;
+  }
+
+  const all = readJson<ShippingBatch[]>(BATCHES_KEY, []);
+  let changed = false;
+
+  for (const batch of all) {
+    if (!["ready", "handed_to_carrier", "received"].includes(batch.status)) continue;
+    const activeIds = batch.items
+      .filter((item) => item.status === "active")
+      .map((item) => item.requestDeviceId);
+    if (!activeIds.length) continue;
+
+    if (batch.status === "ready" || batch.status === "handed_to_carrier") {
+      batch.status = "received";
+      batch.receivedAt = batch.receivedAt ?? new Date().toISOString();
+      batch.receivedByName = batch.receivedByName ?? "ترحيل بيانات سابقة";
+      changed = true;
+    }
+
+    markDevicesAwaitingMaintenance(activeIds);
+  }
+
+  if (changed) writeJson(BATCHES_KEY, all);
+  writeJson(RECEIVE_MIGRATION_KEY, true);
+  writeAudit({
+    actorId: "system",
+    actorName: "ترحيل",
+    action: "migrate_existing_shipping_to_received",
+    entityType: "shipping_batch",
+    entityId: "all",
+    after: { migrated: true },
+  });
 }
 
 function writeAudit(input: {
@@ -46,6 +113,7 @@ function writeAudit(input: {
 }
 
 export function listShippingBatches(opsBranchId?: string | null) {
+  migrateExistingShippingToReceived();
   const all = readJson<ShippingBatch[]>(BATCHES_KEY, []);
   if (!opsBranchId) return all;
   return all.filter((batch) => batch.opsBranchId === opsBranchId);
@@ -252,6 +320,63 @@ export function confirmHandedToCarrier(input: {
     entityType: "shipping_batch",
     entityId: batch.id,
     after: { status: "handed_to_carrier" },
+  });
+
+  return { ok: true, batch };
+}
+
+/** Maintenance manager receives devices that arrived at the service center. */
+export function confirmReceivedAtService(input: {
+  user: Profile;
+  batchId: string;
+}): { ok: true; batch: ShippingBatch } | { ok: false; error: string } {
+  const role = input.user.role;
+  if (!["maintenance_manager", "system_admin", "manager"].includes(role)) {
+    return { ok: false, error: "استلام البوليصة مسموح لمدير الصيانة فقط." };
+  }
+
+  const all = listShippingBatches();
+  const batch = all.find((item) => item.id === input.batchId);
+  if (!batch) return { ok: false, error: "البوليصة غير موجودة." };
+  if (batch.status === "received") {
+    return { ok: false, error: "تم استلام هذه البوليصة مسبقًا." };
+  }
+  if (!["ready", "handed_to_carrier"].includes(batch.status)) {
+    return {
+      ok: false,
+      error: "حالة البوليصة لا تسمح بالاستلام.",
+    };
+  }
+
+  const activeItems = batch.items.filter((item) => item.status === "active");
+  if (!activeItems.length) {
+    return { ok: false, error: "لا توجد أجهزة نشطة على البوليصة." };
+  }
+
+  batch.status = "received";
+  batch.receivedAt = new Date().toISOString();
+  batch.receivedBy = input.user.id;
+  batch.receivedByName = input.user.fullName;
+
+  for (const item of activeItems) {
+    const match = listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId);
+    if (match) {
+      updateDeviceLifecycle(match.request.id, match.device.localId, {
+        lifecycleStatus: "awaiting_maintenance",
+        currentLocation: "service_center",
+        lockedAfterShip: true,
+      });
+    }
+  }
+
+  writeJson(BATCHES_KEY, all);
+  writeAudit({
+    actorId: input.user.id,
+    actorName: input.user.fullName,
+    action: "confirm_received_at_service",
+    entityType: "shipping_batch",
+    entityId: batch.id,
+    after: { status: "received", deviceCount: activeItems.length },
   });
 
   return { ok: true, batch };

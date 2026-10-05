@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RoleGuard } from "@/components/role-guard";
 import { PageHeader } from "@/components/page-header";
 import { TechnicianWorkModal } from "@/components/technician-work-modal";
-import { DEVICE_STATUS_LABELS, type TechnicianQueueItem } from "@/lib/branch-store";
+import { deviceStatusLabel, type TechnicianQueueItem } from "@/lib/branch-store";
 import { getSortedAwaitingDevices } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import type { Profile } from "@/types/domain";
@@ -71,7 +71,7 @@ function TechnicianWorkContent() {
                   </p>
                   <p className="mt-1 text-xs text-ink-700/60">
                     الشكوى: {item.device.fault || "—"} · الحالة:{" "}
-                    {DEVICE_STATUS_LABELS[item.device.lifecycleStatus ?? "at_service_center"]}
+                    {deviceStatusLabel(item.device.lifecycleStatus, "technician")}
                   </p>
                 </div>
                 <button

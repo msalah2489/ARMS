@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
-import { DEVICE_STATUS_LABELS } from "@/lib/branch-store";
+import { deviceStatusLabel } from "@/lib/branch-store";
 import { readSession } from "@/lib/session";
 import {
   SHIPPING_BATCH_STATUS_LABELS,
@@ -51,7 +51,7 @@ function BranchShippingContent() {
           batches.map((batch) => {
             const activeItems = batch.items.filter((item) => item.status === "active");
             const removedItems = batch.items.filter((item) => item.status === "removed");
-            const locked = batch.status === "handed_to_carrier";
+            const locked = batch.status === "handed_to_carrier" || batch.status === "received";
 
             return (
               <section
@@ -84,9 +84,11 @@ function BranchShippingContent() {
                           <p className="font-medium">{item.deviceCode}</p>
                           <p className="text-xs text-ink-700/60">
                             {item.modelName || "—"}
-                            {locked
-                              ? ` · ${DEVICE_STATUS_LABELS.in_transit_to_service}`
-                              : " · يمكن الاستبعاد قبل التسليم"}
+                            {batch.status === "received"
+                              ? ` · ${deviceStatusLabel("awaiting_maintenance", "branch")}`
+                              : locked
+                                ? ` · ${deviceStatusLabel("in_transit_to_service", "branch")}`
+                                : " · يمكن الاستبعاد قبل التسليم"}
                           </p>
                         </div>
                         {!locked ? (

@@ -1,9 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { Sidebar } from "@/components/sidebar";
+import { migrateExistingShippingToReceived } from "@/lib/shipping-store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    migrateExistingShippingToReceived();
+  }, []);
+
   return (
     <AuthGate
       render={(user) => (

@@ -75,6 +75,9 @@ export type ShippingBatch = {
   createdAt: string;
   handedToCarrierAt?: string | null;
   handedToCarrierBy?: string | null;
+  receivedAt?: string | null;
+  receivedBy?: string | null;
+  receivedByName?: string | null;
   notes?: string;
   items: ShippingBatchItem[];
 };

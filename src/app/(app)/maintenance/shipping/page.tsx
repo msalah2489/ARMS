@@ -6,6 +6,7 @@ import { RoleGuard } from "@/components/role-guard";
 import { readSession } from "@/lib/session";
 import {
   SHIPPING_BATCH_STATUS_LABELS,
+  confirmReceivedAtService,
   createShippingBatch,
   listDevicesEligibleForShipment,
   listOpsBranches,
@@ -45,7 +46,7 @@ function MaintenanceShippingContent() {
     <div className="space-y-6">
       <PageHeader
         title="بوالص الشحن — مدير الصيانة"
-        description="إنشاء بوالص إرسال لأجهزة الفروع. الفرع لا ينشئ البوليصة؛ يؤكد التسليم للشحن فقط."
+        description="إنشاء بوالص إرسال لأجهزة الفروع، ثم استلامها في مركز الصيانة لتصبح جاهزة للصيانة."
       />
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
@@ -169,29 +170,67 @@ function MaintenanceShippingContent() {
           {batches.length === 0 ? (
             <p className="text-sm text-ink-700/60">لا توجد بوالص بعد.</p>
           ) : (
-            batches.map((batch) => (
-              <div key={batch.id} className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium">
-                    {batch.batchNumber} · بوليصة {batch.shipmentNumber} · {batch.carrier}
+            batches.map((batch) => {
+              const activeItems = batch.items.filter((item) => item.status === "active");
+              const canReceive =
+                (batch.status === "ready" || batch.status === "handed_to_carrier") &&
+                activeItems.length > 0;
+
+              return (
+                <div key={batch.id} className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">
+                      {batch.batchNumber} · بوليصة {batch.shipmentNumber} · {batch.carrier}
+                    </p>
+                    <span className="text-xs text-ink-700/60">
+                      {SHIPPING_BATCH_STATUS_LABELS[batch.status] ?? batch.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-ink-700/70">
+                    من {batch.sourceName} إلى {batch.destinationName} · {activeItems.length} جهاز نشط
                   </p>
-                  <span className="text-xs text-ink-700/60">
-                    {SHIPPING_BATCH_STATUS_LABELS[batch.status] ?? batch.status}
-                  </span>
+                  <p className="mt-1 text-xs text-ink-700/50">
+                    أنشأها {batch.createdByName} ·{" "}
+                    {activeItems.map((item) => item.deviceCode).join("، ") || "—"}
+                  </p>
+                  {batch.status === "received" && batch.receivedAt ? (
+                    <p className="mt-2 text-xs text-aroma-700">
+                      تم الاستلام في مركز الصيانة
+                      {batch.receivedByName ? ` بواسطة ${batch.receivedByName}` : ""} — الأجهزة جاهزة
+                      للصيانة.
+                    </p>
+                  ) : null}
+                  {batch.status === "handed_to_carrier" || batch.status === "ready" ? (
+                    <p className="mt-2 text-xs text-ink-700/60">
+                      {batch.status === "ready"
+                        ? "البوليصة جاهزة. يمكنك استلام الأجهزة في مركز الصيانة."
+                        : "الفرع سلّم للشحن. يمكنك استلام الأجهزة عند وصولها لمركز الصيانة."}
+                    </p>
+                  ) : null}
+                  {canReceive ? (
+                    <button
+                      type="button"
+                      className="mt-3 rounded-full bg-aroma-600 px-4 py-2 text-sm text-white hover:bg-aroma-700"
+                      onClick={() => {
+                        setError(null);
+                        setMessage(null);
+                        const result = confirmReceivedAtService({ user, batchId: batch.id });
+                        if (!result.ok) {
+                          setError(result.error);
+                          return;
+                        }
+                        setMessage(
+                          `تم استلام البوليصة ${batch.batchNumber}. الأجهزة أصبحت جاهزة للصيانة (للفني) وفي الصيانة (للفرع).`,
+                        );
+                        refresh();
+                      }}
+                    >
+                      استلام الأجهزة في مركز الصيانة
+                    </button>
+                  ) : null}
                 </div>
-                <p className="mt-1 text-ink-700/70">
-                  من {batch.sourceName} إلى {batch.destinationName} ·{" "}
-                  {batch.items.filter((item) => item.status === "active").length} جهاز نشط
-                </p>
-                <p className="mt-1 text-xs text-ink-700/50">
-                  أنشأها {batch.createdByName} ·{" "}
-                  {batch.items
-                    .filter((item) => item.status === "active")
-                    .map((item) => item.deviceCode)
-                    .join("، ") || "—"}
-                </p>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>
