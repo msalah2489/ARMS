@@ -32,7 +32,7 @@ function TechnicianWorkContent() {
     <div>
       <PageHeader
         title="عمل الفني"
-        description="استلام الأجهزة بانتظار الصيانة — تُعرض العاجلة أولًا ثم العادية."
+        description="أجهزة جاهزة للصيانة فقط (بعد استلام مدير الصيانة للبوليصة) — العاجلة أولًا."
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -49,7 +49,7 @@ function TechnicianWorkContent() {
       <div className="space-y-3">
         {queue.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-8 text-sm text-ink-700/70">
-            لا توجد أجهزة متاحة حاليًا. يجب أن يُنشئ الفرع طلبات أولًا.
+            لا توجد أجهزة جاهزة للصيانة. تظهر هنا فقط بعد استلام مدير الصيانة للبوليصة.
           </p>
         ) : (
           queue.map((item) => (

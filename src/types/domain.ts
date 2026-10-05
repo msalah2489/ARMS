@@ -30,8 +30,10 @@ export type DeviceLifecycleStatus =
   | "awaiting_maintenance"
   | "in_maintenance"
   | "ready_to_return"
+  | "awaiting_manager_decision"
   | "in_return_transit"
   | "received_at_destination"
+  | "received_damaged"
   | "excluded_from_shipment"
   | "ready_to_send"
   | "excluded"
@@ -45,6 +47,7 @@ export type DeviceLifecycleStatus =
 export type ShipmentDirection = "inbound" | "to_service" | "return";
 export type ShippingBatchStatus = "draft" | "ready" | "handed_to_carrier" | "received" | "cancelled";
 export type ShippingItemStatus = "active" | "removed";
+export type BranchReturnReceiveOutcome = "intact" | "damaged" | "not_received";
 
 export type ShippingBatchItem = {
   id: string;
@@ -56,6 +59,10 @@ export type ShippingBatchItem = {
   removedAt?: string | null;
   removedBy?: string | null;
   removalReason?: string | null;
+  branchReceiveOutcome?: BranchReturnReceiveOutcome | null;
+  branchReceiveReason?: string | null;
+  branchReceivedAt?: string | null;
+  branchReceivedBy?: string | null;
 };
 
 export type ShippingBatch = {

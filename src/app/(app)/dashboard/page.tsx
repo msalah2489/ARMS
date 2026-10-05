@@ -64,8 +64,8 @@ export default function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="طلبات متاحة للعمل" value={techStats?.availableRequests ?? 0} />
           <StatCard label="أجهزة متاحة للعمل" value={techStats?.availableDevices ?? 0} />
-          <StatCard label="جاهز للإرسال" value={techStats?.readyToSend ?? 0} />
-          <StatCard label="مستبعد" value={techStats?.excluded ?? 0} />
+          <StatCard label="جاهز للإرجاع" value={techStats?.readyToReturn ?? techStats?.readyToSend ?? 0} />
+          <StatCard label="بانتظار قرار المدير" value={techStats?.awaitingManager ?? techStats?.excluded ?? 0} />
         </div>
 
         <h2 className="mb-3 mt-10 font-display text-2xl">آخر الطلبات (اليوم)</h2>

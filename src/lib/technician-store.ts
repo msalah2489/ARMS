@@ -39,7 +39,7 @@ export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
 
 export function startDeviceWork(item: TechnicianQueueItem, technician: Profile) {
   updateDeviceLifecycle(item.request.id, item.device.localId, {
-    lifecycleStatus: "under_maintenance",
+    lifecycleStatus: "in_maintenance",
     assignedTechnicianId: technician.id,
     assignedTechnicianName: technician.fullName,
   });
@@ -83,8 +83,13 @@ export function completeTechnicianWork(record: TechnicianWorkRecord) {
     finishedAt: new Date().toISOString(),
   };
   saveTechnicianWork(finished);
+
+  const success =
+    record.outcome === "repaired" || record.outcome === "no_repair_needed";
   updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
-    lifecycleStatus: "ready_to_send",
+    lifecycleStatus: success ? "ready_to_return" : "awaiting_manager_decision",
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
   });
   return finished;
 }
@@ -97,7 +102,7 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
   };
   saveTechnicianWork(held);
   updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
-    lifecycleStatus: "excluded",
+    lifecycleStatus: "awaiting_manager_decision",
     assignedTechnicianId: null,
     assignedTechnicianName: null,
   });
@@ -111,8 +116,12 @@ export function getTechnicianDashboardStats(technicianId: string) {
 
   const availableRequests = new Set(awaiting.map((item) => item.request.id)).size;
   const availableDevices = awaiting.length;
-  const readyToSend = allDevices.filter((item) => item.device.lifecycleStatus === "ready_to_send").length;
-  const excluded = allDevices.filter((item) => item.device.lifecycleStatus === "excluded").length;
+  const readyToReturn = allDevices.filter(
+    (item) => item.device.lifecycleStatus === "ready_to_return",
+  ).length;
+  const awaitingManager = allDevices.filter(
+    (item) => item.device.lifecycleStatus === "awaiting_manager_decision",
+  ).length;
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRequests = listMaintenanceRequests().filter((request) =>
@@ -122,8 +131,10 @@ export function getTechnicianDashboardStats(technicianId: string) {
   return {
     availableRequests,
     availableDevices,
-    readyToSend,
-    excluded,
+    readyToSend: readyToReturn,
+    excluded: awaitingManager,
+    readyToReturn,
+    awaitingManager,
     todayRequests,
     myInProgress: work.filter((item) => item.status === "in_progress").length,
   };

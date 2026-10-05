@@ -7,7 +7,9 @@ import { readSession } from "@/lib/session";
 import {
   SHIPPING_BATCH_STATUS_LABELS,
   confirmReceivedAtService,
+  createReturnShippingBatch,
   createShippingBatch,
+  listDevicesEligibleForReturn,
   listDevicesEligibleForShipment,
   listOpsBranches,
   listShippingBatches,
@@ -18,15 +20,24 @@ function MaintenanceShippingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [batches, setBatches] = useState<ShippingBatch[]>([]);
   const [branchId, setBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+  const [returnBranchId, setReturnBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
   const [shipmentNumber, setShipmentNumber] = useState("");
+  const [returnShipmentNumber, setReturnShipmentNumber] = useState("");
   const [carrier, setCarrier] = useState("SMSA");
+  const [returnCarrier, setReturnCarrier] = useState("SMSA");
   const [notes, setNotes] = useState("");
+  const [returnNotes, setReturnNotes] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [returnSelected, setReturnSelected] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const branches = useMemo(() => listOpsBranches(), []);
   const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches]);
+  const returnEligible = useMemo(
+    () => listDevicesEligibleForReturn(returnBranchId),
+    [returnBranchId, batches],
+  );
 
   function refresh() {
     setBatches(listShippingBatches());
@@ -41,16 +52,21 @@ function MaintenanceShippingContent() {
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   const branchName = branches.find((item) => item.id === branchId)?.name ?? "فرع";
+  const returnBranchName = branches.find((item) => item.id === returnBranchId)?.name ?? "فرع";
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="بوالص الشحن — مدير الصيانة"
-        description="إنشاء بوالص إرسال لأجهزة الفروع، ثم استلامها في مركز الصيانة لتصبح جاهزة للصيانة."
+        description="إرسال أجهزة فرع واحد إلى الصيانة، استلامها بعد تسليم الفرع للشحن، ثم إرجاعها لنفس الفرع."
       />
 
+      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">إنشاء بوليصة إرسال للصيانة</h2>
+        <h2 className="font-display text-xl">1) بوليصة إرسال إلى الصيانة</h2>
+        <p className="mt-1 text-sm text-ink-700/70">أجهزة من فرع واحد فقط. الفرع يؤكد التسليم للشحن قبل الاستلام هنا.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block text-sm">
             الفرع
@@ -70,7 +86,7 @@ function MaintenanceShippingContent() {
             </select>
           </label>
           <label className="block text-sm">
-            رقم البوليصة (شركة الشحن) *
+            رقم البوليصة *
             <input
               value={shipmentNumber}
               onChange={(e) => setShipmentNumber(e.target.value)}
@@ -99,9 +115,7 @@ function MaintenanceShippingContent() {
         <h3 className="mt-6 text-sm font-medium">أجهزة متاحة في {branchName}</h3>
         <div className="mt-2 space-y-2">
           {eligible.length === 0 ? (
-            <p className="text-sm text-ink-700/60">
-              لا توجد أجهزة متاحة. أنشئ طلبًا من حساب الفرع أولًا، أو استبعد أجهزة من بوليصة سابقة.
-            </p>
+            <p className="text-sm text-ink-700/60">لا توجد أجهزة متاحة في هذا الفرع.</p>
           ) : (
             eligible.map(({ request, device }) => (
               <label
@@ -122,18 +136,12 @@ function MaintenanceShippingContent() {
                 />
                 <span>
                   <span className="font-medium">{device.deviceCode}</span> · {device.modelName} ·{" "}
-                  {request.requestNumber} · {request.contactName}
-                  <span className="block text-xs text-ink-700/60">
-                    {request.priority === "urgent" ? "عاجل" : "عادي"} · سند {device.receiptNumber}
-                  </span>
+                  {request.requestNumber}
                 </span>
               </label>
             ))
           )}
         </div>
-
-        {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
-        {message ? <p className="mt-3 text-sm text-aroma-700">{message}</p> : null}
 
         <button
           type="button"
@@ -154,18 +162,129 @@ function MaintenanceShippingContent() {
               setError(result.error);
               return;
             }
-            setMessage(`تم إنشاء البوليصة ${result.batch.batchNumber} بنجاح.`);
+            setMessage(`تم إنشاء بوليصة الإرسال ${result.batch.batchNumber}.`);
             setShipmentNumber("");
             setSelected([]);
             refresh();
           }}
         >
-          إنشاء البوليصة
+          إنشاء بوليصة الإرسال
         </button>
       </section>
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">البوالص الحالية</h2>
+        <h2 className="font-display text-xl">2) بوليصة إرجاع إلى الفرع</h2>
+        <p className="mt-1 text-sm text-ink-700/70">
+          أجهزة جاهزة للإرجاع تخص فرعًا واحدًا؛ الوجهة = نفس الفرع الوارد منه.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block text-sm">
+            الفرع الوجهة
+            <select
+              value={returnBranchId}
+              onChange={(e) => {
+                setReturnBranchId(e.target.value);
+                setReturnSelected([]);
+              }}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            >
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            رقم البوليصة *
+            <input
+              value={returnShipmentNumber}
+              onChange={(e) => setReturnShipmentNumber(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            شركة الشحن *
+            <input
+              value={returnCarrier}
+              onChange={(e) => setReturnCarrier(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            ملاحظات
+            <input
+              value={returnNotes}
+              onChange={(e) => setReturnNotes(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <h3 className="mt-6 text-sm font-medium">جاهز للإرجاع → {returnBranchName}</h3>
+        <div className="mt-2 space-y-2">
+          {returnEligible.length === 0 ? (
+            <p className="text-sm text-ink-700/60">لا توجد أجهزة جاهزة للإرجاع لهذا الفرع.</p>
+          ) : (
+            returnEligible.map(({ request, device }) => (
+              <label
+                key={device.localId}
+                className="flex items-start gap-3 rounded-xl border border-ink-900/10 px-3 py-3 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={returnSelected.includes(device.localId)}
+                  onChange={(e) =>
+                    setReturnSelected((prev) =>
+                      e.target.checked
+                        ? [...prev, device.localId]
+                        : prev.filter((id) => id !== device.localId),
+                    )
+                  }
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">{device.deviceCode}</span> · {device.modelName} ·{" "}
+                  {request.requestNumber}
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="mt-4 rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
+          onClick={() => {
+            setError(null);
+            setMessage(null);
+            const result = createReturnShippingBatch({
+              user,
+              shipmentNumber: returnShipmentNumber,
+              carrier: returnCarrier,
+              opsBranchId: returnBranchId,
+              destinationName: returnBranchName,
+              deviceLocalIds: returnSelected,
+              notes: returnNotes,
+            });
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            setMessage(
+              `تم إنشاء بوليصة الإرجاع ${result.batch.batchNumber}. الحالة: في الطريق إلى الفرع.`,
+            );
+            setReturnShipmentNumber("");
+            setReturnSelected([]);
+            refresh();
+          }}
+        >
+          إنشاء بوليصة الإرجاع
+        </button>
+      </section>
+
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">البوالص</h2>
         <div className="mt-4 space-y-3">
           {batches.length === 0 ? (
             <p className="text-sm text-ink-700/60">لا توجد بوالص بعد.</p>
@@ -173,44 +292,36 @@ function MaintenanceShippingContent() {
             batches.map((batch) => {
               const activeItems = batch.items.filter((item) => item.status === "active");
               const canReceive =
-                (batch.status === "ready" || batch.status === "handed_to_carrier") &&
+                batch.direction === "to_service" &&
+                batch.status === "handed_to_carrier" &&
                 activeItems.length > 0;
 
               return (
                 <div key={batch.id} className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-medium">
-                      {batch.batchNumber} · بوليصة {batch.shipmentNumber} · {batch.carrier}
+                      {batch.batchNumber} · {batch.direction === "return" ? "إرجاع" : "إرسال"} ·{" "}
+                      {batch.shipmentNumber}
                     </p>
                     <span className="text-xs text-ink-700/60">
                       {SHIPPING_BATCH_STATUS_LABELS[batch.status] ?? batch.status}
                     </span>
                   </div>
                   <p className="mt-1 text-ink-700/70">
-                    من {batch.sourceName} إلى {batch.destinationName} · {activeItems.length} جهاز نشط
+                    من {batch.sourceName} إلى {batch.destinationName} · {activeItems.length} جهاز
                   </p>
                   <p className="mt-1 text-xs text-ink-700/50">
-                    أنشأها {batch.createdByName} ·{" "}
                     {activeItems.map((item) => item.deviceCode).join("، ") || "—"}
                   </p>
-                  {batch.status === "received" && batch.receivedAt ? (
-                    <p className="mt-2 text-xs text-aroma-700">
-                      تم الاستلام في مركز الصيانة
-                      {batch.receivedByName ? ` بواسطة ${batch.receivedByName}` : ""} — الأجهزة جاهزة
-                      للصيانة.
-                    </p>
-                  ) : null}
-                  {batch.status === "handed_to_carrier" || batch.status === "ready" ? (
+                  {batch.status === "ready" && batch.direction === "to_service" ? (
                     <p className="mt-2 text-xs text-ink-700/60">
-                      {batch.status === "ready"
-                        ? "البوليصة جاهزة. يمكنك استلام الأجهزة في مركز الصيانة."
-                        : "الفرع سلّم للشحن. يمكنك استلام الأجهزة عند وصولها لمركز الصيانة."}
+                      بانتظار تأكيد الفرع للتسليم لشركة الشحن.
                     </p>
                   ) : null}
                   {canReceive ? (
                     <button
                       type="button"
-                      className="mt-3 rounded-full bg-aroma-600 px-4 py-2 text-sm text-white hover:bg-aroma-700"
+                      className="mt-3 rounded-full bg-aroma-600 px-4 py-2 text-sm text-white"
                       onClick={() => {
                         setError(null);
                         setMessage(null);
@@ -220,12 +331,12 @@ function MaintenanceShippingContent() {
                           return;
                         }
                         setMessage(
-                          `تم استلام البوليصة ${batch.batchNumber}. الأجهزة أصبحت جاهزة للصيانة (للفني) وفي الصيانة (للفرع).`,
+                          `تم استلام ${batch.batchNumber}. الأجهزة جاهزة للصيانة لدى الفنيين.`,
                         );
                         refresh();
                       }}
                     >
-                      استلام الأجهزة في مركز الصيانة
+                      استلام البوليصة في مركز الصيانة
                     </button>
                   ) : null}
                 </div>
