@@ -5,13 +5,90 @@ import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
 const USERS_KEY = "arms_managed_users_v1";
 
 export const ASSIGNABLE_ROLE_LABELS: Record<AssignableUserRole, string> = {
-  maintenance_manager: "مدير",
-  maintenance_supervisor: "مشرف",
+  system_admin: "مدير نظام",
+  maintenance_manager: "مدير صيانة",
+  maintenance_supervisor: "مشرف صيانة",
   branch: "فرع",
   technician: "فني",
+  mobile_technician: "فني متنقل",
 };
 
 export const ASSIGNABLE_ROLES = Object.keys(ASSIGNABLE_ROLE_LABELS) as AssignableUserRole[];
+
+const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
+  {
+    id: "admin-local",
+    fullName: "أحمد المدير",
+    username: "admin",
+    email: "admin@arms.local",
+    mobile: "0500000001",
+    role: "system_admin",
+    opsBranchId: null,
+    opsBranchName: null,
+    password: "demo",
+    isActive: true,
+  },
+  {
+    id: "maint-manager-local",
+    fullName: "سارة مدير الصيانة",
+    username: "maint-manager",
+    email: "maint-manager@arms.local",
+    mobile: "0500000002",
+    role: "maintenance_manager",
+    opsBranchId: null,
+    opsBranchName: null,
+    password: "demo",
+    isActive: true,
+  },
+  {
+    id: "branch-local",
+    fullName: "نورة الفرع",
+    username: "branch",
+    email: "branch@arms.local",
+    mobile: "0500000003",
+    role: "branch",
+    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    opsBranchName: "فرع الرياض",
+    password: "demo",
+    isActive: true,
+  },
+  {
+    id: "tech-local",
+    fullName: "كريم الفني",
+    username: "tech",
+    email: "tech@arms.local",
+    mobile: "0500000004",
+    role: "technician",
+    opsBranchId: null,
+    opsBranchName: "مركز الصيانة",
+    password: "demo",
+    isActive: true,
+  },
+  {
+    id: "supervisor-local",
+    fullName: "عمر المشرف",
+    username: "supervisor",
+    email: "supervisor@arms.local",
+    mobile: "0500000005",
+    role: "maintenance_supervisor",
+    opsBranchId: null,
+    opsBranchName: null,
+    password: "demo",
+    isActive: true,
+  },
+  {
+    id: "mobile-local",
+    fullName: "ياسر المتنقل",
+    username: "mobile",
+    email: "mobile@arms.local",
+    mobile: "0500000006",
+    role: "mobile_technician",
+    opsBranchId: null,
+    opsBranchName: null,
+    password: "demo",
+    isActive: true,
+  },
+];
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -41,14 +118,59 @@ function normalizeUser(user: ManagedUser): ManagedUser {
   };
 }
 
+/** Ensure built-in demo accounts appear in the admin users list. */
+function ensureSeededUsers(): ManagedUser[] {
+  const existing = readJson<ManagedUser[]>(USERS_KEY, []).map(normalizeUser);
+  const ids = new Set(existing.map((user) => user.id));
+  const emails = new Set(existing.map((user) => user.email.toLowerCase()));
+  const usernames = new Set(existing.map((user) => user.username.toLowerCase()));
+
+  const now = new Date().toISOString();
+  const missing = SEED_USERS.filter(
+    (seed) =>
+      !ids.has(seed.id) &&
+      !emails.has(seed.email.toLowerCase()) &&
+      !usernames.has(seed.username.toLowerCase()),
+  ).map((seed) => ({
+    ...seed,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  if (missing.length === 0) return existing;
+
+  const merged = [...existing, ...missing].map(normalizeUser);
+  writeJson(USERS_KEY, merged);
+  return merged;
+}
+
 export function listManagedUsers(): ManagedUser[] {
-  return readJson<ManagedUser[]>(USERS_KEY, [])
-    .map(normalizeUser)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return ensureSeededUsers().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function getManagedUser(id: string) {
   return listManagedUsers().find((user) => user.id === id) ?? null;
+}
+
+export function findManagedUserForSession(profile: {
+  id: string;
+  email?: string | null;
+  username?: string | null;
+}) {
+  const all = listManagedUsers();
+  return (
+    all.find((user) => user.id === profile.id) ??
+    all.find(
+      (user) =>
+        profile.email && user.email.toLowerCase() === profile.email.toLowerCase(),
+    ) ??
+    all.find(
+      (user) =>
+        profile.username &&
+        user.username.toLowerCase() === profile.username.toLowerCase(),
+    ) ??
+    null
+  );
 }
 
 export function listBranchOptionsForUsers() {
@@ -309,7 +431,9 @@ export function managedUserToProfile(user: ManagedUser): Profile {
     opsBranchId: user.opsBranchId,
     opsBranchName:
       user.opsBranchName ??
-      (user.role === "technician" ? "مركز الصيانة" : null),
+      (user.role === "technician" || user.role === "mobile_technician"
+        ? "مركز الصيانة"
+        : null),
     isActive: user.isActive,
   };
 }

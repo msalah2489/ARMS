@@ -6,27 +6,39 @@ import { ROLE_LABELS } from "@/lib/auth";
 import { readSession, writeSession } from "@/lib/session";
 import {
   ASSIGNABLE_ROLE_LABELS,
-  getManagedUser,
+  findManagedUserForSession,
+  managedUserToProfile,
   updateManagedUserSelf,
 } from "@/lib/users-store";
 import type { AssignableUserRole, Profile } from "@/types/domain";
 
 export default function AccountPage() {
   const [user, setUser] = useState<Profile | null>(null);
+  const [managedId, setManagedId] = useState<string | null>(null);
   const [mobile, setMobile] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isManaged, setIsManaged] = useState(false);
 
   useEffect(() => {
     const session = readSession();
     if (!session) return;
+
+    const managed = findManagedUserForSession(session);
+    if (managed) {
+      const profile = managedUserToProfile(managed);
+      writeSession(profile);
+      setUser(profile);
+      setManagedId(managed.id);
+      setMobile(managed.mobile);
+      return;
+    }
+
     setUser(session);
     setMobile(session.mobile ?? "");
-    setIsManaged(Boolean(getManagedUser(session.id)));
+    setManagedId(null);
   }, []);
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
@@ -63,13 +75,17 @@ export default function AccountPage() {
             <dt className="text-ink-700/60">الفرع</dt>
             <dd className="font-medium">{user.opsBranchName || "—"}</dd>
           </div>
+          <div>
+            <dt className="text-ink-700/60">الجوال</dt>
+            <dd className="font-medium">{user.mobile || "—"}</dd>
+          </div>
         </dl>
         <p className="mt-3 text-xs text-ink-700/50">
           لا يمكن تغيير اسم المستخدم أو الفرع أو الصلاحية من حسابك.
         </p>
       </section>
 
-      {isManaged ? (
+      {managedId ? (
         <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
           <h2 className="font-display text-xl">تحديث الجوال وكلمة المرور</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -111,7 +127,7 @@ export default function AccountPage() {
             </label>
           </div>
           <p className="mt-2 text-xs text-ink-700/50">
-            اترك حقول كلمة المرور فارغة إذا أردت تحديث الجوال فقط.
+            اترك حقول كلمة المرور فارغة إذا أردت تحديث الجوال فقط. كلمة المرور الحالية للحسابات الافتراضية: demo
           </p>
           <button
             type="button"
@@ -123,7 +139,7 @@ export default function AccountPage() {
                 setError("تأكيد كلمة المرور غير مطابق.");
                 return;
               }
-              const result = updateManagedUserSelf(user.id, {
+              const result = updateManagedUserSelf(managedId, {
                 mobile,
                 currentPassword: newPassword ? currentPassword : undefined,
                 newPassword: newPassword || undefined,
@@ -132,11 +148,7 @@ export default function AccountPage() {
                 setError(result.error);
                 return;
               }
-              const nextSession = {
-                ...user,
-                mobile: result.user.mobile,
-                username: result.user.username,
-              };
+              const nextSession = managedUserToProfile(result.user);
               writeSession(nextSession);
               setUser(nextSession);
               setCurrentPassword("");
@@ -150,7 +162,7 @@ export default function AccountPage() {
         </section>
       ) : (
         <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-6 text-sm text-ink-700/60">
-          هذا حساب تجريبي سريع. لإنشاء حساب قابل لتغيير الجوال وكلمة المرور، أضفه من «المستخدمون».
+          لا يمكن تعديل هذا الحساب من هنا. راجع مدير النظام.
         </p>
       )}
     </div>

@@ -4,63 +4,27 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEMO_USERS, ROLE_LABELS, isDemoMode } from "@/lib/auth";
 import { signIn, writeSession } from "@/lib/session";
+import { getManagedUser, listManagedUsers, managedUserToProfile } from "@/lib/users-store";
 
 export default function LoginPage() {
   const router = useRouter();
   const demo = isDemoMode();
-  const [email, setEmail] = useState(demo ? "branch@arms.local" : "manager@arms.app");
+  const [email, setEmail] = useState(demo ? "admin" : "manager@arms.app");
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
   function enterAs(role: "branch" | "technician" | "maintenance_manager" | "system_admin") {
-    if (role === "branch") {
-      writeSession({
-        id: "branch-local",
-        fullName: "نورة الفرع",
-        username: "branch",
-        role: "branch",
-        email: "branch@arms.local",
-        mobile: null,
-        opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-        opsBranchName: "فرع الرياض",
-        isActive: true,
-      });
-    } else if (role === "technician") {
-      writeSession({
-        id: "tech-local",
-        fullName: "كريم الفني",
-        username: "tech",
-        role: "technician",
-        email: "tech@arms.local",
-        mobile: null,
-        opsBranchId: null,
-        opsBranchName: "مركز الصيانة",
-        isActive: true,
-      });
-    } else if (role === "maintenance_manager") {
-      writeSession({
-        id: "maint-manager-local",
-        fullName: "سارة مدير الصيانة",
-        username: "maint-manager",
-        role: "maintenance_manager",
-        email: "maint-manager@arms.local",
-        mobile: null,
-        opsBranchId: null,
-        opsBranchName: null,
-        isActive: true,
-      });
-    } else {
-      writeSession({
-        id: "admin-local",
-        fullName: "أحمد المدير",
-        username: "admin",
-        role: "system_admin",
-        email: "admin@arms.local",
-        mobile: null,
-        opsBranchId: null,
-        opsBranchName: null,
-        isActive: true,
-      });
+    // Ensure seeded users exist, then open the matching managed account.
+    listManagedUsers();
+    const idByRole: Record<typeof role, string> = {
+      branch: "branch-local",
+      technician: "tech-local",
+      maintenance_manager: "maint-manager-local",
+      system_admin: "admin-local",
+    };
+    const managed = getManagedUser(idByRole[role]);
+    if (managed) {
+      writeSession(managedUserToProfile(managed));
     }
     router.replace("/dashboard");
   }

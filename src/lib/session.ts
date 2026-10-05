@@ -29,30 +29,44 @@ export function clearSession() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
+function tryLocalSignIn(login: string, password: string) {
+  const managed = authenticateManagedUser(login, password);
+  if (managed) {
+    writeSession(managedUserToProfile(managed));
+    return { error: null as string | null };
+  }
+
+  const key = login.trim().toLowerCase();
+  const disabled = listManagedUsers().find(
+    (item) =>
+      !item.isActive &&
+      (item.username.toLowerCase() === key ||
+        item.email.toLowerCase() === key ||
+        item.mobile === login.trim()),
+  );
+  if (disabled) {
+    return { error: "هذا الحساب معطّل. راجع مدير النظام." };
+  }
+
+  return null;
+}
+
 export async function signIn(email: string, password: string) {
+  // Local managed users work in demo and on GitHub Pages static export.
+  const local = tryLocalSignIn(email, password);
+  if (local) return local;
+
   if (isDemoMode()) {
-    const managed = authenticateManagedUser(email, password);
-    if (managed) {
-      writeSession(managedUserToProfile(managed));
-      return { error: null };
-    }
-
-    const key = email.trim().toLowerCase();
-    const disabled = listManagedUsers().find(
-      (item) =>
-        !item.isActive &&
-        (item.username.toLowerCase() === key ||
-          item.email.toLowerCase() === key ||
-          item.mobile === email.trim()),
-    );
-    if (disabled) {
-      return { error: "هذا الحساب معطّل. راجع مدير النظام." };
-    }
-
     const user = DEMO_USERS.find(
       (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
     );
     if (!user) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
+
+    const managed = authenticateManagedUser(user.email, password);
+    if (managed) {
+      writeSession(managedUserToProfile(managed));
+      return { error: null };
+    }
 
     writeSession({
       id: user.role,
@@ -71,7 +85,7 @@ export async function signIn(email: string, password: string) {
   const supabase = createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
-    return { error: error?.message ?? "البريد أو كلمة المرور غير صحيحة." };
+    return { error: error?.message ?? "اسم المستخدم أو كلمة المرور غير صحيحة." };
   }
 
   const { data: profile } = await supabase

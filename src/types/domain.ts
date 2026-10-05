@@ -132,10 +132,12 @@ export type Profile = {
 
 /** Roles an admin can assign when creating users */
 export type AssignableUserRole =
+  | "system_admin"
   | "maintenance_manager"
   | "maintenance_supervisor"
   | "branch"
-  | "technician";
+  | "technician"
+  | "mobile_technician";
 
 export type ManagedUser = {
   id: string;
