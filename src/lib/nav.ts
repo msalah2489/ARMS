@@ -12,6 +12,7 @@ import {
   Store,
   Tags,
   Truck,
+  UserCircle2,
   Users,
   Wrench,
   type LucideIcon,
@@ -32,6 +33,7 @@ const BRANCH_NAV: NavItem[] = [
   { href: "/branch/shipping", label: "شحن الصيانة", icon: Truck, roles: ["branch", "branch_employee"] },
   { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["branch", "branch_employee"] },
   { href: "/reports", label: "التقارير", icon: ClipboardList, roles: ["branch", "branch_employee"] },
+  { href: "/account", label: "حسابي", icon: UserCircle2, roles: ["branch", "branch_employee"] },
 ];
 
 /** Technician account tabs only */
@@ -39,6 +41,7 @@ const TECHNICIAN_NAV: NavItem[] = [
   { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard, roles: ["technician", "mobile_technician"] },
   { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["technician", "mobile_technician"] },
   { href: "/technician/work", label: "عمل الفني", icon: Wrench, roles: ["technician", "mobile_technician"] },
+  { href: "/account", label: "حسابي", icon: UserCircle2, roles: ["technician", "mobile_technician"] },
 ];
 
 /** Admin / managers / supervisors */
@@ -86,6 +89,18 @@ const ADMIN_NAV: NavItem[] = [
     roles: ["system_admin", "manager"],
   },
   {
+    href: "/admin/users",
+    label: "المستخدمون",
+    icon: Users,
+    roles: ["system_admin", "manager"],
+  },
+  {
+    href: "/admin/branches",
+    label: "الفروع",
+    icon: Store,
+    roles: ["system_admin", "manager"],
+  },
+  {
     href: "/spare-parts",
     label: "قطع الغيار",
     icon: Package,
@@ -95,6 +110,12 @@ const ADMIN_NAV: NavItem[] = [
     href: "/reports",
     label: "التقارير",
     icon: ClipboardList,
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+  },
+  {
+    href: "/account",
+    label: "حسابي",
+    icon: UserCircle2,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {

@@ -68,7 +68,9 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <h1 className="font-display text-3xl text-ink-900">تسجيل الدخول</h1>
           <p className="mt-2 text-sm text-ink-700/70">
-            {demo ? "اختر دورًا تجريبيًا أو أدخل بيانات الدخول." : "اختر الحساب المناسب لصلاحياتك."}
+            {demo
+              ? "اختر دورًا تجريبيًا أو سجّل بمستخدم أنشأه مدير النظام (البريد أو الجوال + كلمة المرور)."
+              : "اختر الحساب المناسب لصلاحياتك."}
           </p>
 
           {demo ? (

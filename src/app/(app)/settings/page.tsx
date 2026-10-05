@@ -43,12 +43,24 @@ export default function SettingsPage() {
             إضافة وتعديل تصنيفات الأجهزة والبراندات والموديلات والملحقات وقطع الغيار.
           </p>
         </Link>
-        <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
+        <Link
+          href="/admin/users"
+          className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel hover:border-aroma-400"
+        >
           <h2 className="font-display text-xl">المستخدمون والصلاحيات</h2>
           <p className="mt-2 text-sm text-ink-700/70">
-            إدارة الحسابات والأدوار (قريبًا من واجهة موحّدة).
+            إضافة مستخدمين بصلاحيات مدير / مشرف / فرع / فني وإدارة بياناتهم.
           </p>
-        </section>
+        </Link>
+        <Link
+          href="/admin/branches"
+          className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel hover:border-aroma-400"
+        >
+          <h2 className="font-display text-xl">الفروع ومراكز الصيانة</h2>
+          <p className="mt-2 text-sm text-ink-700/70">
+            إضافة فروع مع المدينة وكود تلقائي، وتحديد ما إذا كان الفرع مركز صيانة.
+          </p>
+        </Link>
       </div>
       <p className="mt-6 text-xs text-ink-700/50">
         مسجّل كـ {user.email} · {ROLE_LABELS[user.role]}

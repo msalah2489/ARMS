@@ -123,8 +123,39 @@ export type Profile = {
   fullName: string;
   role: AppRole;
   email: string;
+  mobile?: string | null;
   opsBranchId?: string | null;
   opsBranchName?: string | null;
+};
+
+/** Roles an admin can assign when creating users */
+export type AssignableUserRole =
+  | "maintenance_manager"
+  | "maintenance_supervisor"
+  | "branch"
+  | "technician";
+
+export type ManagedUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  mobile: string;
+  role: AssignableUserRole;
+  opsBranchId: string | null;
+  opsBranchName: string | null;
+  password: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OpsBranchRecord = {
+  id: string;
+  name: string;
+  city: string;
+  code: string;
+  isServiceCenter: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Customer = {

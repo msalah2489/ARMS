@@ -4,6 +4,7 @@ import {
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
+import { listBranchOptions } from "@/lib/branches-store";
 import type {
   BranchReturnReceiveOutcome,
   Profile,
@@ -558,6 +559,11 @@ export function receiveReturnBatchDevices(input: {
 }
 
 export function listOpsBranches() {
+  const managed = listBranchOptions();
+  if (managed.length) {
+    return managed.map((item) => ({ id: item.id, name: item.name }));
+  }
+
   const fromRequests = listMaintenanceRequests().map((request) => ({
     id: request.opsBranchId,
     name: request.opsBranchName,
