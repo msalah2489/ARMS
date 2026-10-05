@@ -5,6 +5,7 @@ import {
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
+import { consumeSpareParts } from "@/lib/spare-inventory-store";
 import type { Profile, TechnicianWorkRecord } from "@/types/domain";
 
 const WORK_KEY = "arms_technician_work_v1";
@@ -76,7 +77,34 @@ export function saveTechnicianWork(record: TechnicianWorkRecord) {
   return record;
 }
 
-export function completeTechnicianWork(record: TechnicianWorkRecord) {
+export function completeTechnicianWork(
+  record: TechnicianWorkRecord,
+  options?: { modelId?: string; modelName?: string; user?: Profile },
+): { ok: true; record: TechnicianWorkRecord } | { ok: false; error: string } {
+  const used = (record.sparePartsUsed ?? []).filter((part) => part.qty > 0);
+  if (used.length > 0) {
+    const modelId = options?.modelId;
+    if (!modelId) {
+      return { ok: false, error: "تعذر تحديد موديل الجهاز لخصم قطع الغيار." };
+    }
+    const actor =
+      options?.user ??
+      ({
+        id: record.technicianId,
+        fullName: record.technicianName,
+        role: "technician",
+        email: "",
+      } as Profile);
+    const consumed = consumeSpareParts({
+      user: actor,
+      modelId,
+      modelName: options?.modelName,
+      parts: used,
+      reference: `${record.requestNumber}/${record.deviceCode}`,
+    });
+    if (!consumed.ok) return consumed;
+  }
+
   const finished: TechnicianWorkRecord = {
     ...record,
     status: "completed",
@@ -91,7 +119,7 @@ export function completeTechnicianWork(record: TechnicianWorkRecord) {
     assignedTechnicianId: null,
     assignedTechnicianName: null,
   });
-  return finished;
+  return { ok: true, record: finished };
 }
 
 export function holdTechnicianWork(record: TechnicianWorkRecord) {

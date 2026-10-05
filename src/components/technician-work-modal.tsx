@@ -16,6 +16,7 @@ import {
   saveTechnicianWork,
   startDeviceWork,
 } from "@/lib/technician-store";
+import { getAvailableQty } from "@/lib/spare-inventory-store";
 import type {
   DamageOption,
   HoldReason,
@@ -253,27 +254,44 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
             ) : null}
 
             <div>
-              <p className="text-sm font-medium">قطع الغيار المستخدمة (اختياري)</p>
+              <p className="text-sm font-medium">قطع الغيار المستخدمة (تُخصم من المخزون)</p>
               <div className="mt-2 space-y-2">
-                {spareParts.map((part) => (
-                  <div key={part.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span>
-                      {part.name}
-                      {part.color ? (
-                        <span className="text-ink-700/60"> · لون: {part.color}</span>
-                      ) : null}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={spareQty[part.id] ?? 0}
-                      onChange={(e) =>
-                        setSpareQty((prev) => ({ ...prev, [part.id]: Number(e.target.value) }))
-                      }
-                      className="w-24 rounded-xl border border-ink-900/15 px-3 py-1"
-                    />
-                  </div>
-                ))}
+                {spareParts.length === 0 ? (
+                  <p className="text-xs text-ink-700/60">لا توجد قطع غيار مسجّلة لهذا الموديل.</p>
+                ) : (
+                  spareParts.map((part) => {
+                    const available = getAvailableQty(item.device.modelId, part.id);
+                    return (
+                      <div
+                        key={part.id}
+                        className="flex flex-wrap items-center justify-between gap-3 text-sm"
+                      >
+                        <span>
+                          {part.name}
+                          {part.color ? (
+                            <span className="text-ink-700/60"> · لون: {part.color}</span>
+                          ) : null}
+                          <span className="mr-2 text-xs text-ink-700/50">
+                            (المتاح: {available})
+                          </span>
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={available}
+                          value={spareQty[part.id] ?? 0}
+                          onChange={(e) =>
+                            setSpareQty((prev) => ({
+                              ...prev,
+                              [part.id]: Number(e.target.value),
+                            }))
+                          }
+                          className="w-24 rounded-xl border border-ink-900/15 px-3 py-1"
+                        />
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -431,7 +449,15 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
                 })),
                 outcome,
               });
-              completeTechnicianWork(record);
+              const result = completeTechnicianWork(record, {
+                modelId: item.device.modelId,
+                modelName: item.device.modelName,
+                user: technician,
+              });
+              if (!result.ok) {
+                setError(result.error);
+                return;
+              }
               onDone();
             }}
             className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"

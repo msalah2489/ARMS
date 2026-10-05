@@ -102,7 +102,7 @@ const ADMIN_NAV: NavItem[] = [
   },
   {
     href: "/spare-parts",
-    label: "قطع الغيار",
+    label: "قطع الغيار والمخزون",
     icon: Package,
     roles: ["system_admin", "manager", "maintenance_manager"],
   },

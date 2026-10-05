@@ -223,6 +223,52 @@ export type SparePart = {
   unit: string;
 };
 
+/** Inventory balance keyed by device model + catalog spare part */
+export type SpareInventoryBalance = {
+  id: string;
+  modelId: string;
+  modelName: string;
+  partId: string;
+  partName: string;
+  color?: string;
+  quantity: number;
+  updatedAt: string;
+};
+
+export type SpareReceiveReceipt = {
+  id: string;
+  receiptNumber: string;
+  receiptDate: string;
+  supplier: string;
+  receiptPhotoName: string;
+  receiptPhotoDataUrl: string;
+  modelId: string;
+  modelName: string;
+  partId: string;
+  partName: string;
+  color?: string;
+  quantity: number;
+  receivedById: string;
+  receivedByName: string;
+  createdAt: string;
+};
+
+export type SpareStockMovement = {
+  id: string;
+  type: "receive" | "consume";
+  balanceId: string;
+  modelId: string;
+  modelName: string;
+  partId: string;
+  partName: string;
+  color?: string;
+  quantity: number;
+  reference?: string;
+  actorId: string;
+  actorName: string;
+  createdAt: string;
+};
+
 export type DashboardStats = {
   openRequests: number;
   devicesUnderMaintenance: number;
