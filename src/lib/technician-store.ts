@@ -6,7 +6,11 @@ import {
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
-import type { Profile, TechnicianWorkRecord } from "@/types/domain";
+import type {
+  ManagerDeviceDecision,
+  Profile,
+  TechnicianWorkRecord,
+} from "@/types/domain";
 
 const WORK_KEY = "arms_technician_work_v1";
 
@@ -135,6 +139,122 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
     assignedTechnicianName: null,
   });
   return held;
+}
+
+export function listAwaitingManagerDecisionDevices(): TechnicianQueueItem[] {
+  return listAllRequestDevices().filter(
+    (item) => item.device.lifecycleStatus === "awaiting_manager_decision",
+  );
+}
+
+export function listMyInProgressDevices(technicianId: string): TechnicianQueueItem[] {
+  return listAllRequestDevices().filter(
+    (item) =>
+      ["in_maintenance", "under_maintenance"].includes(item.device.lifecycleStatus ?? "") &&
+      item.device.assignedTechnicianId === technicianId,
+  );
+}
+
+export function findOpenWorkForDevice(deviceLocalId: string, technicianId: string) {
+  return (
+    listTechnicianWork().find(
+      (item) =>
+        item.deviceLocalId === deviceLocalId &&
+        item.technicianId === technicianId &&
+        item.status === "in_progress",
+    ) ?? null
+  );
+}
+
+export const MANAGER_DECISION_LABELS: Record<ManagerDeviceDecision, string> = {
+  requeue_technician: "إعادة الجهاز لطابور الفني",
+  approve_return: "اعتماد الإرجاع للفرع",
+  close_case: "إغلاق الحالة بدون إرجاع",
+};
+
+export function resolveManagerDecision(input: {
+  user: Profile;
+  requestId: string;
+  deviceLocalId: string;
+  decision: ManagerDeviceDecision;
+  note?: string;
+}): { ok: true } | { ok: false; error: string } {
+  const role = input.user.role;
+  if (!["maintenance_manager", "system_admin", "manager"].includes(role)) {
+    return { ok: false, error: "قرار مدير الصيانة مسموح لمدير الصيانة فقط." };
+  }
+
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === input.requestId && item.device.localId === input.deviceLocalId,
+  );
+  if (!match) return { ok: false, error: "الجهاز غير موجود." };
+  if (match.device.lifecycleStatus !== "awaiting_manager_decision") {
+    return { ok: false, error: "هذا الجهاز ليس بانتظار قرار المدير." };
+  }
+
+  if (input.decision === "requeue_technician") {
+    updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+      lifecycleStatus: "awaiting_maintenance",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      lockedAfterShip: false,
+    });
+  } else if (input.decision === "approve_return") {
+    updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+      lifecycleStatus: "ready_to_return",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      lockedAfterShip: false,
+    });
+  } else {
+    updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+      lifecycleStatus: "closed",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      lockedAfterShip: true,
+      extraDetails: [match.device.extraDetails, input.note?.trim() ? `قرار المدير: ${input.note.trim()}` : ""]
+        .filter(Boolean)
+        .join(" | "),
+    });
+  }
+
+  return { ok: true };
+}
+
+export function markDeliveredToCustomer(input: {
+  user: Profile;
+  requestId: string;
+  deviceLocalId: string;
+}): { ok: true } | { ok: false; error: string } {
+  const role = input.user.role;
+  if (!["branch", "branch_employee", "system_admin", "manager"].includes(role)) {
+    return { ok: false, error: "تسليم العميل مسموح لموظف الفرع." };
+  }
+
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === input.requestId && item.device.localId === input.deviceLocalId,
+  );
+  if (!match) return { ok: false, error: "الجهاز غير موجود." };
+  if (
+    !["received_at_destination", "received_damaged"].includes(match.device.lifecycleStatus ?? "")
+  ) {
+    return { ok: false, error: "يجب استلام الجهاز في الفرع أولًا قبل التسليم للعميل." };
+  }
+  if (input.user.opsBranchId && match.request.opsBranchId !== input.user.opsBranchId) {
+    return { ok: false, error: "هذا الجهاز لا يخص فرعك." };
+  }
+
+  updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+    lifecycleStatus: "delivered_to_customer",
+    currentLocation: "customer",
+    lockedAfterShip: true,
+  });
+  return { ok: true };
 }
 
 export function getTechnicianDashboardStats(technicianId: string) {

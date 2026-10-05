@@ -531,6 +531,21 @@ export function receiveReturnBatchDevices(input: {
           currentLocation: "branch",
           lockedAfterShip: false,
         });
+      } else if (decision.outcome === "not_received") {
+        // Device never arrived — send back to manager decision for re-return or close.
+        updateDeviceLifecycle(match.request.id, match.device.localId, {
+          lifecycleStatus: "awaiting_manager_decision",
+          currentLocation: "service_center",
+          lockedAfterShip: false,
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+          extraDetails: [
+            match.device.extraDetails,
+            `لم يُستلم في الفرع: ${decision.reason?.trim() || "بدون تفاصيل"}`,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+        });
       }
     }
   }

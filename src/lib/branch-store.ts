@@ -380,6 +380,7 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   in_shipping: "قيد الشحن",
   returning_from_service: "قادم من الصيانة",
   delivered_to_customer: "تم التسليم للعميل",
+  closed: "تم إغلاق الحالة",
   ready_to_send: "جاهز للإرجاع للفرع",
   excluded: "بانتظار قرار مدير الصيانة",
 };

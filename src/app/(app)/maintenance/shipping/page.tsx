@@ -14,11 +14,20 @@ import {
   listOpsBranches,
   listShippingBatches,
 } from "@/lib/shipping-store";
-import type { Profile, ShippingBatch } from "@/types/domain";
+import {
+  MANAGER_DECISION_LABELS,
+  listAwaitingManagerDecisionDevices,
+  resolveManagerDecision,
+} from "@/lib/technician-store";
+import { deviceStatusLabel } from "@/lib/branch-store";
+import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
 
 function MaintenanceShippingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [batches, setBatches] = useState<ShippingBatch[]>([]);
+  const [pendingManager, setPendingManager] = useState(
+    () => listAwaitingManagerDecisionDevices(),
+  );
   const [branchId, setBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
   const [returnBranchId, setReturnBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
   const [shipmentNumber, setShipmentNumber] = useState("");
@@ -29,6 +38,9 @@ function MaintenanceShippingContent() {
   const [returnNotes, setReturnNotes] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [returnSelected, setReturnSelected] = useState<string[]>([]);
+  const [managerDraft, setManagerDraft] = useState<
+    Record<string, { decision: ManagerDeviceDecision | ""; note: string }>
+  >({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,11 +48,12 @@ function MaintenanceShippingContent() {
   const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches]);
   const returnEligible = useMemo(
     () => listDevicesEligibleForReturn(returnBranchId),
-    [returnBranchId, batches],
+    [returnBranchId, batches, pendingManager],
   );
 
   function refresh() {
     setBatches(listShippingBatches());
+    setPendingManager(listAwaitingManagerDecisionDevices());
   }
 
   useEffect(() => {
@@ -281,6 +294,118 @@ function MaintenanceShippingContent() {
         >
           إنشاء بوليصة الإرجاع
         </button>
+      </section>
+
+      </section>
+
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">
+          قرارات مدير الصيانة ({pendingManager.length})
+        </h2>
+        <p className="mt-1 text-sm text-ink-700/70">
+          أجهزة معلّقة أو غير قابلة للإصلاح أو لم تُستلم في الفرع — اختر القرار المناسب.
+        </p>
+        <div className="mt-4 space-y-3">
+          {pendingManager.length === 0 ? (
+            <p className="text-sm text-ink-700/60">لا توجد أجهزة بانتظار قرارك.</p>
+          ) : (
+            pendingManager.map((item) => {
+              const key = `${item.request.id}:${item.device.localId}`;
+              const draft = managerDraft[key] ?? { decision: "", note: "" };
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm"
+                >
+                  <p className="font-medium">
+                    {item.device.deviceCode} · {item.request.requestNumber}
+                  </p>
+                  <p className="text-xs text-ink-700/60">
+                    {item.request.opsBranchName} · {item.device.modelName} ·{" "}
+                    {deviceStatusLabel(item.device.lifecycleStatus, "technician")}
+                  </p>
+                  {item.device.extraDetails ? (
+                    <p className="mt-1 text-xs text-ink-700/50">{item.device.extraDetails}</p>
+                  ) : null}
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      القرار *
+                      <select
+                        value={draft.decision}
+                        onChange={(e) =>
+                          setManagerDraft((prev) => ({
+                            ...prev,
+                            [key]: {
+                              ...draft,
+                              decision: e.target.value as ManagerDeviceDecision | "",
+                            },
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                      >
+                        <option value="">اختر القرار</option>
+                        {(Object.keys(MANAGER_DECISION_LABELS) as ManagerDeviceDecision[]).map(
+                          (decision) => (
+                            <option key={decision} value={decision}>
+                              {MANAGER_DECISION_LABELS[decision]}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <label className="block">
+                      ملاحظة (اختياري)
+                      <input
+                        value={draft.note}
+                        onChange={(e) =>
+                          setManagerDraft((prev) => ({
+                            ...prev,
+                            [key]: { ...draft, note: e.target.value },
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-3 rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
+                    onClick={() => {
+                      setError(null);
+                      setMessage(null);
+                      if (!draft.decision) {
+                        setError("اختر قرارًا للجهاز.");
+                        return;
+                      }
+                      const result = resolveManagerDecision({
+                        user,
+                        requestId: item.request.id,
+                        deviceLocalId: item.device.localId,
+                        decision: draft.decision,
+                        note: draft.note,
+                      });
+                      if (!result.ok) {
+                        setError(result.error);
+                        return;
+                      }
+                      setMessage(
+                        `تم تطبيق «${MANAGER_DECISION_LABELS[draft.decision]}» على ${item.device.deviceCode}.`,
+                      );
+                      setManagerDraft((prev) => {
+                        const next = { ...prev };
+                        delete next[key];
+                        return next;
+                      });
+                      refresh();
+                    }}
+                  >
+                    تنفيذ القرار
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">

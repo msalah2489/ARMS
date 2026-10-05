@@ -42,7 +42,14 @@ export type DeviceLifecycleStatus =
   | "in_shipping"
   | "under_maintenance"
   | "returning_from_service"
-  | "delivered_to_customer";
+  | "delivered_to_customer"
+  | "closed";
+
+/** Maintenance manager decision for held / failed / missing-return devices */
+export type ManagerDeviceDecision =
+  | "requeue_technician"
+  | "approve_return"
+  | "close_case";
 
 export type ShipmentDirection = "inbound" | "to_service" | "return";
 export type ShippingBatchStatus = "draft" | "ready" | "handed_to_carrier" | "received" | "cancelled";

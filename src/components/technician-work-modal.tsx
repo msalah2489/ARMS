@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TechnicianQueueItem } from "@/lib/branch-store";
 import {
   ACTION_OPTIONS,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/technician-catalog";
 import {
   completeTechnicianWork,
+  findOpenWorkForDevice,
   holdTechnicianWork,
   saveTechnicianWork,
   startDeviceWork,
@@ -43,19 +44,23 @@ const TEST_LABELS = {
   programming: "البرمجة",
 } as const;
 
+function emptyTests() {
+  return {
+    power: null,
+    pump: null,
+    light: null,
+    sound: null,
+    programming: null,
+  } as Record<keyof typeof TEST_LABELS, boolean | null>;
+}
+
 export function TechnicianWorkModal({ open, item, technician, onClose, onDone }: Props) {
   const [work, setWork] = useState<TechnicianWorkRecord | null>(null);
   const [externalCheck, setExternalCheck] = useState<TechnicianExternalCheck | "">("");
   const [damageOptions, setDamageOptions] = useState<DamageOption[]>([]);
   const [damageOtherNote, setDamageOtherNote] = useState("");
   const [deviceState, setDeviceState] = useState<TechnicianDeviceState | "">("");
-  const [tests, setTests] = useState<Record<keyof typeof TEST_LABELS, boolean | null>>({
-    power: null,
-    pump: null,
-    light: null,
-    sound: null,
-    programming: null,
-  });
+  const [tests, setTests] = useState(emptyTests);
   const [faultCause, setFaultCause] = useState("");
   const [actionTaken, setActionTaken] = useState("");
   const [actionOther, setActionOther] = useState("");
@@ -68,6 +73,42 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
   const [holdOtherNote, setHoldOtherNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!open || !item) return;
+    const existing = findOpenWorkForDevice(item.device.localId, technician.id);
+    setWork(existing);
+    setExternalCheck(existing?.externalCheck ?? "");
+    setDamageOptions(existing?.damageOptions ?? []);
+    setDamageOtherNote(existing?.damageOtherNote ?? "");
+    setDeviceState(existing?.deviceState ?? "");
+    setTests({
+      power: existing?.tests?.power ?? null,
+      pump: existing?.tests?.pump ?? null,
+      light: existing?.tests?.light ?? null,
+      sound: existing?.tests?.sound ?? null,
+      programming: existing?.tests?.programming ?? null,
+    });
+    setFaultCause(existing?.faultCause ?? "");
+    setActionTaken(existing?.actionTaken ?? "");
+    setActionOther(existing?.actionOther ?? "");
+    const qty: Record<string, number> = {};
+    for (const part of existing?.sparePartsUsed ?? []) qty[part.partId] = part.qty;
+    setSpareQty(qty);
+    const returned: Record<string, boolean> = {};
+    const reasons: Record<string, string> = {};
+    for (const accessory of existing?.returnedAccessories ?? []) {
+      returned[accessory.accessoryId] = accessory.returned;
+      if (accessory.notReturnedReason) reasons[accessory.accessoryId] = accessory.notReturnedReason;
+    }
+    setReturnedMap(returned);
+    setNotReturnedReason(reasons);
+    setOutcome(existing?.outcome ?? "");
+    setShowHold(false);
+    setHoldReason("");
+    setHoldOtherNote("");
+    setError(null);
+  }, [open, item, technician.id]);
+
   const showClosing = useMemo(() => {
     return Object.values(tests).every((value) => value === true);
   }, [tests]);
@@ -75,9 +116,15 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
   if (!open || !item) return null;
 
   const spareParts = getModelSpareParts(item.device.modelId);
+  const isResume = Boolean(work);
 
   function ensureWork() {
     if (work) return work;
+    const existing = findOpenWorkForDevice(item!.device.localId, technician.id);
+    if (existing) {
+      setWork(existing);
+      return existing;
+    }
     const created = startDeviceWork(item!, technician);
     setWork(created);
     return created;
@@ -95,7 +142,9 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4">
       <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-panel">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-display text-2xl">استلام الجهاز للصيانة</h2>
+          <h2 className="font-display text-2xl">
+            {isResume ? "استئناف صيانة الجهاز" : "استلام الجهاز للصيانة"}
+          </h2>
           <button type="button" className="text-sm text-ink-700/70" onClick={onClose}>
             إغلاق
           </button>

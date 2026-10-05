@@ -4,12 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { deviceStatusLabel, listMaintenanceRequests } from "@/lib/branch-store";
+import { markDeliveredToCustomer } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type { MaintenanceRequestRecord, Profile } from "@/types/domain";
 
 type Row = {
   key: string;
+  requestId: string;
+  deviceLocalId: string;
   deviceCode: string;
   modelName: string;
   requestNumber: string;
@@ -17,74 +20,39 @@ type Row = {
   mobile: string;
   date: string;
   status: string;
+  lifecycleStatus: string;
 };
-
-function Section({ title, rows }: { title: string; rows: Row[] }) {
-  return (
-    <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-      <h2 className="font-display text-xl">{title}</h2>
-      <p className="mt-1 text-xs text-ink-700/60">{rows.length} جهاز</p>
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
-              <th className="px-2 py-2 font-medium">كود الجهاز</th>
-              <th className="px-2 py-2 font-medium">الموديل</th>
-              <th className="px-2 py-2 font-medium">رقم الطلب</th>
-              <th className="px-2 py-2 font-medium">الحالة</th>
-              <th className="px-2 py-2 font-medium">العميل</th>
-              <th className="px-2 py-2 font-medium">التاريخ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-2 py-6 text-ink-700/60">
-                  لا توجد أجهزة في هذا القسم.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.key} className="border-b border-ink-900/5">
-                  <td className="px-2 py-3 font-medium">{row.deviceCode}</td>
-                  <td className="px-2 py-3">{row.modelName}</td>
-                  <td className="px-2 py-3">{row.requestNumber}</td>
-                  <td className="px-2 py-3">{row.status}</td>
-                  <td className="px-2 py-3">
-                    {row.contactName}
-                    <span className="block text-xs text-ink-700/60">{row.mobile}</span>
-                  </td>
-                  <td className="px-2 py-3">{formatDate(row.date)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
 
 function BranchReceivingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [requests, setRequests] = useState<MaintenanceRequestRecord[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function refresh(session?: Profile | null) {
+    const current = session ?? user;
+    setRequests(listMaintenanceRequests(current?.opsBranchId));
+  }
 
   useEffect(() => {
     const session = readSession();
     setUser(session);
-    setRequests(listMaintenanceRequests(session?.opsBranchId));
+    refresh(session);
   }, []);
 
   const sections = useMemo(() => {
     const atBranch: Row[] = [];
     const inService: Row[] = [];
     const returning: Row[] = [];
-    const receivedBack: Row[] = [];
+    const readyForCustomer: Row[] = [];
+    const delivered: Row[] = [];
 
     for (const request of requests) {
       for (const device of request.devices) {
         const row: Row = {
           key: `${request.id}-${device.localId}`,
+          requestId: request.id,
+          deviceLocalId: device.localId,
           deviceCode: device.deviceCode,
           modelName: device.modelName,
           requestNumber: request.requestNumber,
@@ -92,8 +60,9 @@ function BranchReceivingContent() {
           mobile: request.customerMobile,
           date: request.receivedAt,
           status: deviceStatusLabel(device.lifecycleStatus, "branch"),
+          lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
         };
-        const status = device.lifecycleStatus ?? "received_at_branch";
+        const status = row.lifecycleStatus;
         if (
           [
             "received_at_branch",
@@ -112,34 +81,128 @@ function BranchReceivingContent() {
             "ready_to_return",
             "awaiting_manager_decision",
             "at_service_center",
+            "closed",
           ].includes(status)
         ) {
           inService.push(row);
         } else if (status === "in_return_transit") {
           returning.push(row);
-        } else if (
-          ["received_at_destination", "received_damaged", "delivered_to_customer"].includes(status)
-        ) {
-          receivedBack.push(row);
+        } else if (["received_at_destination", "received_damaged"].includes(status)) {
+          readyForCustomer.push(row);
+        } else if (status === "delivered_to_customer") {
+          delivered.push(row);
         }
       }
     }
 
-    return { atBranch, inService, returning, receivedBack };
+    return { atBranch, inService, returning, readyForCustomer, delivered };
   }, [requests]);
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+
+  function renderTable(rows: Row[], withDeliver = false) {
+    return (
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
+              <th className="px-2 py-2 font-medium">كود الجهاز</th>
+              <th className="px-2 py-2 font-medium">الموديل</th>
+              <th className="px-2 py-2 font-medium">رقم الطلب</th>
+              <th className="px-2 py-2 font-medium">الحالة</th>
+              <th className="px-2 py-2 font-medium">العميل</th>
+              <th className="px-2 py-2 font-medium">التاريخ</th>
+              {withDeliver ? <th className="px-2 py-2 font-medium">إجراء</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={withDeliver ? 7 : 6} className="px-2 py-6 text-ink-700/60">
+                  لا توجد أجهزة في هذا القسم.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.key} className="border-b border-ink-900/5">
+                  <td className="px-2 py-3 font-medium">{row.deviceCode}</td>
+                  <td className="px-2 py-3">{row.modelName}</td>
+                  <td className="px-2 py-3">{row.requestNumber}</td>
+                  <td className="px-2 py-3">{row.status}</td>
+                  <td className="px-2 py-3">
+                    {row.contactName}
+                    <span className="block text-xs text-ink-700/60">{row.mobile}</span>
+                  </td>
+                  <td className="px-2 py-3">{formatDate(row.date)}</td>
+                  {withDeliver ? (
+                    <td className="px-2 py-3">
+                      <button
+                        type="button"
+                        className="rounded-full bg-ink-900 px-3 py-1.5 text-xs text-white"
+                        onClick={() => {
+                          if (!user) return;
+                          setError(null);
+                          setMessage(null);
+                          const result = markDeliveredToCustomer({
+                            user,
+                            requestId: row.requestId,
+                            deviceLocalId: row.deviceLocalId,
+                          });
+                          if (!result.ok) {
+                            setError(result.error);
+                            return;
+                          }
+                          setMessage(`تم تسليم ${row.deviceCode} للعميل.`);
+                          refresh(user);
+                        }}
+                      >
+                        تسليم للعميل
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="استلام الصيانة"
-        description={`متابعة أجهزة ${user.opsBranchName || "الفرع"} حسب موقعها في المسار.`}
+        description={`متابعة أجهزة ${user.opsBranchName || "الفرع"} حسب موقعها، وتسليمها للعميل بعد العودة من الصيانة.`}
       />
-      <Section title="أجهزة في الفرع" rows={sections.atBranch} />
-      <Section title="أجهزة في الصيانة / الطريق إليها" rows={sections.inService} />
-      <Section title="أجهزة في الطريق إلى الفرع" rows={sections.returning} />
-      <Section title="أجهزة مستلمة من الصيانة" rows={sections.receivedBack} />
+      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">أجهزة في الفرع</h2>
+        <p className="mt-1 text-xs text-ink-700/60">{sections.atBranch.length} جهاز</p>
+        {renderTable(sections.atBranch)}
+      </section>
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">أجهزة في الصيانة / الطريق إليها</h2>
+        <p className="mt-1 text-xs text-ink-700/60">{sections.inService.length} جهاز</p>
+        {renderTable(sections.inService)}
+      </section>
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">أجهزة في الطريق إلى الفرع</h2>
+        <p className="mt-1 text-xs text-ink-700/60">{sections.returning.length} جهاز</p>
+        {renderTable(sections.returning)}
+      </section>
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">جاهزة للتسليم للعميل</h2>
+        <p className="mt-1 text-xs text-ink-700/60">{sections.readyForCustomer.length} جهاز</p>
+        {renderTable(sections.readyForCustomer, true)}
+      </section>
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+        <h2 className="font-display text-xl">تم التسليم للعميل</h2>
+        <p className="mt-1 text-xs text-ink-700/60">{sections.delivered.length} جهاز</p>
+        {renderTable(sections.delivered)}
+      </section>
     </div>
   );
 }
