@@ -30,3 +30,84 @@ html.dark body {
 html.dark ::selection {
   background: #3d6238;
 }
+
+/* Dark mode: convert light panels/cards so inherited light text stays readable */
+html.dark .bg-white,
+html.dark .bg-white\/80,
+html.dark .shadow-panel {
+  background-color: #16211b !important;
+  color: #fbf7f0;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .bg-sand-50,
+html.dark .bg-sand-100,
+html.dark .disabled\:bg-sand-50:disabled {
+  background-color: #1e2d25 !important;
+  color: #fbf7f0;
+}
+
+html.dark .border-ink-900\/5,
+html.dark .border-ink-900\/10,
+html.dark .border-ink-900\/15 {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html.dark .border-dashed {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+html.dark .text-ink-900 {
+  color: #fbf7f0 !important;
+}
+
+html.dark .text-ink-700,
+html.dark .text-ink-700\/70,
+html.dark .text-ink-700\/60,
+html.dark .text-ink-700\/50 {
+  color: rgba(251, 247, 240, 0.72) !important;
+}
+
+html.dark .text-aroma-700 {
+  color: #c5d6c0 !important;
+}
+
+html.dark .text-rose-700 {
+  color: #fda4af !important;
+}
+
+html.dark .text-amber-700 {
+  color: #fcd34d !important;
+}
+
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark select,
+html.dark textarea {
+  background-color: #0f1612 !important;
+  color: #fbf7f0 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: rgba(251, 247, 240, 0.45) !important;
+}
+
+html.dark option {
+  background-color: #16211b;
+  color: #fbf7f0;
+}
+
+html.dark input:disabled,
+html.dark select:disabled,
+html.dark textarea:disabled {
+  background-color: #1e2d25 !important;
+  color: rgba(251, 247, 240, 0.65) !important;
+}
+
+/* Keep primary dark buttons readable */
+html.dark .bg-ink-900.text-white,
+html.dark button.bg-ink-900 {
+  background-color: #3d6238 !important;
+  color: #fbf7f0 !important;
+}
