@@ -356,3 +356,84 @@ export function deleteModelSparePart(
 export function resetCatalogToSeed() {
   return saveCatalog(seedCatalog());
 }
+
+export type CatalogNameSuggestion = {
+  name: string;
+  color?: string;
+  modelNames: string[];
+  count: number;
+};
+
+function matchesQuery(name: string, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return name.toLowerCase().includes(q);
+}
+
+/** Existing accessory names across models — to unify naming while typing. */
+export function suggestAccessoryNames(
+  query: string,
+  options?: { excludeModelId?: string; limit?: number },
+): CatalogNameSuggestion[] {
+  const catalog = getCatalog();
+  const map = new Map<string, CatalogNameSuggestion>();
+
+  for (const model of catalog.models) {
+    if (options?.excludeModelId && model.id === options.excludeModelId) continue;
+    for (const accessory of model.accessories) {
+      if (!matchesQuery(accessory.name, query)) continue;
+      const key = accessory.name.trim().toLowerCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (!existing.modelNames.includes(model.name)) existing.modelNames.push(model.name);
+      } else {
+        map.set(key, {
+          name: accessory.name,
+          modelNames: [model.name],
+          count: 1,
+        });
+      }
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ar"))
+    .slice(0, options?.limit ?? 8);
+}
+
+/** Existing spare-part names (and optional color) across models. */
+export function suggestSparePartNames(
+  query: string,
+  options?: { excludeModelId?: string; limit?: number },
+): CatalogNameSuggestion[] {
+  const catalog = getCatalog();
+  const map = new Map<string, CatalogNameSuggestion>();
+
+  for (const model of catalog.models) {
+    if (options?.excludeModelId && model.id === options.excludeModelId) continue;
+    for (const part of model.spareParts) {
+      if (!matchesQuery(part.name, query) && !(part.color && matchesQuery(part.color, query))) {
+        continue;
+      }
+      const key = `${part.name.trim().toLowerCase()}::${(part.color ?? "").trim().toLowerCase()}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (!existing.modelNames.includes(model.name)) existing.modelNames.push(model.name);
+      } else {
+        map.set(key, {
+          name: part.name,
+          color: part.color,
+          modelNames: [model.name],
+          count: 1,
+        });
+      }
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ar"))
+    .slice(0, options?.limit ?? 8);
+}
+

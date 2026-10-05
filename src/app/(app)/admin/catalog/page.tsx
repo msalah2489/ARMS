@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CatalogSuggestInput } from "@/components/catalog-suggest-input";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
@@ -16,6 +17,8 @@ import {
   deleteModelSparePart,
   getCatalog,
   resetCatalogToSeed,
+  suggestAccessoryNames,
+  suggestSparePartNames,
   updateBrand,
   updateDeviceType,
   updateModel,
@@ -67,6 +70,38 @@ function CatalogAdminContent() {
   const selectedModel = useMemo(
     () => catalog?.models.find((model) => model.id === selectedModelId) ?? null,
     [catalog, selectedModelId],
+  );
+
+  const accessorySuggestions = useMemo(
+    () =>
+      suggestAccessoryNames(accessoryName, {
+        excludeModelId: selectedModelId || undefined,
+      }),
+    [accessoryName, selectedModelId, catalog],
+  );
+
+  const editingAccessorySuggestions = useMemo(
+    () =>
+      suggestAccessoryNames(editingAccessoryName, {
+        excludeModelId: selectedModelId || undefined,
+      }),
+    [editingAccessoryName, selectedModelId, catalog],
+  );
+
+  const spareSuggestions = useMemo(
+    () =>
+      suggestSparePartNames(spareName || spareColor, {
+        excludeModelId: selectedModelId || undefined,
+      }),
+    [spareName, spareColor, selectedModelId, catalog],
+  );
+
+  const editingSpareSuggestions = useMemo(
+    () =>
+      suggestSparePartNames(editingSpareName || editingSpareColor, {
+        excludeModelId: selectedModelId || undefined,
+      }),
+    [editingSpareName, editingSpareColor, selectedModelId, catalog],
   );
 
   if (!catalog) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
@@ -488,12 +523,14 @@ function CatalogAdminContent() {
               <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-medium">الملحقات الخاصة بالموديل</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <input
+                  <div className="mt-3 flex flex-wrap items-start gap-2">
+                    <CatalogSuggestInput
                       value={accessoryName}
-                      onChange={(e) => setAccessoryName(e.target.value)}
+                      onChange={setAccessoryName}
+                      suggestions={accessorySuggestions}
+                      onPick={(item) => setAccessoryName(item.name)}
                       placeholder="اسم الملحق"
-                      className="min-w-[160px] flex-1 rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                      hint="اكتب لعرض أسماء مشابهة من موديلات أخرى"
                     />
                     <button
                       type="button"
@@ -522,13 +559,15 @@ function CatalogAdminContent() {
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
                         >
                           {editingAccessoryId === item.id ? (
-                            <>
-                              <input
+                            <div className="flex w-full flex-wrap items-start gap-2">
+                              <CatalogSuggestInput
                                 value={editingAccessoryName}
-                                onChange={(e) => setEditingAccessoryName(e.target.value)}
-                                className="min-w-[140px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                                onChange={setEditingAccessoryName}
+                                suggestions={editingAccessorySuggestions}
+                                onPick={(suggestion) => setEditingAccessoryName(suggestion.name)}
+                                placeholder="اسم الملحق"
                               />
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 pt-2">
                                 <button
                                   type="button"
                                   className="text-aroma-700"
@@ -558,7 +597,7 @@ function CatalogAdminContent() {
                                   إلغاء
                                 </button>
                               </div>
-                            </>
+                            </div>
                           ) : (
                             <>
                               <span>{item.name}</span>
@@ -596,12 +635,17 @@ function CatalogAdminContent() {
 
                 <div>
                   <h3 className="text-sm font-medium">قطع الغيار الخاصة بالموديل</h3>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                    <input
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1.2fr_1fr_auto]">
+                    <CatalogSuggestInput
                       value={spareName}
-                      onChange={(e) => setSpareName(e.target.value)}
+                      onChange={setSpareName}
+                      suggestions={spareSuggestions}
+                      onPick={(item) => {
+                        setSpareName(item.name);
+                        setSpareColor(item.color ?? "");
+                      }}
                       placeholder="اسم قطعة الغيار *"
-                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                      hint="اكتب لعرض قطع مشابهة من موديلات أخرى"
                     />
                     <input
                       value={spareColor}
@@ -637,12 +681,16 @@ function CatalogAdminContent() {
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
                         >
                           {editingSpareId === item.id ? (
-                            <div className="flex w-full flex-wrap items-center gap-2">
-                              <input
+                            <div className="flex w-full flex-wrap items-start gap-2">
+                              <CatalogSuggestInput
                                 value={editingSpareName}
-                                onChange={(e) => setEditingSpareName(e.target.value)}
+                                onChange={setEditingSpareName}
+                                suggestions={editingSpareSuggestions}
+                                onPick={(suggestion) => {
+                                  setEditingSpareName(suggestion.name);
+                                  setEditingSpareColor(suggestion.color ?? "");
+                                }}
                                 placeholder="الاسم *"
-                                className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
                               <input
                                 value={editingSpareColor}
@@ -650,7 +698,7 @@ function CatalogAdminContent() {
                                 placeholder="اللون (اختياري)"
                                 className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 pt-2">
                                 <button
                                   type="button"
                                   className="text-aroma-700"
