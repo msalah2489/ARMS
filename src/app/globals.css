@@ -35,26 +35,26 @@ html.dark ::selection {
 html.dark .bg-white,
 html.dark .bg-white\/80,
 html.dark .shadow-panel {
-  background-color: #16211b !important;
+  background-color: #1e2d25 !important;
   color: #fbf7f0;
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 html.dark .bg-sand-50,
 html.dark .bg-sand-100,
 html.dark .disabled\:bg-sand-50:disabled {
-  background-color: #1e2d25 !important;
+  background-color: #24352c !important;
   color: #fbf7f0;
 }
 
 html.dark .border-ink-900\/5,
 html.dark .border-ink-900\/10,
 html.dark .border-ink-900\/15 {
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 html.dark .border-dashed {
-  border-color: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 html.dark .text-ink-900 {
@@ -65,7 +65,7 @@ html.dark .text-ink-700,
 html.dark .text-ink-700\/70,
 html.dark .text-ink-700\/60,
 html.dark .text-ink-700\/50 {
-  color: rgba(251, 247, 240, 0.72) !important;
+  color: rgba(251, 247, 240, 0.78) !important;
 }
 
 html.dark .text-aroma-700 {
@@ -85,7 +85,7 @@ html.dark select,
 html.dark textarea {
   background-color: #0f1612 !important;
   color: #fbf7f0 !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
 }
 
 html.dark input::placeholder,
@@ -94,20 +94,53 @@ html.dark textarea::placeholder {
 }
 
 html.dark option {
-  background-color: #16211b;
+  background-color: #1e2d25;
   color: #fbf7f0;
 }
 
 html.dark input:disabled,
 html.dark select:disabled,
 html.dark textarea:disabled {
-  background-color: #1e2d25 !important;
+  background-color: #24352c !important;
   color: rgba(251, 247, 240, 0.65) !important;
 }
 
-/* Keep primary dark buttons readable */
+/* Preserve translucent white overlays used on dark sidebar surfaces */
+html.dark .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .bg-white\/15 {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+html.dark .bg-white\/20 {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/*
+ * Unstyled / ghost buttons: browsers may paint a light system face under
+ * color-scheme:dark while text stays light — force transparent chrome.
+ */
+html.dark button:not([class*="bg-"]) {
+  background-color: transparent !important;
+  background-image: none !important;
+  color: inherit;
+}
+
+/* Primary dark buttons stay high-contrast on dark surfaces */
 html.dark .bg-ink-900.text-white,
 html.dark button.bg-ink-900 {
   background-color: #3d6238 !important;
   color: #fbf7f0 !important;
+}
+
+/* Sidebar is always a dark surface — keep controls readable in both themes */
+aside.bg-ink-950 {
+  background-color: #0f1612;
+  color: #fbf7f0;
+}
+
+aside.bg-ink-950 button {
+  color: #fbf7f0;
 }

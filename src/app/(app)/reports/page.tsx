@@ -34,7 +34,7 @@ export default function ReportsPage() {
     return { requests: branchRequests.length, devices, urgent, customers };
   }, [branchRequests]);
 
-  if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+  if (!user) return <p className="text-sm text-ink-700/70 dark:text-sand-100/70">جاري التحميل…</p>;
 
   if (isBranchRole(user.role)) {
     return (
@@ -49,14 +49,17 @@ export default function ReportsPage() {
           <ReportCard label="طلبات عاجلة" value={branchReport.urgent} />
           <ReportCard label="عملاء مميزون" value={branchReport.customers} />
         </div>
-        <section className="mt-6 rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-          <h2 className="font-display text-xl">تفصيل الطلبات</h2>
-          <ul className="mt-4 space-y-2 text-sm">
+        <section className="mt-6 rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
+          <h2 className="font-display text-xl dark:text-sand-50">تفصيل الطلبات</h2>
+          <ul className="mt-4 space-y-2 text-sm dark:text-sand-100">
             {branchRequests.length === 0 ? (
-              <li className="text-ink-700/60">لا توجد بيانات تقارير بعد.</li>
+              <li className="text-ink-700/60 dark:text-sand-100/70">لا توجد بيانات تقارير بعد.</li>
             ) : (
               branchRequests.map((request) => (
-                <li key={request.id} className="rounded-xl border border-ink-900/10 px-3 py-2">
+                <li
+                  key={request.id}
+                  className="rounded-xl border border-ink-900/10 px-3 py-2 dark:border-white/10"
+                >
                   {request.requestNumber} — {request.contactName} — {request.devices.length} جهاز —{" "}
                   {request.priority === "urgent" ? "عاجل" : "عادي"}
                 </li>
@@ -74,20 +77,20 @@ export default function ReportsPage() {
     <div>
       <PageHeader title="التقارير" description="تقارير تشغيلية عامة." />
       {!stats ? (
-        <p className="text-sm text-ink-700/70">جاري التحميل…</p>
+        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">جاري التحميل…</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
-            <h2 className="font-display text-xl">حمل الخدمة</h2>
-            <ul className="mt-4 space-y-2 text-sm">
+          <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-800">
+            <h2 className="font-display text-xl dark:text-sand-50">حمل الخدمة</h2>
+            <ul className="mt-4 space-y-2 text-sm dark:text-sand-100">
               <li>طلبات مفتوحة: {stats.openRequests}</li>
               <li>مكتمل هذا الشهر: {stats.completedThisMonth}</li>
               <li>أجهزة تحت الصيانة: {stats.devicesUnderMaintenance}</li>
             </ul>
           </section>
-          <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
-            <h2 className="font-display text-xl">تنبيهات المخزون</h2>
-            <ul className="mt-4 space-y-2 text-sm">
+          <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-800">
+            <h2 className="font-display text-xl dark:text-sand-50">تنبيهات المخزون</h2>
+            <ul className="mt-4 space-y-2 text-sm dark:text-sand-100">
               {low.length === 0 ? (
                 <li>لا توجد قطع تحت الحد الأدنى.</li>
               ) : (
@@ -107,9 +110,9 @@ export default function ReportsPage() {
 
 function ReportCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-      <p className="text-sm text-ink-700/70">{label}</p>
-      <p className="mt-2 font-display text-4xl">{value}</p>
+    <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
+      <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{label}</p>
+      <p className="mt-2 font-display text-4xl dark:text-sand-50">{value}</p>
     </div>
   );
 }
