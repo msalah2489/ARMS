@@ -235,6 +235,15 @@ export type SpareInventoryBalance = {
   updatedAt: string;
 };
 
+export type SpareReceiveLine = {
+  modelId: string;
+  modelName: string;
+  partId: string;
+  partName: string;
+  color?: string;
+  quantity: number;
+};
+
 export type SpareReceiveReceipt = {
   id: string;
   receiptNumber: string;
@@ -242,12 +251,14 @@ export type SpareReceiveReceipt = {
   supplier: string;
   receiptPhotoName: string;
   receiptPhotoDataUrl: string;
-  modelId: string;
-  modelName: string;
-  partId: string;
-  partName: string;
+  lines: SpareReceiveLine[];
+  /** @deprecated legacy single-line receipts */
+  modelId?: string;
+  modelName?: string;
+  partId?: string;
+  partName?: string;
   color?: string;
-  quantity: number;
+  quantity?: number;
   receivedById: string;
   receivedByName: string;
   createdAt: string;

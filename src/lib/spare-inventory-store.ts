@@ -2,6 +2,7 @@ import { getModelById, getModels, getSparePartsForModel } from "@/lib/catalog-st
 import type {
   Profile,
   SpareInventoryBalance,
+  SpareReceiveLine,
   SpareReceiveReceipt,
   SpareStockMovement,
 } from "@/types/domain";
@@ -34,10 +35,30 @@ export function listInventoryBalances(): SpareInventoryBalance[] {
   );
 }
 
+function normalizeReceipt(receipt: SpareReceiveReceipt): SpareReceiveReceipt {
+  if (receipt.lines?.length) return receipt;
+  if (receipt.modelId && receipt.partId && receipt.quantity) {
+    return {
+      ...receipt,
+      lines: [
+        {
+          modelId: receipt.modelId,
+          modelName: receipt.modelName ?? "",
+          partId: receipt.partId,
+          partName: receipt.partName ?? "",
+          color: receipt.color,
+          quantity: receipt.quantity,
+        },
+      ],
+    };
+  }
+  return { ...receipt, lines: receipt.lines ?? [] };
+}
+
 export function listReceiveReceipts(): SpareReceiveReceipt[] {
-  return readJson<SpareReceiveReceipt[]>(RECEIPTS_KEY, []).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
+  return readJson<SpareReceiveReceipt[]>(RECEIPTS_KEY, [])
+    .map(normalizeReceipt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function listStockMovements(): SpareStockMovement[] {
@@ -98,27 +119,18 @@ function addMovement(movement: SpareStockMovement) {
 
 export function receiveSpareParts(input: {
   user: Profile;
-  modelId: string;
-  partId: string;
-  quantity: number;
   receiptNumber: string;
   receiptDate: string;
   supplier: string;
   receiptPhotoName: string;
   receiptPhotoDataUrl: string;
-}): { ok: true; receipt: SpareReceiveReceipt; balance: SpareInventoryBalance } | { ok: false; error: string } {
-  const model = getModelById(input.modelId);
-  if (!model) return { ok: false, error: "الموديل غير موجود." };
-
-  const part = getSparePartsForModel(input.modelId).find((item) => item.id === input.partId);
-  if (!part) return { ok: false, error: "قطعة الغيار غير مسجلة لهذا الموديل." };
-
+  lines: Array<{ modelId: string; partId: string; quantity: number }>;
+}): { ok: true; receipt: SpareReceiveReceipt } | { ok: false; error: string } {
   const receiptNumber = input.receiptNumber.trim();
   const receiptDate = input.receiptDate.trim();
   const supplier = input.supplier.trim();
   const receiptPhotoName = input.receiptPhotoName.trim();
   const receiptPhotoDataUrl = input.receiptPhotoDataUrl.trim();
-  const quantity = Number(input.quantity);
 
   if (!receiptNumber) return { ok: false, error: "رقم سند الاستلام إلزامي." };
   if (!receiptDate) return { ok: false, error: "تاريخ سند الاستلام إلزامي." };
@@ -126,8 +138,8 @@ export function receiveSpareParts(input: {
   if (!receiptPhotoName || !receiptPhotoDataUrl) {
     return { ok: false, error: "رفع صورة سند الاستلام إلزامي." };
   }
-  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
-    return { ok: false, error: "الكمية يجب أن تكون رقمًا صحيحًا أكبر من صفر." };
+  if (!input.lines.length) {
+    return { ok: false, error: "أضف قطعة غيار واحدة على الأقل للسند." };
   }
 
   const duplicate = listReceiveReceipts().some(
@@ -135,17 +147,76 @@ export function receiveSpareParts(input: {
   );
   if (duplicate) return { ok: false, error: "رقم سند الاستلام مستخدم مسبقًا." };
 
-  const balanceResult = upsertBalance({
-    modelId: model.id,
-    modelName: model.name,
-    partId: part.id,
-    partName: part.name,
-    color: part.color,
-    delta: quantity,
-  });
-  if (!balanceResult.ok) return balanceResult;
+  const resolvedLines: SpareReceiveLine[] = [];
+  const seen = new Set<string>();
+
+  for (let index = 0; index < input.lines.length; index += 1) {
+    const row = input.lines[index];
+    const rowNo = index + 1;
+    if (!row.modelId) return { ok: false, error: `اختر الموديل في الصف ${rowNo}.` };
+    if (!row.partId) return { ok: false, error: `اختر قطعة الغيار في الصف ${rowNo}.` };
+
+    const quantity = Number(row.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
+      return { ok: false, error: `الكمية في الصف ${rowNo} يجب أن تكون رقمًا صحيحًا أكبر من صفر.` };
+    }
+
+    const model = getModelById(row.modelId);
+    if (!model) return { ok: false, error: `الموديل غير موجود في الصف ${rowNo}.` };
+
+    const part = getSparePartsForModel(row.modelId).find((item) => item.id === row.partId);
+    if (!part) {
+      return { ok: false, error: `قطعة الغيار غير مسجلة لهذا الموديل في الصف ${rowNo}.` };
+    }
+
+    const key = balanceIdFor(model.id, part.id);
+    if (seen.has(key)) {
+      return {
+        ok: false,
+        error: `تم تكرار «${part.name}» لنفس الموديل في أكثر من صف. اجمع الكميات في صف واحد.`,
+      };
+    }
+    seen.add(key);
+
+    resolvedLines.push({
+      modelId: model.id,
+      modelName: model.name,
+      partId: part.id,
+      partName: part.name,
+      color: part.color,
+      quantity,
+    });
+  }
 
   const now = new Date().toISOString();
+  for (const line of resolvedLines) {
+    const balanceResult = upsertBalance({
+      modelId: line.modelId,
+      modelName: line.modelName,
+      partId: line.partId,
+      partName: line.partName,
+      color: line.color,
+      delta: line.quantity,
+    });
+    if (!balanceResult.ok) return balanceResult;
+
+    addMovement({
+      id: crypto.randomUUID(),
+      type: "receive",
+      balanceId: balanceResult.balance.id,
+      modelId: line.modelId,
+      modelName: line.modelName,
+      partId: line.partId,
+      partName: line.partName,
+      color: line.color,
+      quantity: line.quantity,
+      reference: receiptNumber,
+      actorId: input.user.id,
+      actorName: input.user.fullName,
+      createdAt: now,
+    });
+  }
+
   const receipt: SpareReceiveReceipt = {
     id: crypto.randomUUID(),
     receiptNumber,
@@ -153,35 +224,14 @@ export function receiveSpareParts(input: {
     supplier,
     receiptPhotoName,
     receiptPhotoDataUrl,
-    modelId: model.id,
-    modelName: model.name,
-    partId: part.id,
-    partName: part.name,
-    color: part.color,
-    quantity,
+    lines: resolvedLines,
     receivedById: input.user.id,
     receivedByName: input.user.fullName,
     createdAt: now,
   };
 
   writeJson(RECEIPTS_KEY, [receipt, ...listReceiveReceipts()]);
-  addMovement({
-    id: crypto.randomUUID(),
-    type: "receive",
-    balanceId: balanceResult.balance.id,
-    modelId: model.id,
-    modelName: model.name,
-    partId: part.id,
-    partName: part.name,
-    color: part.color,
-    quantity,
-    reference: receiptNumber,
-    actorId: input.user.id,
-    actorName: input.user.fullName,
-    createdAt: now,
-  });
-
-  return { ok: true, receipt, balance: balanceResult.balance };
+  return { ok: true, receipt };
 }
 
 /** Deduct parts used during technician maintenance. */
@@ -252,4 +302,8 @@ export function listModelsWithSpareParts() {
 export function partLabel(part: { name?: string; partName?: string; color?: string }) {
   const name = part.name ?? part.partName ?? "";
   return part.color ? `${name} · ${part.color}` : name;
+}
+
+export function receiptTotalQty(receipt: SpareReceiveReceipt) {
+  return (receipt.lines ?? []).reduce((sum, line) => sum + line.quantity, 0);
 }
