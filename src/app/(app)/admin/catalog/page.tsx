@@ -42,6 +42,7 @@ function CatalogAdminContent() {
   const [modelBrandId, setModelBrandId] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
   const [accessoryName, setAccessoryName] = useState("");
+  const [accessoryColor, setAccessoryColor] = useState("");
   const [spareName, setSpareName] = useState("");
   const [spareColor, setSpareColor] = useState("");
 
@@ -55,6 +56,7 @@ function CatalogAdminContent() {
   const [editModelBrandId, setEditModelBrandId] = useState("");
   const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(null);
   const [editingAccessoryName, setEditingAccessoryName] = useState("");
+  const [editingAccessoryColor, setEditingAccessoryColor] = useState("");
   const [editingSpareId, setEditingSpareId] = useState<string | null>(null);
   const [editingSpareName, setEditingSpareName] = useState("");
   const [editingSpareColor, setEditingSpareColor] = useState("");
@@ -74,18 +76,18 @@ function CatalogAdminContent() {
 
   const accessorySuggestions = useMemo(
     () =>
-      suggestAccessoryNames(accessoryName, {
+      suggestAccessoryNames(accessoryName || accessoryColor, {
         excludeModelId: selectedModelId || undefined,
       }),
-    [accessoryName, selectedModelId, catalog],
+    [accessoryName, accessoryColor, selectedModelId, catalog],
   );
 
   const editingAccessorySuggestions = useMemo(
     () =>
-      suggestAccessoryNames(editingAccessoryName, {
+      suggestAccessoryNames(editingAccessoryName || editingAccessoryColor, {
         excludeModelId: selectedModelId || undefined,
       }),
-    [editingAccessoryName, selectedModelId, catalog],
+    [editingAccessoryName, editingAccessoryColor, selectedModelId, catalog],
   );
 
   const spareSuggestions = useMemo(
@@ -523,14 +525,23 @@ function CatalogAdminContent() {
               <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-medium">الملحقات الخاصة بالموديل</h3>
-                  <div className="mt-3 flex flex-wrap items-start gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1.2fr_1fr_auto]">
                     <CatalogSuggestInput
                       value={accessoryName}
                       onChange={setAccessoryName}
                       suggestions={accessorySuggestions}
-                      onPick={(item) => setAccessoryName(item.name)}
-                      placeholder="اسم الملحق"
+                      onPick={(item) => {
+                        setAccessoryName(item.name);
+                        setAccessoryColor(item.color ?? "");
+                      }}
+                      placeholder="اسم الملحق *"
                       hint="اكتب لعرض أسماء مشابهة من موديلات أخرى"
+                    />
+                    <input
+                      value={accessoryColor}
+                      onChange={(e) => setAccessoryColor(e.target.value)}
+                      placeholder="اللون (اختياري)"
+                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
                     />
                     <button
                       type="button"
@@ -538,11 +549,13 @@ function CatalogAdminContent() {
                       onClick={() => {
                         if (
                           run(
-                            () => addModelAccessory(selectedModel.id, accessoryName),
+                            () =>
+                              addModelAccessory(selectedModel.id, accessoryName, accessoryColor),
                             "تمت إضافة الملحق.",
                           )
                         ) {
                           setAccessoryName("");
+                          setAccessoryColor("");
                         }
                       }}
                     >
@@ -564,8 +577,17 @@ function CatalogAdminContent() {
                                 value={editingAccessoryName}
                                 onChange={setEditingAccessoryName}
                                 suggestions={editingAccessorySuggestions}
-                                onPick={(suggestion) => setEditingAccessoryName(suggestion.name)}
-                                placeholder="اسم الملحق"
+                                onPick={(suggestion) => {
+                                  setEditingAccessoryName(suggestion.name);
+                                  setEditingAccessoryColor(suggestion.color ?? "");
+                                }}
+                                placeholder="اسم الملحق *"
+                              />
+                              <input
+                                value={editingAccessoryColor}
+                                onChange={(e) => setEditingAccessoryColor(e.target.value)}
+                                placeholder="اللون (اختياري)"
+                                className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
                               <div className="flex gap-2 pt-2">
                                 <button
@@ -579,6 +601,7 @@ function CatalogAdminContent() {
                                             selectedModel.id,
                                             item.id,
                                             editingAccessoryName,
+                                            editingAccessoryColor,
                                           ),
                                         "تم تعديل الملحق.",
                                       )
@@ -600,7 +623,12 @@ function CatalogAdminContent() {
                             </div>
                           ) : (
                             <>
-                              <span>{item.name}</span>
+                              <span>
+                                {item.name}
+                                {item.color ? (
+                                  <span className="text-ink-700/60"> · لون: {item.color}</span>
+                                ) : null}
+                              </span>
                               <div className="flex gap-3">
                                 <button
                                   type="button"
@@ -608,6 +636,7 @@ function CatalogAdminContent() {
                                   onClick={() => {
                                     setEditingAccessoryId(item.id);
                                     setEditingAccessoryName(item.name);
+                                    setEditingAccessoryColor(item.color ?? "");
                                   }}
                                 >
                                   تعديل

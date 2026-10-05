@@ -3,7 +3,7 @@ import {
   DEVICE_TYPES_SEED,
   MODELS_SEED,
 } from "@/lib/branch-catalog";
-import type { CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
+import type { AccessoryItem, CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
 
 const CATALOG_KEY = "arms_device_catalog_v1";
 
@@ -27,19 +27,26 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeColoredItem<T extends { id: string; name: string; color?: string }>(item: T): T {
+  const color = item.color?.trim();
+  const next = { ...item, name: item.name };
+  if (color) next.color = color;
+  else delete next.color;
+  return next;
+}
+
 function normalizeSparePart(part: SparePartItem): SparePartItem {
-  const color = part.color?.trim();
-  return {
-    id: part.id,
-    name: part.name,
-    ...(color ? { color } : {}),
-  };
+  return normalizeColoredItem(part);
+}
+
+function normalizeAccessory(accessory: AccessoryItem): AccessoryItem {
+  return normalizeColoredItem(accessory);
 }
 
 function normalizeModel(model: ModelItem): ModelItem {
   return {
     ...model,
-    accessories: model.accessories ?? [],
+    accessories: (model.accessories ?? []).map(normalizeAccessory),
     spareParts: (model.spareParts ?? []).map(normalizeSparePart),
   };
 }
@@ -239,16 +246,28 @@ export function updateModel(input: {
 export function addModelAccessory(
   modelId: string,
   name: string,
+  color?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  if (model.accessories.some((item) => item.name === trimmed)) {
+  if (
+    model.accessories.some(
+      (item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""),
+    )
+  ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
   }
-  model.accessories.push({ id: crypto.randomUUID(), name: trimmed });
+  model.accessories.push(
+    normalizeAccessory({
+      id: crypto.randomUUID(),
+      name: trimmed,
+      color: colorTrimmed,
+    }),
+  );
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -257,18 +276,29 @@ export function updateModelAccessory(
   modelId: string,
   accessoryId: string,
   name: string,
+  color?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
   const accessory = model.accessories.find((item) => item.id === accessoryId);
   if (!accessory) return { ok: false, error: "الملحق غير موجود." };
-  if (model.accessories.some((item) => item.id !== accessoryId && item.name === trimmed)) {
+  if (
+    model.accessories.some(
+      (item) =>
+        item.id !== accessoryId &&
+        item.name === trimmed &&
+        (item.color ?? "") === (colorTrimmed ?? ""),
+    )
+  ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
   }
   accessory.name = trimmed;
+  if (colorTrimmed) accessory.color = colorTrimmed;
+  else delete accessory.color;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -370,7 +400,7 @@ function matchesQuery(name: string, query: string) {
   return name.toLowerCase().includes(q);
 }
 
-/** Existing accessory names across models — to unify naming while typing. */
+/** Existing accessory names (and optional color) across models. */
 export function suggestAccessoryNames(
   query: string,
   options?: { excludeModelId?: string; limit?: number },
@@ -381,8 +411,13 @@ export function suggestAccessoryNames(
   for (const model of catalog.models) {
     if (options?.excludeModelId && model.id === options.excludeModelId) continue;
     for (const accessory of model.accessories) {
-      if (!matchesQuery(accessory.name, query)) continue;
-      const key = accessory.name.trim().toLowerCase();
+      if (
+        !matchesQuery(accessory.name, query) &&
+        !(accessory.color && matchesQuery(accessory.color, query))
+      ) {
+        continue;
+      }
+      const key = `${accessory.name.trim().toLowerCase()}::${(accessory.color ?? "").trim().toLowerCase()}`;
       const existing = map.get(key);
       if (existing) {
         existing.count += 1;
@@ -390,6 +425,7 @@ export function suggestAccessoryNames(
       } else {
         map.set(key, {
           name: accessory.name,
+          color: accessory.color,
           modelNames: [model.name],
           count: 1,
         });

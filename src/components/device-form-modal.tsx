@@ -94,7 +94,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
       accessoryIds,
       accessoryNames: (model?.accessories ?? [])
         .filter((item) => accessoryIds.includes(item.id))
-        .map((item) => item.name),
+        .map((item) => (item.color ? `${item.name} · ${item.color}` : item.name)),
       extraDetails: extraDetails.trim(),
       devicePhotoNames,
       receiptNumber: receiptNumber.trim(),
@@ -226,6 +226,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                     }}
                   />
                   {item.name}
+                  {item.color ? <span className="text-ink-700/60">· لون: {item.color}</span> : null}
                 </label>
               ))
             )}

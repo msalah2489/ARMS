@@ -200,10 +200,14 @@ export type SparePartItem = CatalogItem & {
   /** Optional color for the spare part */
   color?: string;
 };
+export type AccessoryItem = CatalogItem & {
+  /** Optional color for the accessory */
+  color?: string;
+};
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
-  accessories: CatalogItem[];
+  accessories: AccessoryItem[];
   spareParts: SparePartItem[];
 };
 
