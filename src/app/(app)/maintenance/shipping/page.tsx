@@ -296,8 +296,6 @@ function MaintenanceShippingContent() {
         </button>
       </section>
 
-      </section>
-
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
         <h2 className="font-display text-xl">
           قرارات مدير الصيانة ({pendingManager.length})

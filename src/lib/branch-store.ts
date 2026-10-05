@@ -175,6 +175,10 @@ export function listMaintenanceRequests(opsBranchId?: string | null) {
   return all.filter((item) => item.opsBranchId === opsBranchId);
 }
 
+export function getMaintenanceRequestById(id: string) {
+  return listMaintenanceRequests().find((item) => item.id === id) ?? null;
+}
+
 export function saveMaintenanceRequest(input: {
   user: Profile;
   priority: "normal" | "urgent";

@@ -56,7 +56,7 @@ export default function ServiceRequestsPage() {
           rows={requests.map((request) => [
             <Link
               key="n"
-              href={`/service-requests/${request.id}`}
+              href={`/service-requests/detail/?id=${encodeURIComponent(request.id)}`}
               className="font-medium text-aroma-700 dark:text-aroma-200"
             >
               {request.requestNumber}

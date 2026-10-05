@@ -1,7 +1,6 @@
 import { isDemoMode } from "@/lib/auth";
 import {
   demoSpareParts,
-  demoStats,
 } from "@/lib/demo-data";
 import {
   localizedDemoBranches,
@@ -9,7 +8,9 @@ import {
   localizedDemoDevices,
   localizedDemoRequests,
 } from "@/lib/i18n/demo-locale";
+import { listOpsDevices, listOpsServiceRequests } from "@/lib/ops-data";
 import { getStoredLocale, type AppLocale } from "@/lib/preferences";
+import { listInventoryBalances } from "@/lib/spare-inventory-store";
 import { createClient } from "@/lib/supabase/client";
 import type {
   Branch,
@@ -25,6 +26,17 @@ import type {
 
 function resolveLocale(locale?: AppLocale): AppLocale {
   return locale ?? getStoredLocale();
+}
+
+/** Prefer the same local maintenance data created by the branch account. */
+function clientOpsRequests(): ServiceRequest[] | null {
+  if (typeof window === "undefined") return null;
+  return listOpsServiceRequests();
+}
+
+function clientOpsDevices(): Device[] | null {
+  if (typeof window === "undefined") return null;
+  return listOpsDevices();
 }
 
 export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
@@ -77,6 +89,9 @@ export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
 }
 
 export async function getDevices(locale?: AppLocale): Promise<Device[]> {
+  const ops = clientOpsDevices();
+  if (ops) return ops;
+
   if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
 
   try {
@@ -106,6 +121,9 @@ export async function getDevices(locale?: AppLocale): Promise<Device[]> {
 }
 
 export async function getServiceRequests(locale?: AppLocale): Promise<ServiceRequest[]> {
+  const ops = clientOpsRequests();
+  if (ops) return ops;
+
   if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
 
   try {
@@ -160,15 +178,24 @@ export async function getSpareParts(): Promise<SparePart[]> {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  if (isDemoMode()) return demoStats;
+  const requests = await getServiceRequests();
+  const devices = await getDevices();
+  const parts = await getSpareParts();
+  const inventory =
+    typeof window !== "undefined"
+      ? listInventoryBalances()
+      : [];
 
-  const [requests, devices, parts] = await Promise.all([
-    getServiceRequests(),
-    getDevices(),
-    getSpareParts(),
+  const openStatuses = new Set([
+    "new",
+    "in_review",
+    "assigned",
+    "in_progress",
+    "waiting_parts",
+    "dispatched",
+    "at_service_center",
+    "testing",
   ]);
-
-  const openStatuses = new Set(["new", "in_review", "assigned", "in_progress", "waiting_parts", "dispatched", "at_service_center", "testing"]);
   const month = new Date().toISOString().slice(0, 7);
 
   return {
@@ -177,7 +204,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     dispatchedDevices: devices.filter((item) =>
       ["sent_to_service_center", "under_service_center_maintenance"].includes(item.status),
     ).length,
-    lowStockParts: parts.filter((item) => item.stockQuantity <= item.minimumStock).length,
+    lowStockParts:
+      inventory.length > 0
+        ? inventory.filter((item) => item.quantity <= 2).length
+        : parts.filter((item) => item.stockQuantity <= item.minimumStock).length,
     activeDevices: devices.filter((item) => item.status === "active").length,
     completedThisMonth: requests.filter(
       (item) =>

@@ -183,7 +183,7 @@ export default function DashboardPage() {
         {requests.map((request) => (
           <Link
             key={request.id}
-            href={`/service-requests/${request.id}`}
+            href={`/service-requests/detail/?id=${encodeURIComponent(request.id)}`}
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-900/10 bg-white px-4 py-4 shadow-panel hover:border-aroma-400"
           >
             <div>

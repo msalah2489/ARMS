@@ -40,7 +40,7 @@ export default function DevicesPage() {
           rows={devices.map((device) => [
             <Link
               key="c"
-              href={`/devices/${device.id}`}
+              href={`/devices/detail/?id=${encodeURIComponent(device.id)}`}
               className="font-medium text-aroma-700 dark:text-aroma-200"
             >
               {device.deviceCode}
