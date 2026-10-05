@@ -196,11 +196,15 @@ export type DashboardStats = {
 };
 
 export type CatalogItem = { id: string; name: string };
+export type SparePartItem = CatalogItem & {
+  /** Optional color for the spare part */
+  color?: string;
+};
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
   accessories: CatalogItem[];
-  spareParts: CatalogItem[];
+  spareParts: SparePartItem[];
 };
 
 export type DraftRequestDevice = {
@@ -262,7 +266,7 @@ export type TechnicianWorkRecord = {
   faultCause?: string;
   actionTaken?: string;
   actionOther?: string;
-  sparePartsUsed?: Array<{ partId: string; partName: string; qty: number }>;
+  sparePartsUsed?: Array<{ partId: string; partName: string; qty: number; color?: string }>;
   returnedAccessories?: Array<{ accessoryId: string; accessoryName: string; returned: boolean; notReturnedReason?: string }>;
   outcome?: MaintenanceOutcome;
   holdReason?: HoldReason;

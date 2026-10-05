@@ -40,6 +40,7 @@ function CatalogAdminContent() {
   const [selectedModelId, setSelectedModelId] = useState("");
   const [accessoryName, setAccessoryName] = useState("");
   const [spareName, setSpareName] = useState("");
+  const [spareColor, setSpareColor] = useState("");
 
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [editingTypeName, setEditingTypeName] = useState("");
@@ -53,6 +54,7 @@ function CatalogAdminContent() {
   const [editingAccessoryName, setEditingAccessoryName] = useState("");
   const [editingSpareId, setEditingSpareId] = useState<string | null>(null);
   const [editingSpareName, setEditingSpareName] = useState("");
+  const [editingSpareColor, setEditingSpareColor] = useState("");
 
   function refresh() {
     setCatalog(getCatalog());
@@ -594,12 +596,18 @@ function CatalogAdminContent() {
 
                 <div>
                   <h3 className="text-sm font-medium">قطع الغيار الخاصة بالموديل</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                     <input
                       value={spareName}
                       onChange={(e) => setSpareName(e.target.value)}
-                      placeholder="اسم قطعة الغيار"
-                      className="min-w-[160px] flex-1 rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                      placeholder="اسم قطعة الغيار *"
+                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                    />
+                    <input
+                      value={spareColor}
+                      onChange={(e) => setSpareColor(e.target.value)}
+                      placeholder="اللون (اختياري)"
+                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
                     />
                     <button
                       type="button"
@@ -607,11 +615,12 @@ function CatalogAdminContent() {
                       onClick={() => {
                         if (
                           run(
-                            () => addModelSparePart(selectedModel.id, spareName),
+                            () => addModelSparePart(selectedModel.id, spareName, spareColor),
                             "تمت إضافة قطعة الغيار.",
                           )
                         ) {
                           setSpareName("");
+                          setSpareColor("");
                         }
                       }}
                     >
@@ -628,11 +637,18 @@ function CatalogAdminContent() {
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
                         >
                           {editingSpareId === item.id ? (
-                            <>
+                            <div className="flex w-full flex-wrap items-center gap-2">
                               <input
                                 value={editingSpareName}
                                 onChange={(e) => setEditingSpareName(e.target.value)}
-                                className="min-w-[140px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                                placeholder="الاسم *"
+                                className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
+                              />
+                              <input
+                                value={editingSpareColor}
+                                onChange={(e) => setEditingSpareColor(e.target.value)}
+                                placeholder="اللون (اختياري)"
+                                className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
                               <div className="flex gap-2">
                                 <button
@@ -646,6 +662,7 @@ function CatalogAdminContent() {
                                             selectedModel.id,
                                             item.id,
                                             editingSpareName,
+                                            editingSpareColor,
                                           ),
                                         "تم تعديل قطعة الغيار.",
                                       )
@@ -664,10 +681,15 @@ function CatalogAdminContent() {
                                   إلغاء
                                 </button>
                               </div>
-                            </>
+                            </div>
                           ) : (
                             <>
-                              <span>{item.name}</span>
+                              <span>
+                                {item.name}
+                                {item.color ? (
+                                  <span className="text-ink-700/60"> · لون: {item.color}</span>
+                                ) : null}
+                              </span>
                               <div className="flex gap-3">
                                 <button
                                   type="button"
@@ -675,6 +697,7 @@ function CatalogAdminContent() {
                                   onClick={() => {
                                     setEditingSpareId(item.id);
                                     setEditingSpareName(item.name);
+                                    setEditingSpareColor(item.color ?? "");
                                   }}
                                 >
                                   تعديل

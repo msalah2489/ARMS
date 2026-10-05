@@ -257,7 +257,12 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
               <div className="mt-2 space-y-2">
                 {spareParts.map((part) => (
                   <div key={part.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span>{part.name}</span>
+                    <span>
+                      {part.name}
+                      {part.color ? (
+                        <span className="text-ink-700/60"> · لون: {part.color}</span>
+                      ) : null}
+                    </span>
                     <input
                       type="number"
                       min={0}
@@ -416,6 +421,7 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
                     partId: part.id,
                     partName: part.name,
                     qty: spareQty[part.id] ?? 0,
+                    color: part.color,
                   })),
                 returnedAccessories: item.device.accessoryIds.map((id, index) => ({
                   accessoryId: id,

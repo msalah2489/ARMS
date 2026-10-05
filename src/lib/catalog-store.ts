@@ -3,7 +3,7 @@ import {
   DEVICE_TYPES_SEED,
   MODELS_SEED,
 } from "@/lib/branch-catalog";
-import type { CatalogItem, ModelItem } from "@/types/domain";
+import type { CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
 
 const CATALOG_KEY = "arms_device_catalog_v1";
 
@@ -27,11 +27,20 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeSparePart(part: SparePartItem): SparePartItem {
+  const color = part.color?.trim();
+  return {
+    id: part.id,
+    name: part.name,
+    ...(color ? { color } : {}),
+  };
+}
+
 function normalizeModel(model: ModelItem): ModelItem {
   return {
     ...model,
     accessories: model.accessories ?? [],
-    spareParts: model.spareParts ?? [],
+    spareParts: (model.spareParts ?? []).map(normalizeSparePart),
   };
 }
 
@@ -279,16 +288,24 @@ export function deleteModelAccessory(
 export function addModelSparePart(
   modelId: string,
   name: string,
+  color?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  if (model.spareParts.some((item) => item.name === trimmed)) {
+  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""))) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
-  model.spareParts.push({ id: crypto.randomUUID(), name: trimmed });
+  model.spareParts.push(
+    normalizeSparePart({
+      id: crypto.randomUUID(),
+      name: trimmed,
+      color: colorTrimmed,
+    }),
+  );
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -297,18 +314,29 @@ export function updateModelSparePart(
   modelId: string,
   partId: string,
   name: string,
+  color?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
   const part = model.spareParts.find((item) => item.id === partId);
   if (!part) return { ok: false, error: "قطعة الغيار غير موجودة." };
-  if (model.spareParts.some((item) => item.id !== partId && item.name === trimmed)) {
+  if (
+    model.spareParts.some(
+      (item) =>
+        item.id !== partId &&
+        item.name === trimmed &&
+        (item.color ?? "") === (colorTrimmed ?? ""),
+    )
+  ) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   part.name = trimmed;
+  if (colorTrimmed) part.color = colorTrimmed;
+  else delete part.color;
   saveCatalog(catalog);
   return { ok: true };
 }

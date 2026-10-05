@@ -122,7 +122,10 @@ export default function ScanPage() {
                           <p>
                             قطع الغيار:{" "}
                             {work.sparePartsUsed
-                              .map((part) => `${part.partName} × ${part.qty}`)
+                              .map(
+                                (part) =>
+                                  `${part.partName}${part.color ? ` (${part.color})` : ""} × ${part.qty}`,
+                              )
                               .join("، ")}
                           </p>
                         ) : null}
