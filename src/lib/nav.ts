@@ -1,9 +1,12 @@
 import type { AppRole } from "@/types/domain";
+import { normalizeRole } from "@/lib/auth";
 import {
   ClipboardList,
   Cpu,
+  FilePlus2,
   LayoutDashboard,
   Package,
+  PackageCheck,
   QrCode,
   Settings,
   Store,
@@ -23,84 +26,79 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "الرئيسية",
     icon: LayoutDashboard,
-    roles: [
-      "manager",
-      "supervisor",
-      "technician",
-      "branch_employee",
-      "service_center_employee",
-    ],
+    roles: ["branch", "branch_employee", "system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor", "technician", "mobile_technician"],
   },
   {
-    href: "/service-requests",
-    label: "Service requests",
-    icon: ClipboardList,
-    roles: [
-      "manager",
-      "supervisor",
-      "technician",
-      "branch_employee",
-      "service_center_employee",
-    ],
+    href: "/service-requests/new",
+    label: "إنشاء طلب",
+    icon: FilePlus2,
+    roles: ["branch", "branch_employee", "system_admin", "manager"],
   },
   {
-    href: "/devices",
-    label: "Devices",
-    icon: Cpu,
-    roles: [
-      "manager",
-      "supervisor",
-      "technician",
-      "branch_employee",
-      "service_center_employee",
-    ],
+    href: "/branch/receiving",
+    label: "استلام الصيانة",
+    icon: PackageCheck,
+    roles: ["branch", "branch_employee", "system_admin", "manager"],
+  },
+  {
+    href: "/branch/shipping",
+    label: "شحن الصيانة",
+    icon: Truck,
+    roles: ["branch", "branch_employee", "maintenance_manager", "system_admin", "manager"],
   },
   {
     href: "/scan",
-    label: "Scan device",
+    label: "سكان الجهاز",
     icon: QrCode,
-    roles: ["technician", "branch_employee", "service_center_employee"],
-  },
-  {
-    href: "/customers",
-    label: "Customers",
-    icon: Users,
-    roles: ["manager", "supervisor", "branch_employee"],
-  },
-  {
-    href: "/branches",
-    label: "Branches",
-    icon: Store,
-    roles: ["manager", "supervisor", "branch_employee"],
-  },
-  {
-    href: "/movements",
-    label: "Device movements",
-    icon: Truck,
-    roles: ["manager", "supervisor", "technician", "service_center_employee"],
-  },
-  {
-    href: "/spare-parts",
-    label: "Spare parts",
-    icon: Package,
-    roles: ["manager", "supervisor", "technician"],
+    roles: ["branch", "branch_employee", "technician", "mobile_technician", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/reports",
-    label: "Reports",
+    label: "التقارير",
     icon: Wrench,
-    roles: ["manager", "supervisor"],
+    roles: ["branch", "branch_employee", "system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+  },
+  {
+    href: "/service-requests",
+    label: "طلبات الصيانة",
+    icon: ClipboardList,
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor", "technician", "mobile_technician"],
+  },
+  {
+    href: "/devices",
+    label: "الأجهزة",
+    icon: Cpu,
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor", "technician"],
+  },
+  {
+    href: "/customers",
+    label: "العملاء",
+    icon: Users,
+    roles: ["system_admin", "manager", "maintenance_manager"],
+  },
+  {
+    href: "/branches",
+    label: "الفروع",
+    icon: Store,
+    roles: ["system_admin", "manager", "maintenance_manager"],
+  },
+  {
+    href: "/spare-parts",
+    label: "قطع الغيار",
+    icon: Package,
+    roles: ["system_admin", "manager", "maintenance_manager", "technician"],
   },
   {
     href: "/settings",
-    label: "Configuration",
+    label: "إعدادات النظام",
     icon: Settings,
-    roles: ["manager"],
+    roles: ["system_admin", "manager"],
   },
 ];
 
 export function navForRole(role: AppRole) {
-  return NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const normalized = normalizeRole(role);
+  return NAV_ITEMS.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));
 }

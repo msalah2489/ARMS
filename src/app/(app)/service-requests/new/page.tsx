@@ -1,42 +1,260 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { DeviceFormModal } from "@/components/device-form-modal";
 import { PageHeader } from "@/components/page-header";
+import { EXTERNAL_CONDITION_LABELS, generateRequestNumber, isValidSaudiMobile } from "@/lib/branch-catalog";
+import {
+  findCustomersByMobile,
+  findCustomersByName,
+  saveMaintenanceRequest,
+} from "@/lib/branch-store";
+import { readSession } from "@/lib/session";
+import type { BranchPriority, DraftRequestDevice, Profile } from "@/types/domain";
 
 export default function NewServiceRequestPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<Profile | null>(null);
+  const [requestNumber, setRequestNumber] = useState("");
+  const [priority, setPriority] = useState<BranchPriority>("normal");
+  const [mobile, setMobile] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [purchaseInvoice, setPurchaseInvoice] = useState("");
+  const [generalNotes, setGeneralNotes] = useState("");
+  const [devices, setDevices] = useState<DraftRequestDevice[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const session = readSession();
+    setUser(session);
+    setRequestNumber(generateRequestNumber());
+  }, []);
+
+  const receivedAtLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("ar-SA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date()),
+    [],
+  );
+
+  if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+
   return (
     <div>
       <PageHeader
-        title="New service request"
-        description="Capture the customer, branch, device, and reported problem. Assignment happens after review."
+        title="إنشاء طلب صيانة"
+        description="تسجيل استلام أجهزة من العميل مع بيانات الطلب والأجهزة المرفقة."
       />
-      <form className="max-w-2xl space-y-4 rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
-        <label className="block text-sm">
-          Customer
-          <input className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2" defaultValue="Maison Aroma" />
-        </label>
-        <label className="block text-sm">
-          Branch
-          <input className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2" defaultValue="BCD Flagship" />
-        </label>
-        <label className="block text-sm">
-          Device serial number
-          <input className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2" placeholder="Scan or type SN" />
-        </label>
-        <label className="block text-sm">
-          Reported problem
-          <textarea className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2" rows={4} />
-        </label>
-        <label className="block text-sm">
-          Priority
-          <select className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2">
-            <option>normal</option>
-            <option>low</option>
-            <option>high</option>
-            <option>urgent</option>
-          </select>
-        </label>
-        <button type="button" className="rounded-full bg-ink-900 px-5 py-2 text-sm text-white">
-          Save request (demo)
-        </button>
-      </form>
+
+      <div className="space-y-6 rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm">
+            رقم الطلب
+            <input
+              value={requestNumber}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            تاريخ ووقت الاستلام
+            <input
+              value={receivedAtLabel}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            الفرع
+            <input
+              value={user.opsBranchName || "فرع الرياض"}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            مسؤول الفرع
+            <input
+              value={user.fullName}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            أولوية الطلب
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as BranchPriority)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            >
+              <option value="normal">عادي</option>
+              <option value="urgent">عاجل</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            رقم الجوال *
+            <input
+              value={mobile}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "").slice(0, 10);
+                setMobile(value);
+                const hits = findCustomersByMobile(value);
+                if (hits[0]) setContactName(hits[0].contactName);
+              }}
+              placeholder="05xxxxxxxx"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm md:col-span-2">
+            اسم جهة التواصل *
+            <input
+              value={contactName}
+              onChange={(e) => {
+                setContactName(e.target.value);
+                const hits = findCustomersByName(e.target.value);
+                if (hits[0] && !mobile) setMobile(hits[0].mobile);
+              }}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            رقم فاتورة الشراء
+            <input
+              value={purchaseInvoice}
+              onChange={(e) => setPurchaseInvoice(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            ملاحظات عامة على الطلب
+            <input
+              value={generalNotes}
+              onChange={(e) => setGeneralNotes(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-xl">الأجهزة المستلمة في هذا الطلب</h2>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="rounded-full bg-aroma-500 px-4 py-2 text-sm text-white hover:bg-aroma-600"
+            >
+              إضافة جهاز
+            </button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
+                  <th className="px-2 py-2 font-medium">كود الجهاز</th>
+                  <th className="px-2 py-2 font-medium">الموديل</th>
+                  <th className="px-2 py-2 font-medium">السيريال</th>
+                  <th className="px-2 py-2 font-medium">شكوى العميل</th>
+                  <th className="px-2 py-2 font-medium">الحالة الخارجية</th>
+                  <th className="px-2 py-2 font-medium">الملحقات</th>
+                  <th className="px-2 py-2 font-medium">صور</th>
+                  <th className="px-2 py-2 font-medium">الإجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-2 py-6 text-ink-700/60">
+                      لم تتم إضافة أجهزة بعد.
+                    </td>
+                  </tr>
+                ) : (
+                  devices.map((device) => (
+                    <tr key={device.localId} className="border-b border-ink-900/5">
+                      <td className="px-2 py-3 font-medium">{device.deviceCode}</td>
+                      <td className="px-2 py-3">{device.modelName}</td>
+                      <td className="px-2 py-3">{device.serialNumber || "—"}</td>
+                      <td className="px-2 py-3">{device.fault || "—"}</td>
+                      <td className="px-2 py-3">
+                        {EXTERNAL_CONDITION_LABELS[device.externalCondition]}
+                      </td>
+                      <td className="px-2 py-3">{device.accessoryNames.join("، ") || "—"}</td>
+                      <td className="px-2 py-3">
+                        {device.devicePhotoNames.length + (device.receiptPhotoName ? 1 : 0)}
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDevices((prev) => prev.filter((item) => item.localId !== device.localId))
+                          }
+                          className="text-rose-700"
+                        >
+                          حذف
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+        {success ? <p className="text-sm text-aroma-700">{success}</p> : null}
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+              if (!isValidSaudiMobile(mobile)) {
+                setError("رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.");
+                return;
+              }
+              if (!contactName.trim()) {
+                setError("اسم جهة التواصل إلزامي.");
+                return;
+              }
+              if (!devices.length) {
+                setError("أضف جهازًا واحدًا على الأقل قبل حفظ الطلب.");
+                return;
+              }
+              const saved = saveMaintenanceRequest({
+                user,
+                priority,
+                customerMobile: mobile,
+                contactName: contactName.trim(),
+                purchaseInvoice,
+                generalNotes,
+                devices,
+                requestNumber,
+              });
+              setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
+              setTimeout(() => router.push("/dashboard"), 700);
+            }}
+            className="rounded-full bg-ink-900 px-6 py-2.5 text-sm text-white"
+          >
+            حفظ الطلب
+          </button>
+        </div>
+      </div>
+
+      <DeviceFormModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={(device, addAnother) => {
+          setDevices((prev) => [...prev, device]);
+          setModalOpen(addAnother);
+        }}
+      />
     </div>
   );
 }

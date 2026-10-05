@@ -1,4 +1,4 @@
-import { DEMO_USERS, isDemoMode } from "@/lib/auth";
+import { DEMO_USERS, isDemoMode, normalizeRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole, Profile } from "@/types/domain";
 
@@ -8,7 +8,9 @@ export function readSession(): Profile | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Profile) : null;
+    if (!raw) return null;
+    const profile = JSON.parse(raw) as Profile;
+    return { ...profile, role: normalizeRole(profile.role) };
   } catch {
     return null;
   }
@@ -27,13 +29,15 @@ export async function signIn(email: string, password: string) {
     const user = DEMO_USERS.find(
       (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
     );
-    if (!user) return { error: "Invalid email or password." };
+    if (!user) return { error: "البريد أو كلمة المرور غير صحيحة." };
 
     writeSession({
       id: user.role,
       fullName: user.fullName,
-      role: user.role as AppRole,
+      role: normalizeRole(user.role),
       email: user.email,
+      opsBranchId: user.opsBranchId ?? null,
+      opsBranchName: user.opsBranchName ?? null,
     });
     return { error: null };
   }
@@ -41,7 +45,7 @@ export async function signIn(email: string, password: string) {
   const supabase = createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
-    return { error: error?.message ?? "Invalid email or password." };
+    return { error: error?.message ?? "البريد أو كلمة المرور غير صحيحة." };
   }
 
   const { data: profile } = await supabase
@@ -50,11 +54,14 @@ export async function signIn(email: string, password: string) {
     .eq("id", data.user.id)
     .maybeSingle();
 
+  const role = normalizeRole((profile?.role as AppRole | undefined) ?? "branch");
   writeSession({
     id: data.user.id,
-    fullName: profile?.full_name ?? data.user.email ?? "User",
-    role: (profile?.role as AppRole | undefined) ?? "branch_employee",
+    fullName: profile?.full_name ?? data.user.email ?? "مستخدم",
+    role,
     email: data.user.email ?? email,
+    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    opsBranchName: role === "branch" || role === "system_admin" ? "فرع الرياض" : null,
   });
 
   return { error: null };

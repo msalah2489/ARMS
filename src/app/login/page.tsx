@@ -8,7 +8,7 @@ import { signIn } from "@/lib/session";
 export default function LoginPage() {
   const router = useRouter();
   const demo = isDemoMode();
-  const [email, setEmail] = useState(demo ? DEMO_USERS[0].email : "manager@arms.app");
+  const [email, setEmail] = useState(demo ? "branch@arms.local" : "manager@arms.app");
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
@@ -17,19 +17,18 @@ export default function LoginPage() {
       <section className="hidden bg-ink-950 p-12 text-sand-50 md:flex md:flex-col md:justify-between">
         <div>
           <p className="font-display text-3xl">ARMS</p>
-          <p className="mt-2 text-sm text-aroma-200">Aromatic Maintenance Service</p>
+          <p className="mt-2 text-sm text-aroma-200">نظام إدارة صيانة الأجهزة</p>
         </div>
         <p className="max-w-md text-sand-100/80">
-          {demo
-            ? "Sign in with a role workspace. Demo mode is on until Supabase is connected."
-            : "Sign in with your Supabase account to access live customers, devices, and service requests."}
+          منصة لإدارة طلبات الصيانة حسب صلاحيات كل دور: مدير النظام، مدير الصيانة، الفرع، الفني، المشرف،
+          والفني المتنقل.
         </p>
       </section>
       <section className="flex items-center justify-center bg-sand-50 px-6 py-12">
         <div className="w-full max-w-md">
-          <h1 className="font-display text-3xl text-ink-900">Sign in</h1>
+          <h1 className="font-display text-3xl text-ink-900">تسجيل الدخول</h1>
           <p className="mt-2 text-sm text-ink-700/70">
-            {demo ? "Choose a role or enter demo credentials." : "Use your ARMS Supabase credentials."}
+            {demo ? "اختر دورًا تجريبيًا أو أدخل بيانات الدخول." : "استخدم حساب Supabase الخاص بك."}
           </p>
           {demo ? (
             <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -41,14 +40,20 @@ export default function LoginPage() {
                     setEmail(user.email);
                     setPassword(user.password);
                   }}
-                  className="rounded-xl border border-ink-900/10 bg-white px-3 py-2 text-left text-sm hover:border-aroma-400"
+                  className="rounded-xl border border-ink-900/10 bg-white px-3 py-2 text-right text-sm hover:border-aroma-400"
                 >
                   <span className="block font-medium">{ROLE_LABELS[user.role]}</span>
                   <span className="text-xs text-ink-700/60">{user.email}</span>
                 </button>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <p className="mt-4 rounded-xl bg-sand-100 px-3 py-2 text-xs text-ink-700/70">
+              للتجربة الحالية: manager@arms.app / ArmsDemo123!
+              <br />
+              بعد تشغيل SQL الخاص بالفرع يمكن إنشاء حساب دور «فرع».
+            </p>
+          )}
           <form
             className="mt-8 space-y-4"
             onSubmit={async (event) => {
@@ -63,7 +68,7 @@ export default function LoginPage() {
             }}
           >
             <label className="block text-sm">
-              Email
+              البريد
               <input
                 name="email"
                 value={email}
@@ -72,7 +77,7 @@ export default function LoginPage() {
               />
             </label>
             <label className="block text-sm">
-              Password
+              كلمة المرور
               <input
                 name="password"
                 type="password"
@@ -86,7 +91,7 @@ export default function LoginPage() {
               type="submit"
               className="w-full rounded-full bg-ink-900 py-2.5 text-sm font-medium text-white hover:bg-ink-800"
             >
-              Continue
+              دخول
             </button>
           </form>
         </div>

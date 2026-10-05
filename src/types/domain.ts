@@ -1,9 +1,32 @@
 export type AppRole =
+  | "system_admin"
+  | "maintenance_manager"
+  | "branch"
+  | "technician"
+  | "maintenance_supervisor"
+  | "mobile_technician"
+  // legacy roles still present in older data
   | "manager"
   | "supervisor"
-  | "technician"
   | "branch_employee"
   | "service_center_employee";
+
+export type BranchPriority = "normal" | "urgent";
+
+export type ExternalCondition =
+  | "intact"
+  | "broken"
+  | "scratched"
+  | "leak_marks"
+  | "other";
+
+export type DeviceLifecycleStatus =
+  | "received_at_branch"
+  | "ready_to_ship"
+  | "in_shipping"
+  | "at_service_center"
+  | "returning_from_service"
+  | "delivered_to_customer";
 
 export type DeviceStatus =
   | "new"
@@ -39,6 +62,8 @@ export type Profile = {
   fullName: string;
   role: AppRole;
   email: string;
+  opsBranchId?: string | null;
+  opsBranchName?: string | null;
 };
 
 export type Customer = {
@@ -107,4 +132,56 @@ export type DashboardStats = {
   lowStockParts: number;
   activeDevices: number;
   completedThisMonth: number;
+};
+
+export type CatalogItem = { id: string; name: string };
+export type ModelItem = CatalogItem & {
+  deviceTypeId: string;
+  brandId: string;
+  accessories: CatalogItem[];
+};
+
+export type DraftRequestDevice = {
+  localId: string;
+  deviceCode: string;
+  deviceTypeId: string;
+  deviceTypeName: string;
+  brandId: string;
+  brandName: string;
+  modelId: string;
+  modelName: string;
+  serialNumber: string;
+  fault: string;
+  externalCondition: ExternalCondition;
+  accessoryIds: string[];
+  accessoryNames: string[];
+  extraDetails: string;
+  devicePhotoNames: string[];
+  receiptNumber: string;
+  receiptPhotoName: string;
+};
+
+export type MaintenanceRequestRecord = {
+  id: string;
+  requestNumber: string;
+  receivedAt: string;
+  opsBranchId: string;
+  opsBranchName: string;
+  branchStaffId: string;
+  branchStaffName: string;
+  priority: BranchPriority;
+  customerMobile: string;
+  contactName: string;
+  purchaseInvoice: string;
+  generalNotes: string;
+  devices: DraftRequestDevice[];
+};
+
+export type WaybillRecord = {
+  id: string;
+  waybillNumber: string;
+  courierCompany: string;
+  opsBranchId: string;
+  deviceCodes: string[];
+  removedDeviceCodes: Array<{ deviceCode: string; note: string }>;
 };

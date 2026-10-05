@@ -1,11 +1,16 @@
 import type { AppRole } from "@/types/domain";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  manager: "Manager",
-  supervisor: "Supervisor",
-  technician: "Technician",
-  branch_employee: "Branch Employee",
-  service_center_employee: "Service Center Employee",
+  system_admin: "مدير نظام",
+  maintenance_manager: "مدير صيانة",
+  branch: "فرع",
+  technician: "فني",
+  maintenance_supervisor: "مشرف صيانة",
+  mobile_technician: "فني متنقل",
+  manager: "مدير نظام",
+  supervisor: "مشرف صيانة",
+  branch_employee: "فرع",
+  service_center_employee: "مركز صيانة",
 };
 
 export const DEMO_USERS: Array<{
@@ -13,39 +18,69 @@ export const DEMO_USERS: Array<{
   password: string;
   fullName: string;
   role: AppRole;
+  opsBranchId?: string;
+  opsBranchName?: string;
 }> = [
   {
-    email: "manager@arms.local",
+    email: "admin@arms.local",
     password: "demo",
-    fullName: "Lina Haddad",
-    role: "manager",
+    fullName: "أحمد المدير",
+    role: "system_admin",
   },
   {
-    email: "supervisor@arms.local",
+    email: "maint-manager@arms.local",
     password: "demo",
-    fullName: "Omar Nasser",
-    role: "supervisor",
-  },
-  {
-    email: "tech@arms.local",
-    password: "demo",
-    fullName: "Karim Saleh",
-    role: "technician",
+    fullName: "سارة مدير الصيانة",
+    role: "maintenance_manager",
   },
   {
     email: "branch@arms.local",
     password: "demo",
-    fullName: "Nour Khalil",
-    role: "branch_employee",
+    fullName: "نورة الفرع",
+    role: "branch",
+    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    opsBranchName: "فرع الرياض",
   },
   {
-    email: "center@arms.local",
+    email: "tech@arms.local",
     password: "demo",
-    fullName: "Maya Farhat",
-    role: "service_center_employee",
+    fullName: "كريم الفني",
+    role: "technician",
+  },
+  {
+    email: "supervisor@arms.local",
+    password: "demo",
+    fullName: "عمر المشرف",
+    role: "maintenance_supervisor",
+  },
+  {
+    email: "mobile@arms.local",
+    password: "demo",
+    fullName: "ياسر المتنقل",
+    role: "mobile_technician",
   },
 ];
 
 export function isDemoMode() {
   return process.env.NEXT_PUBLIC_USE_DEMO !== "false";
+}
+
+export function normalizeRole(role: string): AppRole {
+  switch (role) {
+    case "manager":
+      return "system_admin";
+    case "supervisor":
+      return "maintenance_supervisor";
+    case "branch_employee":
+      return "branch";
+    case "service_center_employee":
+      return "technician";
+    default:
+      return role as AppRole;
+  }
+}
+
+export function isBranchRole(role: AppRole) {
+  const normalized = normalizeRole(role);
+  return normalized === "branch";
 }
