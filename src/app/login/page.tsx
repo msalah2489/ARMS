@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
-  function enterAs(role: "branch" | "technician" | "maintenance_manager") {
+  function enterAs(role: "branch" | "technician" | "maintenance_manager" | "system_admin") {
     if (role === "branch") {
       writeSession({
         id: "branch-local",
@@ -31,12 +31,21 @@ export default function LoginPage() {
         opsBranchId: null,
         opsBranchName: "مركز الصيانة",
       });
-    } else {
+    } else if (role === "maintenance_manager") {
       writeSession({
         id: "maint-manager-local",
         fullName: "سارة مدير الصيانة",
         role: "maintenance_manager",
         email: "maint-manager@arms.local",
+        opsBranchId: null,
+        opsBranchName: null,
+      });
+    } else {
+      writeSession({
+        id: "admin-local",
+        fullName: "أحمد المدير",
+        role: "system_admin",
+        email: "admin@arms.local",
         opsBranchId: null,
         opsBranchName: null,
       });
@@ -100,10 +109,18 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => enterAs("maintenance_manager")}
-                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400 sm:col-span-2"
+                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
               >
                 <p className="font-medium text-ink-900">مدير الصيانة</p>
-                <p className="mt-1 text-xs text-ink-700/70">إنشاء بوالص الشحن للأجهزة في الفروع</p>
+                <p className="mt-1 text-xs text-ink-700/70">بوالص الشحن والإرجاع</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => enterAs("system_admin")}
+                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
+              >
+                <p className="font-medium text-ink-900">مدير النظام</p>
+                <p className="mt-1 text-xs text-ink-700/70">تصنيفات · براندات · موديلات · ملحقات · قطع غيار</p>
               </button>
               <p className="sm:col-span-2 text-xs text-ink-700/60">
                 حساب المدير (Supabase): manager@arms.app / ArmsDemo123!

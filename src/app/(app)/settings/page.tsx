@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
-import { ROLE_LABELS } from "@/lib/auth";
+import { ROLE_LABELS, isSystemAdminRole, normalizeRole } from "@/lib/auth";
 import { readSession } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
@@ -14,7 +15,8 @@ export default function SettingsPage() {
   useEffect(() => {
     const session = readSession();
     if (!session) return;
-    if (session.role !== "manager") {
+    const role = normalizeRole(session.role);
+    if (!isSystemAdminRole(role) && role !== "manager") {
       router.replace("/dashboard");
       return;
     }
@@ -22,30 +24,34 @@ export default function SettingsPage() {
   }, [router]);
 
   if (!user) {
-    return <p className="text-sm text-ink-700/70">Loading settings…</p>;
+    return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
   }
 
   return (
     <div>
       <PageHeader
-        title="Configuration"
-        description="Users, roles, device models, statuses, and system settings. Manager workspace only."
+        title="إعدادات النظام"
+        description="إعدادات مدير النظام: الكتالوج والصلاحيات."
       />
       <div className="grid gap-4 md:grid-cols-2">
-        {[
-          ["Users and permissions", "Invite staff and assign Manager, Supervisor, Technician, Branch, or Service Center roles."],
-          ["Device models", "Catalog of aroma device types, compatible accessories, and spare parts."],
-          ["Status workflow", "Control allowed device and service-request status values."],
-          ["Service centers", "Central repair locations that receive dispatched devices."],
-        ].map(([title, body]) => (
-          <section key={title} className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
-            <h2 className="font-display text-xl">{title}</h2>
-            <p className="mt-2 text-sm text-ink-700/70">{body}</p>
-          </section>
-        ))}
+        <Link
+          href="/admin/catalog"
+          className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel hover:border-aroma-400"
+        >
+          <h2 className="font-display text-xl">كتالوج الأجهزة</h2>
+          <p className="mt-2 text-sm text-ink-700/70">
+            إضافة وتعديل تصنيفات الأجهزة والبراندات والموديلات والملحقات وقطع الغيار.
+          </p>
+        </Link>
+        <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel">
+          <h2 className="font-display text-xl">المستخدمون والصلاحيات</h2>
+          <p className="mt-2 text-sm text-ink-700/70">
+            إدارة الحسابات والأدوار (قريبًا من واجهة موحّدة).
+          </p>
+        </section>
       </div>
       <p className="mt-6 text-xs text-ink-700/50">
-        Signed in as {user.email} · {ROLE_LABELS[user.role]}
+        مسجّل كـ {user.email} · {ROLE_LABELS[user.role]}
       </p>
     </div>
   );

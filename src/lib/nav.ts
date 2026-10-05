@@ -10,6 +10,7 @@ import {
   QrCode,
   Settings,
   Store,
+  Tags,
   Truck,
   Users,
   Wrench,
@@ -77,6 +78,12 @@ const ADMIN_NAV: NavItem[] = [
     label: "بوالص الشحن",
     icon: Truck,
     roles: ["maintenance_manager", "system_admin", "manager"],
+  },
+  {
+    href: "/admin/catalog",
+    label: "كتالوج الأجهزة",
+    icon: Tags,
+    roles: ["system_admin", "manager"],
   },
   {
     href: "/spare-parts",

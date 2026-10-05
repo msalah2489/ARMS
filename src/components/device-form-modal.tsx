@@ -1,14 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  BRANDS,
-  DEVICE_TYPES,
-  EXTERNAL_CONDITION_LABELS,
-  MODELS,
-  generateDeviceCode,
-} from "@/lib/branch-catalog";
-import type { DraftRequestDevice, ExternalCondition } from "@/types/domain";
+import { useEffect, useMemo, useState } from "react";
+import { EXTERNAL_CONDITION_LABELS, generateDeviceCode } from "@/lib/branch-catalog";
+import { getBrands, getDeviceTypes, getModels } from "@/lib/catalog-store";
+import type { CatalogItem, DraftRequestDevice, ExternalCondition, ModelItem } from "@/types/domain";
 
 type Props = {
   open: boolean;
@@ -19,6 +14,9 @@ type Props = {
 const CONDITIONS = Object.keys(EXTERNAL_CONDITION_LABELS) as ExternalCondition[];
 
 export function DeviceFormModal({ open, onClose, onSave }: Props) {
+  const [deviceTypes, setDeviceTypes] = useState<CatalogItem[]>([]);
+  const [brands, setBrands] = useState<CatalogItem[]>([]);
+  const [models, setModels] = useState<ModelItem[]>([]);
   const [deviceCode, setDeviceCode] = useState(generateDeviceCode());
   const [deviceTypeId, setDeviceTypeId] = useState("");
   const [brandId, setBrandId] = useState("");
@@ -33,17 +31,24 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   const [receiptPhotoName, setReceiptPhotoName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    setDeviceTypes(getDeviceTypes());
+    setBrands(getBrands());
+    setModels(getModels());
+  }, [open]);
+
   const filteredModels = useMemo(
     () =>
-      MODELS.filter(
+      models.filter(
         (model) =>
           (!deviceTypeId || model.deviceTypeId === deviceTypeId) &&
           (!brandId || model.brandId === brandId),
       ),
-    [deviceTypeId, brandId],
+    [models, deviceTypeId, brandId],
   );
 
-  const selectedModel = MODELS.find((model) => model.id === modelId);
+  const selectedModel = models.find((model) => model.id === modelId);
 
   if (!open) return null;
 
@@ -66,12 +71,14 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
 
   function buildDevice(): DraftRequestDevice | null {
     if (!deviceTypeId || !brandId || !modelId || !externalCondition || !receiptNumber || !receiptPhotoName) {
-      setError("يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، الحالة الخارجية، رقم وصورة سند الاستلام.");
+      setError(
+        "يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، الحالة الخارجية، رقم وصورة سند الاستلام.",
+      );
       return null;
     }
-    const typeName = DEVICE_TYPES.find((item) => item.id === deviceTypeId)?.name ?? "";
-    const brandName = BRANDS.find((item) => item.id === brandId)?.name ?? "";
-    const model = MODELS.find((item) => item.id === modelId);
+    const typeName = deviceTypes.find((item) => item.id === deviceTypeId)?.name ?? "";
+    const brandName = brands.find((item) => item.id === brandId)?.name ?? "";
+    const model = models.find((item) => item.id === modelId);
     return {
       localId: crypto.randomUUID(),
       deviceCode: deviceCode.trim(),
@@ -125,7 +132,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             >
               <option value="">اختر النوع</option>
-              {DEVICE_TYPES.map((item) => (
+              {deviceTypes.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
@@ -143,7 +150,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             >
               <option value="">اختر البراند</option>
-              {BRANDS.map((item) => (
+              {brands.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>

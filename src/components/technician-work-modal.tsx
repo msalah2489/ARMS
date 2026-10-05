@@ -6,9 +6,9 @@ import {
   ACTION_OPTIONS,
   FAULT_CAUSE_OPTIONS,
   HOLD_REASON_LABELS,
-  MODEL_SPARE_PARTS,
   OUTCOME_LABELS,
   TECH_DAMAGE_LABELS,
+  getModelSpareParts,
 } from "@/lib/technician-catalog";
 import {
   completeTechnicianWork,
@@ -73,7 +73,7 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
 
   if (!open || !item) return null;
 
-  const spareParts = MODEL_SPARE_PARTS[item.device.modelId] ?? [];
+  const spareParts = getModelSpareParts(item.device.modelId);
 
   function ensureWork() {
     if (work) return work;

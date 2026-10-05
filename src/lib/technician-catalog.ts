@@ -1,4 +1,5 @@
 import type { DamageOption, HoldReason, MaintenanceOutcome } from "@/types/domain";
+import { getSparePartsForModel } from "@/lib/catalog-store";
 
 export const TECH_DAMAGE_LABELS: Record<DamageOption, string> = {
   break: "كسر",
@@ -40,18 +41,10 @@ export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   other: "أخرى",
 };
 
-export const MODEL_SPARE_PARTS: Record<string, Array<{ id: string; name: string }>> = {
-  "dddddddd-dddd-dddd-dddd-ddddddddddd1": [
-    { id: "sp-fan", name: "مروحة هادئة" },
-    { id: "sp-pump", name: "طقم مضخة مصغرة" },
-    { id: "sp-nozzle", name: "طقم فوهات" },
-  ],
-  "dddddddd-dddd-dddd-dddd-ddddddddddd2": [
-    { id: "sp-pump", name: "طقم مضخة مصغرة" },
-    { id: "sp-board", name: "لوحة تشغيل" },
-  ],
-  "dddddddd-dddd-dddd-dddd-ddddddddddd3": [
-    { id: "sp-nozzle", name: "طقم فوهات" },
-    { id: "sp-cable", name: "سلك طاقة" },
-  ],
-};
+/** Spare parts come from the admin-managed catalog. */
+export function getModelSpareParts(modelId: string) {
+  return getSparePartsForModel(modelId);
+}
+
+/** @deprecated use getModelSpareParts */
+export const MODEL_SPARE_PARTS: Record<string, Array<{ id: string; name: string }>> = {};

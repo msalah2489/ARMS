@@ -200,6 +200,7 @@ export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
   accessories: CatalogItem[];
+  spareParts: CatalogItem[];
 };
 
 export type DraftRequestDevice = {
