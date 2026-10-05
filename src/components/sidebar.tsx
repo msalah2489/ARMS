@@ -2,21 +2,23 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { navForRole } from "@/lib/nav";
+import { usePreferences } from "@/components/preferences-provider";
 import { ROLE_LABELS } from "@/lib/auth";
+import { navForRole } from "@/lib/nav";
 import { signOut } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
 export function Sidebar({ user }: { user: Profile }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = usePreferences();
   const items = navForRole(user.role);
 
   return (
     <aside className="flex h-full w-64 flex-col bg-ink-950 text-sand-50">
       <div className="border-b border-white/10 px-5 py-6">
         <p className="font-display text-2xl tracking-tight">ARMS</p>
-        <p className="mt-1 text-xs text-aroma-200">نظام إدارة الصيانة</p>
+        <p className="mt-1 text-xs text-aroma-200">{t("app.subtitle")}</p>
         {user.opsBranchName ? (
           <p className="mt-3 text-xs text-sand-100/70">{user.opsBranchName}</p>
         ) : null}
@@ -34,7 +36,7 @@ export function Sidebar({ user }: { user: Profile }) {
               }`}
             >
               <Icon className="h-4 w-4 shrink-0 opacity-80" />
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           );
         })}
@@ -50,7 +52,7 @@ export function Sidebar({ user }: { user: Profile }) {
           }}
           className="mt-3 text-xs text-sand-200 underline-offset-2 hover:underline"
         >
-          تسجيل الخروج
+          {t("common.logout")}
         </button>
       </div>
     </aside>

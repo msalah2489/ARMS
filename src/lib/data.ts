@@ -1,12 +1,15 @@
 import { isDemoMode } from "@/lib/auth";
 import {
-  demoBranches,
-  demoCustomers,
-  demoDevices,
-  demoRequests,
   demoSpareParts,
   demoStats,
 } from "@/lib/demo-data";
+import {
+  localizedDemoBranches,
+  localizedDemoCustomers,
+  localizedDemoDevices,
+  localizedDemoRequests,
+} from "@/lib/i18n/demo-locale";
+import { getStoredLocale, type AppLocale } from "@/lib/preferences";
 import { createClient } from "@/lib/supabase/client";
 import type {
   Branch,
@@ -20,8 +23,12 @@ import type {
   SparePart,
 } from "@/types/domain";
 
-export async function getCustomers(): Promise<Customer[]> {
-  if (isDemoMode()) return demoCustomers;
+function resolveLocale(locale?: AppLocale): AppLocale {
+  return locale ?? getStoredLocale();
+}
+
+export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
+  if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
 
   try {
     const supabase = createClient();
@@ -40,12 +47,12 @@ export async function getCustomers(): Promise<Customer[]> {
     }));
   } catch (error) {
     console.error(error);
-    return demoCustomers;
+    return localizedDemoCustomers(resolveLocale(locale));
   }
 }
 
-export async function getBranches(): Promise<Branch[]> {
-  if (isDemoMode()) return demoBranches;
+export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
+  if (isDemoMode()) return localizedDemoBranches(resolveLocale(locale));
 
   try {
     const supabase = createClient();
@@ -65,12 +72,12 @@ export async function getBranches(): Promise<Branch[]> {
     }));
   } catch (error) {
     console.error(error);
-    return demoBranches;
+    return localizedDemoBranches(resolveLocale(locale));
   }
 }
 
-export async function getDevices(): Promise<Device[]> {
-  if (isDemoMode()) return demoDevices;
+export async function getDevices(locale?: AppLocale): Promise<Device[]> {
+  if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
 
   try {
     const supabase = createClient();
@@ -94,12 +101,12 @@ export async function getDevices(): Promise<Device[]> {
     }));
   } catch (error) {
     console.error(error);
-    return demoDevices;
+    return localizedDemoDevices(resolveLocale(locale));
   }
 }
 
-export async function getServiceRequests(): Promise<ServiceRequest[]> {
-  if (isDemoMode()) return demoRequests;
+export async function getServiceRequests(locale?: AppLocale): Promise<ServiceRequest[]> {
+  if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
 
   try {
     const supabase = createClient();
@@ -123,7 +130,7 @@ export async function getServiceRequests(): Promise<ServiceRequest[]> {
     }));
   } catch (error) {
     console.error(error);
-    return demoRequests;
+    return localizedDemoRequests(resolveLocale(locale));
   }
 }
 

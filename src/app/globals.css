@@ -6,6 +6,10 @@
   color-scheme: light;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
 html,
 body {
   min-height: 100%;
@@ -15,6 +19,14 @@ body {
   @apply bg-sand-50 text-ink-900 antialiased;
 }
 
+html.dark body {
+  @apply bg-ink-950 text-sand-50;
+}
+
 ::selection {
   background: #c5d6c0;
+}
+
+html.dark ::selection {
+  background: #3d6238;
 }

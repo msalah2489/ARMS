@@ -13,16 +13,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate
       render={(user) => (
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen bg-sand-50 dark:bg-ink-950">
           <div className="sticky top-0 hidden h-screen md:block">
             <Sidebar user={user} />
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex items-center justify-between border-b border-ink-900/10 bg-white/80 px-4 py-3 backdrop-blur md:hidden">
+            <header className="flex items-center justify-between border-b border-ink-900/10 bg-white/80 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-ink-900/80 md:hidden">
               <span className="font-display text-xl">ARMS</span>
-              <span className="text-xs text-ink-700/70">{user.fullName}</span>
+              <span className="text-xs text-ink-700/70 dark:text-sand-100/70">{user.fullName}</span>
             </header>
-            <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+            <main className="flex-1 px-4 py-6 text-ink-900 dark:text-sand-50 md:px-8">{children}</main>
           </div>
         </div>
       )}

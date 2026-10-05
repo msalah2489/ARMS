@@ -1,5 +1,6 @@
 import type { AppRole } from "@/types/domain";
 import { normalizeRole } from "@/lib/auth";
+import type { MessageKey } from "@/lib/i18n/messages";
 import {
   ClipboardList,
   Cpu,
@@ -20,107 +21,107 @@ import {
 
 export type NavItem = {
   href: string;
-  label: string;
+  labelKey: MessageKey;
   icon: LucideIcon;
   roles: AppRole[];
 };
 
 /** Branch account tabs only */
 const BRANCH_NAV: NavItem[] = [
-  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard, roles: ["branch", "branch_employee"] },
-  { href: "/service-requests/new", label: "إنشاء طلب", icon: FilePlus2, roles: ["branch", "branch_employee"] },
-  { href: "/branch/receiving", label: "استلام الصيانة", icon: PackageCheck, roles: ["branch", "branch_employee"] },
-  { href: "/branch/shipping", label: "شحن الصيانة", icon: Truck, roles: ["branch", "branch_employee"] },
-  { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["branch", "branch_employee"] },
-  { href: "/reports", label: "التقارير", icon: ClipboardList, roles: ["branch", "branch_employee"] },
-  { href: "/account", label: "حسابي", icon: UserCircle2, roles: ["branch", "branch_employee"] },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, roles: ["branch", "branch_employee"] },
+  { href: "/service-requests/new", labelKey: "nav.newRequest", icon: FilePlus2, roles: ["branch", "branch_employee"] },
+  { href: "/branch/receiving", labelKey: "nav.branchReceiving", icon: PackageCheck, roles: ["branch", "branch_employee"] },
+  { href: "/branch/shipping", labelKey: "nav.branchShipping", icon: Truck, roles: ["branch", "branch_employee"] },
+  { href: "/scan", labelKey: "nav.scan", icon: QrCode, roles: ["branch", "branch_employee"] },
+  { href: "/reports", labelKey: "nav.reports", icon: ClipboardList, roles: ["branch", "branch_employee"] },
+  { href: "/account", labelKey: "nav.account", icon: UserCircle2, roles: ["branch", "branch_employee"] },
 ];
 
 /** Technician account tabs only */
 const TECHNICIAN_NAV: NavItem[] = [
-  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard, roles: ["technician", "mobile_technician"] },
-  { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["technician", "mobile_technician"] },
-  { href: "/technician/work", label: "عمل الفني", icon: Wrench, roles: ["technician", "mobile_technician"] },
-  { href: "/account", label: "حسابي", icon: UserCircle2, roles: ["technician", "mobile_technician"] },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, roles: ["technician", "mobile_technician"] },
+  { href: "/scan", labelKey: "nav.scan", icon: QrCode, roles: ["technician", "mobile_technician"] },
+  { href: "/technician/work", labelKey: "nav.technicianWork", icon: Wrench, roles: ["technician", "mobile_technician"] },
+  { href: "/account", labelKey: "nav.account", icon: UserCircle2, roles: ["technician", "mobile_technician"] },
 ];
 
 /** Admin / managers / supervisors */
 const ADMIN_NAV: NavItem[] = [
   {
     href: "/dashboard",
-    label: "الرئيسية",
+    labelKey: "nav.dashboard",
     icon: LayoutDashboard,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/service-requests",
-    label: "طلبات الصيانة",
+    labelKey: "nav.serviceRequests",
     icon: ClipboardList,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/devices",
-    label: "الأجهزة",
+    labelKey: "nav.devices",
     icon: Cpu,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/customers",
-    label: "العملاء",
+    labelKey: "nav.customers",
     icon: Users,
     roles: ["system_admin", "manager", "maintenance_manager"],
   },
   {
     href: "/branches",
-    label: "الفروع",
+    labelKey: "nav.branches",
     icon: Store,
     roles: ["system_admin", "manager", "maintenance_manager"],
   },
   {
     href: "/maintenance/shipping",
-    label: "بوالص الشحن",
+    labelKey: "nav.maintenanceShipping",
     icon: Truck,
     roles: ["maintenance_manager", "system_admin", "manager"],
   },
   {
     href: "/admin/catalog",
-    label: "كتالوج الأجهزة",
+    labelKey: "nav.catalog",
     icon: Tags,
     roles: ["system_admin", "manager"],
   },
   {
     href: "/admin/users",
-    label: "المستخدمون",
+    labelKey: "nav.users",
     icon: Users,
     roles: ["system_admin", "manager"],
   },
   {
     href: "/admin/branches",
-    label: "الفروع",
+    labelKey: "nav.adminBranches",
     icon: Store,
     roles: ["system_admin", "manager"],
   },
   {
     href: "/spare-parts",
-    label: "قطع الغيار والمخزون",
+    labelKey: "nav.spareParts",
     icon: Package,
     roles: ["system_admin", "manager", "maintenance_manager"],
   },
   {
     href: "/reports",
-    label: "التقارير",
+    labelKey: "nav.reports",
     icon: ClipboardList,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/account",
-    label: "حسابي",
+    labelKey: "nav.account",
     icon: UserCircle2,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/settings",
-    label: "إعدادات النظام",
+    labelKey: "nav.settings",
     icon: Settings,
     roles: ["system_admin", "manager"],
   },
