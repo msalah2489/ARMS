@@ -22,14 +22,62 @@ export type ExternalCondition =
 
 export type DeviceLifecycleStatus =
   | "received_at_branch"
-  | "ready_to_ship"
-  | "in_shipping"
+  | "awaiting_branch_handover"
+  | "handed_to_carrier"
+  | "in_transit_to_service"
+  | "received_at_warehouse"
   | "at_service_center"
-  | "under_maintenance"
+  | "awaiting_maintenance"
+  | "in_maintenance"
+  | "ready_to_return"
+  | "in_return_transit"
+  | "received_at_destination"
+  | "excluded_from_shipment"
   | "ready_to_send"
   | "excluded"
+  // legacy aliases kept for older local data
+  | "ready_to_ship"
+  | "in_shipping"
+  | "under_maintenance"
   | "returning_from_service"
   | "delivered_to_customer";
+
+export type ShipmentDirection = "inbound" | "to_service" | "return";
+export type ShippingBatchStatus = "draft" | "ready" | "handed_to_carrier" | "received" | "cancelled";
+export type ShippingItemStatus = "active" | "removed";
+
+export type ShippingBatchItem = {
+  id: string;
+  requestDeviceId: string;
+  deviceCode: string;
+  modelName: string;
+  color: string;
+  status: ShippingItemStatus;
+  removedAt?: string | null;
+  removedBy?: string | null;
+  removalReason?: string | null;
+};
+
+export type ShippingBatch = {
+  id: string;
+  batchNumber: string;
+  shipmentNumber: string;
+  carrier: string;
+  direction: ShipmentDirection;
+  sourceType: string;
+  sourceName: string;
+  opsBranchId: string;
+  destinationType: string;
+  destinationName: string;
+  status: ShippingBatchStatus;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  handedToCarrierAt?: string | null;
+  handedToCarrierBy?: string | null;
+  notes?: string;
+  items: ShippingBatchItem[];
+};
 
 export type DeviceStatus =
   | "new"
@@ -162,6 +210,9 @@ export type DraftRequestDevice = {
   devicePhotoNames: string[];
   receiptNumber: string;
   receiptPhotoName: string;
+  color?: string;
+  currentLocation?: string;
+  lockedAfterShip?: boolean;
   lifecycleStatus?: DeviceLifecycleStatus;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
@@ -223,6 +274,7 @@ export type MaintenanceRequestRecord = {
   devices: DraftRequestDevice[];
 };
 
+/** @deprecated use ShippingBatch — kept for older local keys */
 export type WaybillRecord = {
   id: string;
   waybillNumber: string;

@@ -89,3 +89,8 @@ export function isTechnicianRole(role: AppRole) {
   const normalized = normalizeRole(role);
   return normalized === "technician" || normalized === "mobile_technician";
 }
+
+export function isMaintenanceManagerRole(role: AppRole) {
+  const normalized = normalizeRole(role);
+  return normalized === "maintenance_manager" || normalized === "system_admin";
+}

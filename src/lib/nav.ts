@@ -73,10 +73,10 @@ const ADMIN_NAV: NavItem[] = [
     roles: ["system_admin", "manager", "maintenance_manager"],
   },
   {
-    href: "/branch/shipping",
+    href: "/maintenance/shipping",
     label: "بوالص الشحن",
     icon: Truck,
-    roles: ["maintenance_manager"],
+    roles: ["maintenance_manager", "system_admin", "manager"],
   },
   {
     href: "/spare-parts",

@@ -40,6 +40,22 @@ export function saveMaintenanceRequest(input: {
   devices: DraftRequestDevice[];
   requestNumber?: string;
 }) {
+  const existingReceipts = new Set(
+    listMaintenanceRequests()
+      .flatMap((request) => request.devices)
+      .map((device) => device.receiptNumber.trim()),
+  );
+  for (const device of input.devices) {
+    const receipt = device.receiptNumber.trim();
+    if (!receipt) {
+      throw new Error("رقم سند الاستلام إلزامي لكل جهاز.");
+    }
+    if (existingReceipts.has(receipt)) {
+      throw new Error(`رقم سند الاستلام «${receipt}» مستخدم مسبقًا لجهاز آخر.`);
+    }
+    existingReceipts.add(receipt);
+  }
+
   const record: MaintenanceRequestRecord = {
     id: crypto.randomUUID(),
     requestNumber: input.requestNumber || generateRequestNumber(),
@@ -56,6 +72,8 @@ export function saveMaintenanceRequest(input: {
     devices: input.devices.map((device) => ({
       ...device,
       lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
+      currentLocation: device.currentLocation ?? "branch",
+      lockedAfterShip: device.lockedAfterShip ?? false,
       assignedTechnicianId: device.assignedTechnicianId ?? null,
       assignedTechnicianName: device.assignedTechnicianName ?? null,
     })),
@@ -178,46 +196,39 @@ export function listAllRequestDevices(): TechnicianQueueItem[] {
   );
 }
 
-/** Ensure some devices are waiting at the service center for technician work. */
+/** Devices already at the service center awaiting technician work. */
 export function ensureTechnicianQueue(): TechnicianQueueItem[] {
-  const all = listMaintenanceRequests();
-  if (!all.length) return [];
-
-  let changed = false;
-  const next = all.map((request) => ({
-    ...request,
-    devices: request.devices.map((device) => {
-      if (!device.lifecycleStatus || device.lifecycleStatus === "received_at_branch") {
-        changed = true;
-        return { ...device, lifecycleStatus: "at_service_center" as DeviceLifecycleStatus };
-      }
-      return device;
-    }),
-  }));
-  if (changed) writeJson(REQUESTS_KEY, next);
-
   return listAllRequestDevices().filter(
     (item) =>
-      item.device.lifecycleStatus === "at_service_center" ||
-      item.device.lifecycleStatus === "under_maintenance" ||
-      !item.device.lifecycleStatus,
+      ["at_service_center", "awaiting_maintenance", "in_maintenance", "under_maintenance"].includes(
+        item.device.lifecycleStatus ?? "",
+      ),
   );
 }
 
 export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
-  ensureTechnicianQueue();
   return listAllRequestDevices().filter(
     (item) =>
-      item.device.lifecycleStatus === "at_service_center" &&
+      ["at_service_center", "awaiting_maintenance"].includes(item.device.lifecycleStatus ?? "") &&
       !item.device.assignedTechnicianId,
   );
 }
 
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
   received_at_branch: "مستلم بالفرع",
+  awaiting_branch_handover: "بانتظار تسليم الفرع للشحن",
+  handed_to_carrier: "تم التسليم لشركة الشحن",
+  in_transit_to_service: "في الطريق إلى الصيانة",
+  received_at_warehouse: "مستلم بالمستودع",
+  at_service_center: "بانتظار الصيانة",
+  awaiting_maintenance: "انتظار",
+  in_maintenance: "قيد الصيانة",
+  ready_to_return: "جاهز للإرجاع",
+  in_return_transit: "في طريق الإرجاع",
+  received_at_destination: "مستلم بالوجهة",
+  excluded_from_shipment: "مستبعد من البوليصة",
   ready_to_ship: "جاهز للشحن",
   in_shipping: "قيد الشحن",
-  at_service_center: "بانتظار الصيانة",
   under_maintenance: "قيد الصيانة",
   returning_from_service: "قادم من الصيانة",
   delivered_to_customer: "تم التسليم للعميل",

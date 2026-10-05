@@ -228,18 +228,22 @@ function NewServiceRequestContent() {
                 setError("أضف جهازًا واحدًا على الأقل قبل حفظ الطلب.");
                 return;
               }
-              const saved = saveMaintenanceRequest({
-                user,
-                priority,
-                customerMobile: mobile,
-                contactName: contactName.trim(),
-                purchaseInvoice,
-                generalNotes,
-                devices,
-                requestNumber,
-              });
-              setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
-              setTimeout(() => router.push("/dashboard"), 700);
+              try {
+                const saved = saveMaintenanceRequest({
+                  user,
+                  priority,
+                  customerMobile: mobile,
+                  contactName: contactName.trim(),
+                  purchaseInvoice,
+                  generalNotes,
+                  devices,
+                  requestNumber,
+                });
+                setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
+                setTimeout(() => router.push("/dashboard"), 700);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "تعذر حفظ الطلب.");
+              }
             }}
             className="rounded-full bg-ink-900 px-6 py-2.5 text-sm text-white"
           >

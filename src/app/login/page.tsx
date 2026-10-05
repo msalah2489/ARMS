@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
-  function enterAs(role: "branch" | "technician") {
+  function enterAs(role: "branch" | "technician" | "maintenance_manager") {
     if (role === "branch") {
       writeSession({
         id: "branch-local",
@@ -22,7 +22,7 @@ export default function LoginPage() {
         opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
         opsBranchName: "فرع الرياض",
       });
-    } else {
+    } else if (role === "technician") {
       writeSession({
         id: "tech-local",
         fullName: "كريم الفني",
@@ -30,6 +30,15 @@ export default function LoginPage() {
         email: "tech@arms.local",
         opsBranchId: null,
         opsBranchName: "مركز الصيانة",
+      });
+    } else {
+      writeSession({
+        id: "maint-manager-local",
+        fullName: "سارة مدير الصيانة",
+        role: "maintenance_manager",
+        email: "maint-manager@arms.local",
+        opsBranchId: null,
+        opsBranchName: null,
       });
     }
     router.replace("/dashboard");
@@ -78,7 +87,7 @@ export default function LoginPage() {
                 className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
               >
                 <p className="font-medium text-ink-900">حساب الفرع</p>
-                <p className="mt-1 text-xs text-ink-700/70">إنشاء طلب · استلام · شحن · تقارير</p>
+                <p className="mt-1 text-xs text-ink-700/70">إنشاء طلب · استلام · تسليم للشحن</p>
               </button>
               <button
                 type="button"
@@ -87,6 +96,14 @@ export default function LoginPage() {
               >
                 <p className="font-medium text-ink-900">حساب الفني</p>
                 <p className="mt-1 text-xs text-ink-700/70">الرئيسية · سكان · عمل الفني</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => enterAs("maintenance_manager")}
+                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400 sm:col-span-2"
+              >
+                <p className="font-medium text-ink-900">مدير الصيانة</p>
+                <p className="mt-1 text-xs text-ink-700/70">إنشاء بوالص الشحن للأجهزة في الفروع</p>
               </button>
               <p className="sm:col-span-2 text-xs text-ink-700/60">
                 حساب المدير (Supabase): manager@arms.app / ArmsDemo123!
