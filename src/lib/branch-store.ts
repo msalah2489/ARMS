@@ -9,6 +9,7 @@ import type {
 
 const REQUESTS_KEY = "arms_maintenance_requests_v1";
 const WAYBILLS_KEY = "arms_waybills_v1";
+const REQUESTS_SEED_FLAG = "arms_maintenance_requests_seeded_v1";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -24,7 +25,151 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function sampleDevice(
+  input: Partial<DraftRequestDevice> &
+    Pick<DraftRequestDevice, "localId" | "deviceCode" | "serialNumber" | "receiptNumber" | "lifecycleStatus">,
+): DraftRequestDevice {
+  return {
+    deviceTypeId: "type-pos",
+    deviceTypeName: "جهاز نقاط بيع",
+    brandId: "brand-sunmi",
+    brandName: "Sunmi",
+    modelId: "model-v2",
+    modelName: "V2 Pro",
+    fault: "لا يعمل الشاشة",
+    externalCondition: "intact",
+    accessoryIds: [],
+    accessoryNames: [],
+    extraDetails: "",
+    devicePhotoNames: [],
+    receiptPhotoName: "",
+    color: "أسود",
+    currentLocation: "branch",
+    lockedAfterShip: false,
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
+    ...input,
+  };
+}
+
+/** Demo workflow samples so shipping/return screens are usable immediately. */
+function ensureSeededMaintenanceRequests() {
+  if (typeof window === "undefined") return;
+  if (window.localStorage.getItem(REQUESTS_SEED_FLAG) === "1") return;
+
+  const existing = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  if (existing.length > 0) {
+    window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const branchId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1";
+  const seeded: MaintenanceRequestRecord[] = [
+    {
+      id: "req-seed-outbound",
+      requestNumber: "MR-SEED-1001",
+      receivedAt: now,
+      opsBranchId: branchId,
+      opsBranchName: "فرع الرياض",
+      branchStaffId: "branch-local",
+      branchStaffName: "نورة الفرع",
+      priority: "normal",
+      customerMobile: "0501111001",
+      contactName: "عميل تجريبي ١",
+      purchaseInvoice: "INV-1001",
+      generalNotes: "بيانات تجريبية للإرسال إلى الصيانة",
+      devices: [
+        sampleDevice({
+          localId: "dev-seed-ship-1",
+          deviceCode: "DV-SEED-001",
+          serialNumber: "SN-SEED-001",
+          receiptNumber: "RCP-SEED-001",
+          lifecycleStatus: "received_at_branch",
+          currentLocation: "branch",
+        }),
+        sampleDevice({
+          localId: "dev-seed-ship-2",
+          deviceCode: "DV-SEED-002",
+          serialNumber: "SN-SEED-002",
+          receiptNumber: "RCP-SEED-002",
+          lifecycleStatus: "received_at_branch",
+          currentLocation: "branch",
+          fault: "طابعة لا تستجيب",
+        }),
+      ],
+    },
+    {
+      id: "req-seed-return",
+      requestNumber: "MR-SEED-1002",
+      receivedAt: now,
+      opsBranchId: branchId,
+      opsBranchName: "فرع الرياض",
+      branchStaffId: "branch-local",
+      branchStaffName: "نورة الفرع",
+      priority: "urgent",
+      customerMobile: "0501111002",
+      contactName: "عميل تجريبي ٢",
+      purchaseInvoice: "INV-1002",
+      generalNotes: "أجهزة جاهزة للإرجاع إلى الفرع",
+      devices: [
+        sampleDevice({
+          localId: "dev-seed-return-1",
+          deviceCode: "DV-SEED-101",
+          serialNumber: "SN-SEED-101",
+          receiptNumber: "RCP-SEED-101",
+          lifecycleStatus: "ready_to_return",
+          currentLocation: "service_center",
+          fault: "تم الإصلاح — جاهز للإرجاع",
+          assignedTechnicianId: "tech-local",
+          assignedTechnicianName: "كريم الفني",
+        }),
+        sampleDevice({
+          localId: "dev-seed-return-2",
+          deviceCode: "DV-SEED-102",
+          serialNumber: "SN-SEED-102",
+          receiptNumber: "RCP-SEED-102",
+          lifecycleStatus: "ready_to_return",
+          currentLocation: "service_center",
+          fault: "لا يحتاج إصلاح — جاهز للإرجاع",
+          assignedTechnicianId: "tech-local",
+          assignedTechnicianName: "كريم الفني",
+        }),
+      ],
+    },
+    {
+      id: "req-seed-tech",
+      requestNumber: "MR-SEED-1003",
+      receivedAt: now,
+      opsBranchId: branchId,
+      opsBranchName: "فرع الرياض",
+      branchStaffId: "branch-local",
+      branchStaffName: "نورة الفرع",
+      priority: "normal",
+      customerMobile: "0501111003",
+      contactName: "عميل تجريبي ٣",
+      purchaseInvoice: "INV-1003",
+      generalNotes: "بانتظار الفني في مركز الصيانة",
+      devices: [
+        sampleDevice({
+          localId: "dev-seed-tech-1",
+          deviceCode: "DV-SEED-201",
+          serialNumber: "SN-SEED-201",
+          receiptNumber: "RCP-SEED-201",
+          lifecycleStatus: "awaiting_maintenance",
+          currentLocation: "service_center",
+          fault: "بطء في التشغيل",
+        }),
+      ],
+    },
+  ];
+
+  writeJson(REQUESTS_KEY, seeded);
+  window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
+}
+
 export function listMaintenanceRequests(opsBranchId?: string | null) {
+  ensureSeededMaintenanceRequests();
   const all = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
   if (!opsBranchId) return all;
   return all.filter((item) => item.opsBranchId === opsBranchId);
