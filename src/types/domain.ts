@@ -25,6 +25,9 @@ export type DeviceLifecycleStatus =
   | "ready_to_ship"
   | "in_shipping"
   | "at_service_center"
+  | "under_maintenance"
+  | "ready_to_send"
+  | "excluded"
   | "returning_from_service"
   | "delivered_to_customer";
 
@@ -159,6 +162,49 @@ export type DraftRequestDevice = {
   devicePhotoNames: string[];
   receiptNumber: string;
   receiptPhotoName: string;
+  lifecycleStatus?: DeviceLifecycleStatus;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string | null;
+};
+
+export type TechnicianExternalCheck = "damaged" | "intact";
+export type TechnicianDeviceState = "works_fine" | "start_maintenance";
+export type DamageOption = "break" | "scratches" | "leak" | "missing_part" | "other";
+export type MaintenanceOutcome =
+  | "repaired"
+  | "no_repair_needed"
+  | "issue_persists"
+  | "not_repairable";
+export type HoldReason =
+  | "no_spare_parts"
+  | "unrepairable_fault"
+  | "fully_damaged"
+  | "other";
+
+export type TechnicianWorkRecord = {
+  id: string;
+  requestId: string;
+  requestNumber: string;
+  deviceLocalId: string;
+  deviceCode: string;
+  technicianId: string;
+  technicianName: string;
+  startedAt: string;
+  finishedAt?: string;
+  status: "in_progress" | "completed" | "held";
+  externalCheck?: TechnicianExternalCheck;
+  damageOptions?: DamageOption[];
+  damageOtherNote?: string;
+  deviceState?: TechnicianDeviceState;
+  tests?: Record<"power" | "pump" | "light" | "sound" | "programming", boolean | null>;
+  faultCause?: string;
+  actionTaken?: string;
+  actionOther?: string;
+  sparePartsUsed?: Array<{ partId: string; partName: string; qty: number }>;
+  returnedAccessories?: Array<{ accessoryId: string; accessoryName: string; returned: boolean; notReturnedReason?: string }>;
+  outcome?: MaintenanceOutcome;
+  holdReason?: HoldReason;
+  holdOtherNote?: string;
 };
 
 export type MaintenanceRequestRecord = {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEMO_USERS, ROLE_LABELS, isDemoMode } from "@/lib/auth";
-import { signIn } from "@/lib/session";
+import { signIn, writeSession } from "@/lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,11 +48,43 @@ export default function LoginPage() {
               ))}
             </div>
           ) : (
-            <p className="mt-4 rounded-xl bg-sand-100 px-3 py-2 text-xs text-ink-700/70">
-              للتجربة الحالية: manager@arms.app / ArmsDemo123!
-              <br />
-              بعد تشغيل SQL الخاص بالفرع يمكن إنشاء حساب دور «فرع».
-            </p>
+            <div className="mt-4 space-y-2 rounded-xl bg-sand-100 px-3 py-3 text-xs text-ink-700/70">
+              <p>حساب المدير: manager@arms.app / ArmsDemo123!</p>
+              <button
+                type="button"
+                className="rounded-full bg-ink-900 px-3 py-1.5 text-white"
+                onClick={() => {
+                  writeSession({
+                    id: "tech-local",
+                    fullName: "كريم الفني",
+                    role: "technician",
+                    email: "tech@arms.local",
+                    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+                    opsBranchName: "مركز الصيانة",
+                  });
+                  router.replace("/dashboard");
+                }}
+              >
+                دخول سريع كفني (تجريبي)
+              </button>
+              <button
+                type="button"
+                className="ms-2 rounded-full border border-ink-900/20 px-3 py-1.5"
+                onClick={() => {
+                  writeSession({
+                    id: "branch-local",
+                    fullName: "نورة الفرع",
+                    role: "branch",
+                    email: "branch@arms.local",
+                    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+                    opsBranchName: "فرع الرياض",
+                  });
+                  router.replace("/dashboard");
+                }}
+              >
+                دخول سريع كفرع
+              </button>
+            </div>
           )}
           <form
             className="mt-8 space-y-4"

@@ -1,5 +1,6 @@
 import { generateRequestNumber } from "@/lib/branch-catalog";
 import type {
+  DeviceLifecycleStatus,
   DraftRequestDevice,
   MaintenanceRequestRecord,
   Profile,
@@ -52,7 +53,12 @@ export function saveMaintenanceRequest(input: {
     contactName: input.contactName,
     purchaseInvoice: input.purchaseInvoice,
     generalNotes: input.generalNotes,
-    devices: input.devices,
+    devices: input.devices.map((device) => ({
+      ...device,
+      lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
+      assignedTechnicianId: device.assignedTechnicianId ?? null,
+      assignedTechnicianName: device.assignedTechnicianName ?? null,
+    })),
   };
 
   const all = listMaintenanceRequests();
@@ -141,3 +147,80 @@ export function findDeviceHistory(query: string) {
   );
   return matches;
 }
+
+export function updateDeviceLifecycle(
+  requestId: string,
+  deviceLocalId: string,
+  patch: Partial<DraftRequestDevice>,
+) {
+  const all = listMaintenanceRequests();
+  const next = all.map((request) => {
+    if (request.id !== requestId) return request;
+    return {
+      ...request,
+      devices: request.devices.map((device) =>
+        device.localId === deviceLocalId ? { ...device, ...patch } : device,
+      ),
+    };
+  });
+  writeJson(REQUESTS_KEY, next);
+  return next;
+}
+
+export type TechnicianQueueItem = {
+  request: MaintenanceRequestRecord;
+  device: DraftRequestDevice;
+};
+
+export function listAllRequestDevices(): TechnicianQueueItem[] {
+  return listMaintenanceRequests().flatMap((request) =>
+    request.devices.map((device) => ({ request, device })),
+  );
+}
+
+/** Ensure some devices are waiting at the service center for technician work. */
+export function ensureTechnicianQueue(): TechnicianQueueItem[] {
+  const all = listMaintenanceRequests();
+  if (!all.length) return [];
+
+  let changed = false;
+  const next = all.map((request) => ({
+    ...request,
+    devices: request.devices.map((device) => {
+      if (!device.lifecycleStatus || device.lifecycleStatus === "received_at_branch") {
+        changed = true;
+        return { ...device, lifecycleStatus: "at_service_center" as DeviceLifecycleStatus };
+      }
+      return device;
+    }),
+  }));
+  if (changed) writeJson(REQUESTS_KEY, next);
+
+  return listAllRequestDevices().filter(
+    (item) =>
+      item.device.lifecycleStatus === "at_service_center" ||
+      item.device.lifecycleStatus === "under_maintenance" ||
+      !item.device.lifecycleStatus,
+  );
+}
+
+export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
+  ensureTechnicianQueue();
+  return listAllRequestDevices().filter(
+    (item) =>
+      item.device.lifecycleStatus === "at_service_center" &&
+      !item.device.assignedTechnicianId,
+  );
+}
+
+export const DEVICE_STATUS_LABELS: Record<string, string> = {
+  received_at_branch: "مستلم بالفرع",
+  ready_to_ship: "جاهز للشحن",
+  in_shipping: "قيد الشحن",
+  at_service_center: "بانتظار الصيانة",
+  under_maintenance: "قيد الصيانة",
+  returning_from_service: "قادم من الصيانة",
+  delivered_to_customer: "تم التسليم للعميل",
+  ready_to_send: "جاهز للإرسال",
+  excluded: "مستبعد",
+};

@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
-import { ROLE_LABELS, isBranchRole, normalizeRole } from "@/lib/auth";
-import { listMaintenanceRequests } from "@/lib/branch-store";
+import { ROLE_LABELS, isBranchRole, isTechnicianRole, normalizeRole } from "@/lib/auth";
+import {
+  DEVICE_STATUS_LABELS,
+  listAllRequestDevices,
+  listMaintenanceRequests,
+} from "@/lib/branch-store";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
+import { getTechnicianDashboardStats } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type { DashboardStats, MaintenanceRequestRecord, Profile, ServiceRequest } from "@/types/domain";
@@ -15,14 +20,21 @@ export default function DashboardPage() {
   const [branchRequests, setBranchRequests] = useState<MaintenanceRequestRecord[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [techStats, setTechStats] = useState<ReturnType<typeof getTechnicianDashboardStats> | null>(
+    null,
+  );
 
   useEffect(() => {
     const session = readSession();
     setUser(session);
     if (!session) return;
 
-    if (isBranchRole(session.role) || normalizeRole(session.role) === "system_admin") {
+    if (isBranchRole(session.role)) {
       setBranchRequests(listMaintenanceRequests(session.opsBranchId));
+    }
+
+    if (isTechnicianRole(session.role) || normalizeRole(session.role) === "system_admin") {
+      setTechStats(getTechnicianDashboardStats(session.id));
     }
 
     void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
@@ -33,9 +45,55 @@ export default function DashboardPage() {
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
-  const branchMode = isBranchRole(user.role) || normalizeRole(user.role) === "system_admin";
+  if (isTechnicianRole(user.role)) {
+    const todayDevices = listAllRequestDevices().filter((item) =>
+      item.request.receivedAt.startsWith(new Date().toISOString().slice(0, 10)),
+    );
 
-  if (branchMode) {
+    return (
+      <div>
+        <PageHeader
+          title={`مرحبًا، ${user.fullName.split(" ")[0]}`}
+          description="لوحة الفني — نظرة على أجهزة قسم الصيانة المتاحة لك"
+          action={
+            <Link href="/technician/work" className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white">
+              عمل الفني
+            </Link>
+          }
+        />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="طلبات متاحة للعمل" value={techStats?.availableRequests ?? 0} />
+          <StatCard label="أجهزة متاحة للعمل" value={techStats?.availableDevices ?? 0} />
+          <StatCard label="جاهز للإرسال" value={techStats?.readyToSend ?? 0} />
+          <StatCard label="مستبعد" value={techStats?.excluded ?? 0} />
+        </div>
+
+        <h2 className="mb-3 mt-10 font-display text-2xl">آخر الطلبات (اليوم)</h2>
+        <div className="space-y-3">
+          {todayDevices.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-8 text-sm text-ink-700/70">
+              لا توجد طلبات بتاريخ اليوم. أنشئ طلبًا من حساب الفرع ثم ارجع هنا.
+            </p>
+          ) : (
+            todayDevices.map(({ request, device }) => (
+              <div
+                key={`${request.id}-${device.localId}`}
+                className="rounded-2xl border border-ink-900/10 bg-white px-4 py-4 shadow-panel"
+              >
+                <p className="font-medium">{request.requestNumber}</p>
+                <p className="text-sm text-ink-700/70">
+                  {request.contactName} · {request.opsBranchName} · {device.deviceTypeName} ·{" "}
+                  {DEVICE_STATUS_LABELS[device.lifecycleStatus ?? "at_service_center"]}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (isBranchRole(user.role)) {
     const openCount = branchRequests.length;
     const deviceCount = branchRequests.reduce((sum, item) => sum + item.devices.length, 0);
     const urgentCount = branchRequests.filter((item) => item.priority === "urgent").length;
@@ -55,20 +113,10 @@ export default function DashboardPage() {
           }
         />
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-            <p className="text-sm text-ink-700/70">طلبات الفرع</p>
-            <p className="mt-2 font-display text-4xl">{openCount}</p>
-          </div>
-          <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-            <p className="text-sm text-ink-700/70">أجهزة مستلمة</p>
-            <p className="mt-2 font-display text-4xl">{deviceCount}</p>
-          </div>
-          <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-            <p className="text-sm text-ink-700/70">طلبات عاجلة</p>
-            <p className="mt-2 font-display text-4xl">{urgentCount}</p>
-          </div>
+          <StatCard label="طلبات الفرع" value={openCount} />
+          <StatCard label="أجهزة مستلمة" value={deviceCount} />
+          <StatCard label="طلبات عاجلة" value={urgentCount} />
         </div>
-
         <h2 className="mb-3 mt-10 font-display text-2xl">طلبات الصيانة الخاصة بالفرع</h2>
         <div className="space-y-3">
           {branchRequests.length === 0 ? (
@@ -89,8 +137,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div className="text-sm text-ink-700/70">
-                    {request.priority === "urgent" ? "عاجل" : "عادي"} ·{" "}
-                    {formatDate(request.receivedAt)}
+                    {request.priority === "urgent" ? "عاجل" : "عادي"} · {formatDate(request.receivedAt)}
                   </div>
                 </div>
               </div>
@@ -118,12 +165,22 @@ export default function DashboardPage() {
         title={`مرحبًا، ${user.fullName.split(" ")[0]}`}
         description={`${ROLE_LABELS[user.role]} — نظرة عامة على العمليات`}
       />
+      {normalizeRole(user.role) === "system_admin" ? (
+        <div className="mb-6 flex flex-wrap gap-3">
+          <Link href="/technician/work" className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white">
+            تجربة عمل الفني
+          </Link>
+          <Link
+            href="/service-requests/new"
+            className="rounded-full border border-ink-900/20 px-4 py-2 text-sm"
+          >
+            تجربة إنشاء طلب فرع
+          </Link>
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-            <p className="text-sm text-ink-700/70">{card.label}</p>
-            <p className="mt-2 font-display text-4xl">{card.value}</p>
-          </div>
+          <StatCard key={card.label} label={card.label} value={card.value} />
         ))}
       </div>
       <h2 className="mb-3 mt-10 font-display text-2xl">أحدث الطلبات</h2>
@@ -144,6 +201,15 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+      <p className="text-sm text-ink-700/70">{label}</p>
+      <p className="mt-2 font-display text-4xl">{value}</p>
     </div>
   );
 }

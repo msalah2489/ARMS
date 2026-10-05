@@ -1,4 +1,4 @@
-import { DEMO_USERS, isDemoMode, normalizeRole } from "@/lib/auth";
+import { DEMO_USERS, isDemoMode, isTechnicianRole, normalizeRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole, Profile } from "@/types/domain";
 
@@ -54,14 +54,18 @@ export async function signIn(email: string, password: string) {
     .eq("id", data.user.id)
     .maybeSingle();
 
-  const role = normalizeRole((profile?.role as AppRole | undefined) ?? "branch");
+  let role = normalizeRole((profile?.role as AppRole | undefined) ?? "branch");
+  // Temporary switch for testing technician UI until a dedicated Auth user is created.
+  if (email.toLowerCase() === "tech@arms.app") role = "technician";
+
   writeSession({
     id: data.user.id,
     fullName: profile?.full_name ?? data.user.email ?? "مستخدم",
     role,
     email: data.user.email ?? email,
     opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-    opsBranchName: role === "branch" || role === "system_admin" ? "فرع الرياض" : null,
+    opsBranchName:
+      role === "branch" || role === "system_admin" || isTechnicianRole(role) ? "فرع الرياض" : null,
   });
 
   return { error: null };
