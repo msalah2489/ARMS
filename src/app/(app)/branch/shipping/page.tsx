@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
+import { RoleGuard } from "@/components/role-guard";
 import { ensureWaybillsHaveDevices, removeDeviceFromWaybill } from "@/lib/branch-store";
+import { isBranchRole } from "@/lib/auth";
 import { readSession } from "@/lib/session";
 import type { Profile, WaybillRecord } from "@/types/domain";
 
-export default function BranchShippingPage() {
+function BranchShippingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [waybills, setWaybills] = useState<WaybillRecord[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -21,11 +23,13 @@ export default function BranchShippingPage() {
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
+  const canRemove = isBranchRole(user.role);
+
   return (
     <div>
       <PageHeader
         title="شحن الصيانة"
-        description="بوالص الشحن التي أنشأها مدير الصيانة للأجهزة الموجودة في الفرع."
+        description="بوالص الشحن الخاصة بأجهزة الفرع المرسلة لمركز الصيانة."
       />
       {message ? <p className="mb-4 text-sm text-aroma-700">{message}</p> : null}
       <div className="space-y-4">
@@ -52,49 +56,53 @@ export default function BranchShippingPage() {
                   >
                     <div>
                       <p className="font-medium">{code}</p>
-                      <p className="text-xs text-ink-700/60">يمكن إزالة الجهاز مع كتابة سبب الإزالة</p>
+                      {canRemove ? (
+                        <p className="text-xs text-ink-700/60">يمكن إزالة الجهاز مع كتابة سبب الإزالة</p>
+                      ) : null}
                     </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <input
-                        value={notes[`${waybill.id}:${code}`] ?? ""}
-                        onChange={(e) =>
-                          setNotes((prev) => ({ ...prev, [`${waybill.id}:${code}`]: e.target.value }))
-                        }
-                        placeholder="سبب الإزالة"
-                        className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const note = (notes[`${waybill.id}:${code}`] ?? "").trim();
-                          if (!note) {
-                            setMessage("يجب كتابة ملاحظة لسبب إزالة الجهاز من البوليصة.");
-                            return;
+                    {canRemove ? (
+                      <div className="flex flex-wrap items-end gap-2">
+                        <input
+                          value={notes[`${waybill.id}:${code}`] ?? ""}
+                          onChange={(e) =>
+                            setNotes((prev) => ({ ...prev, [`${waybill.id}:${code}`]: e.target.value }))
                           }
-                          const next = removeDeviceFromWaybill(waybill.id, code, note);
-                          setWaybills(next);
-                          setMessage(`تم إزالة ${code} من البوليصة.`);
-                        }}
-                        className="rounded-full bg-rose-700 px-4 py-2 text-sm text-white"
-                      >
-                        إزالة من البوليصة
-                      </button>
-                    </div>
+                          placeholder="سبب الإزالة"
+                          className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const note = (notes[`${waybill.id}:${code}`] ?? "").trim();
+                            if (!note) {
+                              setMessage("يجب كتابة ملاحظة لسبب إزالة الجهاز من البوليصة.");
+                              return;
+                            }
+                            const next = removeDeviceFromWaybill(waybill.id, code, note);
+                            setWaybills(next);
+                            setMessage(`تم إزالة ${code} من البوليصة.`);
+                          }}
+                          className="rounded-full bg-rose-700 px-4 py-2 text-sm text-white"
+                        >
+                          إزالة من البوليصة
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ))
               )}
             </div>
-            {waybill.removedDeviceCodes.length ? (
-              <div className="mt-4 rounded-xl bg-sand-50 p-3 text-xs text-ink-700/70">
-                أجهزة مُزالة:{" "}
-                {waybill.removedDeviceCodes
-                  .map((item) => `${item.deviceCode} (${item.note})`)
-                  .join(" · ")}
-              </div>
-            ) : null}
           </section>
         ))}
       </div>
     </div>
+  );
+}
+
+export default function BranchShippingPage() {
+  return (
+    <RoleGuard allow={["branch", "maintenance_manager"]}>
+      <BranchShippingContent />
+    </RoleGuard>
   );
 }

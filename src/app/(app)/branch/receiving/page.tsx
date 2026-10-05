@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
+import { RoleGuard } from "@/components/role-guard";
 import { listMaintenanceRequests } from "@/lib/branch-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -59,7 +60,7 @@ function Section({ title, rows }: { title: string; rows: Row[] }) {
   );
 }
 
-export default function BranchReceivingPage() {
+function BranchReceivingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [requests, setRequests] = useState<MaintenanceRequestRecord[]>([]);
 
@@ -76,16 +77,14 @@ export default function BranchReceivingPage() {
 
     for (const request of requests) {
       for (const device of request.devices) {
-        const row = {
+        received.push({
           deviceCode: device.deviceCode,
           modelName: device.modelName,
           requestNumber: request.requestNumber,
           contactName: request.contactName,
           mobile: request.customerMobile,
           date: request.receivedAt,
-        };
-        // New local requests start as received at branch.
-        received.push(row);
+        });
       }
     }
 
@@ -104,5 +103,13 @@ export default function BranchReceivingPage() {
       <Section title="أجهزة قادمة من الصيانة" rows={sections.fromService} />
       <Section title="أجهزة تم تسليمها للعميل" rows={sections.delivered} />
     </div>
+  );
+}
+
+export default function BranchReceivingPage() {
+  return (
+    <RoleGuard allow="branch">
+      <BranchReceivingContent />
+    </RoleGuard>
   );
 }

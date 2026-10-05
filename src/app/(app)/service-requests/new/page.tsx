@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DeviceFormModal } from "@/components/device-form-modal";
 import { PageHeader } from "@/components/page-header";
+import { RoleGuard } from "@/components/role-guard";
 import { EXTERNAL_CONDITION_LABELS, generateRequestNumber, isValidSaudiMobile } from "@/lib/branch-catalog";
 import {
   findCustomersByMobile,
@@ -13,7 +14,7 @@ import {
 import { readSession } from "@/lib/session";
 import type { BranchPriority, DraftRequestDevice, Profile } from "@/types/domain";
 
-export default function NewServiceRequestPage() {
+function NewServiceRequestContent() {
   const router = useRouter();
   const [user, setUser] = useState<Profile | null>(null);
   const [requestNumber, setRequestNumber] = useState("");
@@ -256,5 +257,13 @@ export default function NewServiceRequestPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function NewServiceRequestPage() {
+  return (
+    <RoleGuard allow="branch">
+      <NewServiceRequestContent />
+    </RoleGuard>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
-import { ROLE_LABELS, isBranchRole, isTechnicianRole, normalizeRole } from "@/lib/auth";
+import { ROLE_LABELS, isBranchRole, isTechnicianRole } from "@/lib/auth";
 import {
   DEVICE_STATUS_LABELS,
   listAllRequestDevices,
@@ -33,7 +33,7 @@ export default function DashboardPage() {
       setBranchRequests(listMaintenanceRequests(session.opsBranchId));
     }
 
-    if (isTechnicianRole(session.role) || normalizeRole(session.role) === "system_admin") {
+    if (isTechnicianRole(session.role)) {
       setTechStats(getTechnicianDashboardStats(session.id));
     }
 
@@ -165,19 +165,6 @@ export default function DashboardPage() {
         title={`مرحبًا، ${user.fullName.split(" ")[0]}`}
         description={`${ROLE_LABELS[user.role]} — نظرة عامة على العمليات`}
       />
-      {normalizeRole(user.role) === "system_admin" ? (
-        <div className="mb-6 flex flex-wrap gap-3">
-          <Link href="/technician/work" className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white">
-            تجربة عمل الفني
-          </Link>
-          <Link
-            href="/service-requests/new"
-            className="rounded-full border border-ink-900/20 px-4 py-2 text-sm"
-          >
-            تجربة إنشاء طلب فرع
-          </Link>
-        </div>
-      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => (
           <StatCard key={card.label} label={card.label} value={card.value} />

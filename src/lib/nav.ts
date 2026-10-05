@@ -23,99 +23,42 @@ export type NavItem = {
   roles: AppRole[];
 };
 
-export const NAV_ITEMS: NavItem[] = [
+/** Branch account tabs only */
+const BRANCH_NAV: NavItem[] = [
+  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard, roles: ["branch", "branch_employee"] },
+  { href: "/service-requests/new", label: "إنشاء طلب", icon: FilePlus2, roles: ["branch", "branch_employee"] },
+  { href: "/branch/receiving", label: "استلام الصيانة", icon: PackageCheck, roles: ["branch", "branch_employee"] },
+  { href: "/branch/shipping", label: "شحن الصيانة", icon: Truck, roles: ["branch", "branch_employee"] },
+  { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["branch", "branch_employee"] },
+  { href: "/reports", label: "التقارير", icon: ClipboardList, roles: ["branch", "branch_employee"] },
+];
+
+/** Technician account tabs only */
+const TECHNICIAN_NAV: NavItem[] = [
+  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard, roles: ["technician", "mobile_technician"] },
+  { href: "/scan", label: "سكان الجهاز", icon: QrCode, roles: ["technician", "mobile_technician"] },
+  { href: "/technician/work", label: "عمل الفني", icon: Wrench, roles: ["technician", "mobile_technician"] },
+];
+
+/** Admin / managers / supervisors */
+const ADMIN_NAV: NavItem[] = [
   {
     href: "/dashboard",
     label: "الرئيسية",
     icon: LayoutDashboard,
-    roles: [
-      "branch",
-      "branch_employee",
-      "system_admin",
-      "manager",
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "supervisor",
-      "technician",
-      "mobile_technician",
-    ],
-  },
-  {
-    href: "/technician/work",
-    label: "عمل الفني",
-    icon: Wrench,
-    roles: ["technician", "mobile_technician", "system_admin", "manager"],
-  },
-  {
-    href: "/scan",
-    label: "سكان الجهاز",
-    icon: QrCode,
-    roles: [
-      "branch",
-      "branch_employee",
-      "technician",
-      "mobile_technician",
-      "maintenance_supervisor",
-      "supervisor",
-      "system_admin",
-      "manager",
-    ],
-  },
-  {
-    href: "/service-requests/new",
-    label: "إنشاء طلب",
-    icon: FilePlus2,
-    roles: ["branch", "branch_employee", "system_admin", "manager"],
-  },
-  {
-    href: "/branch/receiving",
-    label: "استلام الصيانة",
-    icon: PackageCheck,
-    roles: ["branch", "branch_employee", "system_admin", "manager"],
-  },
-  {
-    href: "/branch/shipping",
-    label: "شحن الصيانة",
-    icon: Truck,
-    roles: ["branch", "branch_employee", "maintenance_manager", "system_admin", "manager"],
-  },
-  {
-    href: "/reports",
-    label: "التقارير",
-    icon: ClipboardList,
-    roles: [
-      "branch",
-      "branch_employee",
-      "system_admin",
-      "manager",
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "supervisor",
-    ],
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/service-requests",
     label: "طلبات الصيانة",
     icon: ClipboardList,
-    roles: [
-      "system_admin",
-      "manager",
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "supervisor",
-    ],
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/devices",
     label: "الأجهزة",
     icon: Cpu,
-    roles: [
-      "system_admin",
-      "manager",
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "supervisor",
-    ],
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/customers",
@@ -130,10 +73,22 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["system_admin", "manager", "maintenance_manager"],
   },
   {
+    href: "/branch/shipping",
+    label: "بوالص الشحن",
+    icon: Truck,
+    roles: ["maintenance_manager"],
+  },
+  {
     href: "/spare-parts",
     label: "قطع الغيار",
     icon: Package,
     roles: ["system_admin", "manager", "maintenance_manager"],
+  },
+  {
+    href: "/reports",
+    label: "التقارير",
+    icon: ClipboardList,
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
     href: "/settings",
@@ -143,7 +98,18 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+export const NAV_ITEMS: NavItem[] = [...BRANCH_NAV, ...TECHNICIAN_NAV, ...ADMIN_NAV];
+
 export function navForRole(role: AppRole) {
   const normalized = normalizeRole(role);
-  return NAV_ITEMS.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));
+
+  if (normalized === "branch") {
+    return BRANCH_NAV;
+  }
+
+  if (normalized === "technician" || normalized === "mobile_technician") {
+    return TECHNICIAN_NAV;
+  }
+
+  return ADMIN_NAV.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));
 }

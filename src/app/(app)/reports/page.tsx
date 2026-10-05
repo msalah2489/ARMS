@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
-import { isBranchRole, normalizeRole } from "@/lib/auth";
+import { isBranchRole } from "@/lib/auth";
 import { listMaintenanceRequests } from "@/lib/branch-store";
 import { getDashboardStats, getSpareParts } from "@/lib/data";
 import { readSession } from "@/lib/session";
@@ -18,7 +18,7 @@ export default function ReportsPage() {
     const session = readSession();
     setUser(session);
     if (!session) return;
-    if (isBranchRole(session.role) || normalizeRole(session.role) === "system_admin") {
+    if (isBranchRole(session.role)) {
       setBranchRequests(listMaintenanceRequests(session.opsBranchId));
     }
     void Promise.all([getDashboardStats(), getSpareParts()]).then(([nextStats, nextParts]) => {
@@ -36,7 +36,7 @@ export default function ReportsPage() {
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
-  if (isBranchRole(user.role) || normalizeRole(user.role) === "system_admin") {
+  if (isBranchRole(user.role)) {
     return (
       <div>
         <PageHeader

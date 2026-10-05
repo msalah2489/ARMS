@@ -12,6 +12,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
+  function enterAs(role: "branch" | "technician") {
+    if (role === "branch") {
+      writeSession({
+        id: "branch-local",
+        fullName: "نورة الفرع",
+        role: "branch",
+        email: "branch@arms.local",
+        opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+        opsBranchName: "فرع الرياض",
+      });
+    } else {
+      writeSession({
+        id: "tech-local",
+        fullName: "كريم الفني",
+        role: "technician",
+        email: "tech@arms.local",
+        opsBranchId: null,
+        opsBranchName: "مركز الصيانة",
+      });
+    }
+    router.replace("/dashboard");
+  }
+
   return (
     <main className="grid min-h-screen md:grid-cols-2">
       <section className="hidden bg-ink-950 p-12 text-sand-50 md:flex md:flex-col md:justify-between">
@@ -20,16 +43,16 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-aroma-200">نظام إدارة صيانة الأجهزة</p>
         </div>
         <p className="max-w-md text-sand-100/80">
-          منصة لإدارة طلبات الصيانة حسب صلاحيات كل دور: مدير النظام، مدير الصيانة، الفرع، الفني، المشرف،
-          والفني المتنقل.
+          كل حساب له تبويباته فقط: الفرع لإدارة الطلبات والاستلام، والفني للصيانة وسكان الأجهزة.
         </p>
       </section>
       <section className="flex items-center justify-center bg-sand-50 px-6 py-12">
         <div className="w-full max-w-md">
           <h1 className="font-display text-3xl text-ink-900">تسجيل الدخول</h1>
           <p className="mt-2 text-sm text-ink-700/70">
-            {demo ? "اختر دورًا تجريبيًا أو أدخل بيانات الدخول." : "استخدم حساب Supabase الخاص بك."}
+            {demo ? "اختر دورًا تجريبيًا أو أدخل بيانات الدخول." : "اختر الحساب المناسب لصلاحياتك."}
           </p>
+
           {demo ? (
             <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {DEMO_USERS.map((user) => (
@@ -48,44 +71,29 @@ export default function LoginPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-4 space-y-2 rounded-xl bg-sand-100 px-3 py-3 text-xs text-ink-700/70">
-              <p>حساب المدير: manager@arms.app / ArmsDemo123!</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
-                className="rounded-full bg-ink-900 px-3 py-1.5 text-white"
-                onClick={() => {
-                  writeSession({
-                    id: "tech-local",
-                    fullName: "كريم الفني",
-                    role: "technician",
-                    email: "tech@arms.local",
-                    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-                    opsBranchName: "مركز الصيانة",
-                  });
-                  router.replace("/dashboard");
-                }}
+                onClick={() => enterAs("branch")}
+                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
               >
-                دخول سريع كفني (تجريبي)
+                <p className="font-medium text-ink-900">حساب الفرع</p>
+                <p className="mt-1 text-xs text-ink-700/70">إنشاء طلب · استلام · شحن · تقارير</p>
               </button>
               <button
                 type="button"
-                className="ms-2 rounded-full border border-ink-900/20 px-3 py-1.5"
-                onClick={() => {
-                  writeSession({
-                    id: "branch-local",
-                    fullName: "نورة الفرع",
-                    role: "branch",
-                    email: "branch@arms.local",
-                    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-                    opsBranchName: "فرع الرياض",
-                  });
-                  router.replace("/dashboard");
-                }}
+                onClick={() => enterAs("technician")}
+                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
               >
-                دخول سريع كفرع
+                <p className="font-medium text-ink-900">حساب الفني</p>
+                <p className="mt-1 text-xs text-ink-700/70">الرئيسية · سكان · عمل الفني</p>
               </button>
+              <p className="sm:col-span-2 text-xs text-ink-700/60">
+                حساب المدير (Supabase): manager@arms.app / ArmsDemo123!
+              </p>
             </div>
           )}
+
           <form
             className="mt-8 space-y-4"
             onSubmit={async (event) => {

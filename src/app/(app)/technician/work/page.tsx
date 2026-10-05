@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RoleGuard } from "@/components/role-guard";
 import { PageHeader } from "@/components/page-header";
 import { TechnicianWorkModal } from "@/components/technician-work-modal";
 import { DEVICE_STATUS_LABELS, type TechnicianQueueItem } from "@/lib/branch-store";
@@ -8,7 +9,7 @@ import { getSortedAwaitingDevices } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
-export default function TechnicianWorkPage() {
+function TechnicianWorkContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [queue, setQueue] = useState<TechnicianQueueItem[]>([]);
   const [selected, setSelected] = useState<TechnicianQueueItem | null>(null);
@@ -48,7 +49,7 @@ export default function TechnicianWorkPage() {
       <div className="space-y-3">
         {queue.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-8 text-sm text-ink-700/70">
-            لا توجد أجهزة متاحة حاليًا. أنشئ طلبات من حساب الفرع أولًا.
+            لا توجد أجهزة متاحة حاليًا. يجب أن يُنشئ الفرع طلبات أولًا.
           </p>
         ) : (
           queue.map((item) => (
@@ -104,5 +105,13 @@ export default function TechnicianWorkPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function TechnicianWorkPage() {
+  return (
+    <RoleGuard allow="technician">
+      <TechnicianWorkContent />
+    </RoleGuard>
   );
 }
