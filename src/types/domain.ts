@@ -13,6 +13,9 @@ export type AppRole =
 
 export type BranchPriority = "normal" | "urgent";
 
+/** How the branch routes devices after registering a maintenance request */
+export type MaintenanceAssignmentPath = "mobile_technician" | "service_center";
+
 export type ExternalCondition =
   | "intact"
   | "broken"
@@ -29,6 +32,10 @@ export type DeviceLifecycleStatus =
   | "awaiting_maintenance"
   /** جاري الصيانة — location: service_center */
   | "in_maintenance"
+  /** جاري الصيانة بالفرع — location: branch (mobile technician path) */
+  | "in_maintenance_at_branch"
+  /** تعذر الصيانة — location: branch (mobile tech could not repair) */
+  | "maintenance_failed"
   /** فى الطريق الى الفرع — location: in_return_transit */
   | "in_return_transit"
   /** بانتظار العميل — location: branch */
@@ -166,6 +173,8 @@ export type ManagedUser = {
   opsBranchName: string | null;
   password: string;
   isActive: boolean;
+  /** Soft-delete: hidden from active lists, history kept */
+  isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -176,6 +185,8 @@ export type OpsBranchRecord = {
   city: string;
   code: string;
   isServiceCenter: boolean;
+  /** Soft-disable: kept for history, filtered from active pickers */
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -355,8 +366,14 @@ export type DraftRequestDevice = {
   currentLocation?: string;
   lockedAfterShip?: boolean;
   lifecycleStatus?: DeviceLifecycleStatus;
+  /** mobile_technician | service_center — copied from the parent request */
+  assignmentPath?: MaintenanceAssignmentPath | null;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
+  /** ISO timestamp when a technician claimed/started work on this device */
+  maintenanceStartedAt?: string | null;
+  /** ISO timestamp when maintenance work ended (complete / hold / failed) */
+  maintenanceFinishedAt?: string | null;
 };
 
 export type TechnicianExternalCheck = "damaged" | "intact";
@@ -408,6 +425,8 @@ export type MaintenanceRequestRecord = {
   branchStaffId: string;
   branchStaffName: string;
   priority: BranchPriority;
+  /** Required: assign to mobile tech at branch OR ship to service center */
+  assignmentPath?: MaintenanceAssignmentPath;
   customerMobile: string;
   contactName: string;
   purchaseInvoice: string;

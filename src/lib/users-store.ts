@@ -30,6 +30,7 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     opsBranchName: null,
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
   {
     id: "maint-manager-local",
@@ -42,6 +43,7 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     opsBranchName: null,
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
   {
     id: "branch-local",
@@ -54,6 +56,7 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     opsBranchName: "فرع الرياض",
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
   {
     id: "tech-local",
@@ -66,6 +69,7 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     opsBranchName: "مركز الصيانة",
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
   {
     id: "supervisor-local",
@@ -78,6 +82,7 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     opsBranchName: null,
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
   {
     id: "mobile-local",
@@ -86,10 +91,11 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
     email: "mobile@arms.local",
     mobile: "0500000006",
     role: "mobile_technician",
-    opsBranchId: null,
-    opsBranchName: null,
+    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    opsBranchName: "فرع الرياض",
     password: "demo",
     isActive: true,
+    isArchived: false,
   },
 ];
 
@@ -152,7 +158,12 @@ function normalizeUser(user: ManagedUser): ManagedUser {
     ...user,
     username: username.toLowerCase(),
     isActive: user.isActive !== false,
+    isArchived: Boolean(user.isArchived),
   };
+}
+
+function readAllManagedUsers(): ManagedUser[] {
+  return ensureSeededUsers();
 }
 
 /** Ensure built-in demo accounts appear in the admin users list (demo mode only). */
@@ -187,12 +198,14 @@ function ensureSeededUsers(): ManagedUser[] {
   return merged;
 }
 
-export function listManagedUsers(): ManagedUser[] {
-  return ensureSeededUsers().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export function listManagedUsers(options?: { includeArchived?: boolean }): ManagedUser[] {
+  const all = readAllManagedUsers().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (options?.includeArchived) return all;
+  return all.filter((user) => !user.isArchived);
 }
 
 export function getManagedUser(id: string) {
-  return listManagedUsers().find((user) => user.id === id) ?? null;
+  return readAllManagedUsers().find((user) => user.id === id) ?? null;
 }
 
 export function findManagedUserForSession(profile: {
@@ -200,7 +213,7 @@ export function findManagedUserForSession(profile: {
   email?: string | null;
   username?: string | null;
 }) {
-  const all = listManagedUsers();
+  const all = listManagedUsers({ includeArchived: true });
   return (
     all.find((user) => user.id === profile.id) ??
     all.find(
@@ -272,7 +285,7 @@ function validateUserInput(input: {
     return { ok: false, error: "صيغة البريد الإلكتروني غير صحيحة." };
   }
 
-  const all = listManagedUsers();
+  const all = listManagedUsers({ includeArchived: true });
   if (all.some((user) => user.id !== input.excludeId && user.mobile === mobile)) {
     return { ok: false, error: "رقم الجوال مستخدم لحساب آخر." };
   }
@@ -332,11 +345,12 @@ export function createManagedUser(input: {
     opsBranchName: checked.branch?.name ?? null,
     password,
     isActive: true,
+    isArchived: false,
     createdAt: now,
     updatedAt: now,
   };
 
-  const next = [user, ...listManagedUsers()];
+  const next = [user, ...listManagedUsers({ includeArchived: true })];
   writeJson(USERS_KEY, next);
   schedulePersist(next);
   return { ok: true, user };
@@ -355,9 +369,10 @@ export function updateManagedUserByAdmin(
     isActive?: boolean;
   },
 ): { ok: true; user: ManagedUser } | { ok: false; error: string } {
-  const all = listManagedUsers();
+  const all = listManagedUsers({ includeArchived: true });
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
+  if (existing.isArchived) return { ok: false, error: "لا يمكن تعديل مستخدم مؤرشف. ألغِ الأرشفة أولاً." };
 
   const checked = validateUserInput({
     ...input,
@@ -412,9 +427,10 @@ export function updateManagedUserSelf(
     newPassword?: string;
   },
 ): { ok: true; user: ManagedUser } | { ok: false; error: string } {
-  const all = listManagedUsers();
+  const all = listManagedUsers({ includeArchived: true });
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
+  if (existing.isArchived) return { ok: false, error: "الحساب مؤرشف. راجع مدير النظام." };
   if (!existing.isActive) return { ok: false, error: "الحساب معطّل. راجع مدير النظام." };
 
   const mobile = input.mobile.trim();
@@ -453,12 +469,31 @@ export function updateManagedUserSelf(
   return { ok: true, user: next };
 }
 
+/** Soft-archive: keep history/related data, hide from active lists. */
+export function archiveManagedUser(
+  id: string,
+  archived = true,
+): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+  const all = listManagedUsers({ includeArchived: true });
+  const existing = all.find((user) => user.id === id);
+  if (!existing) return { ok: false, error: "المستخدم غير موجود." };
+
+  const next: ManagedUser = {
+    ...existing,
+    isArchived: archived,
+    isActive: archived ? false : existing.isActive,
+    updatedAt: new Date().toISOString(),
+  };
+  const updated = all.map((user) => (user.id === id ? next : user));
+  writeJson(USERS_KEY, updated);
+  schedulePersist(updated);
+  return { ok: true, user: next };
+}
+
+/** @deprecated Use archiveManagedUser — hard delete removed to preserve history. */
 export function deleteManagedUser(id: string): { ok: true } | { ok: false; error: string } {
-  const all = listManagedUsers();
-  if (!all.some((user) => user.id === id)) return { ok: false, error: "المستخدم غير موجود." };
-  const next = all.filter((user) => user.id !== id);
-  writeJson(USERS_KEY, next);
-  schedulePersist(next);
+  const result = archiveManagedUser(id, true);
+  if (!result.ok) return result;
   return { ok: true };
 }
 
@@ -486,13 +521,14 @@ export function authenticateManagedUser(
 ): ManagedUser | null {
   const key = login.trim().toLowerCase();
   const mobileKey = login.trim();
-  const user = listManagedUsers().find(
+  const user = listManagedUsers({ includeArchived: true }).find(
     (item) =>
       item.username.toLowerCase() === key ||
       item.email.toLowerCase() === key ||
       item.mobile === mobileKey,
   );
   if (!user) return null;
+  if (user.isArchived) return null;
   if (!user.isActive) return null;
   if (user.password !== password) return null;
   return user;

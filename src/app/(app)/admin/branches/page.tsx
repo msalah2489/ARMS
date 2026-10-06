@@ -1,18 +1,60 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
   createOpsBranch,
-  deleteOpsBranch,
   listOpsBranchRecords,
+  setOpsBranchActive,
   updateOpsBranch,
 } from "@/lib/branches-store";
 import type { OpsBranchRecord } from "@/types/domain";
 
 function emptyForm() {
   return { name: "", city: "", isServiceCenter: false };
+}
+
+function BranchRow({
+  branch,
+  onEdit,
+  onToggle,
+}: {
+  branch: OpsBranchRecord;
+  onEdit: () => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-900/10 px-4 py-3 text-sm dark:border-white/10">
+      <div>
+        <p className="font-medium dark:text-sand-50">
+          {branch.name} <span className="text-xs text-ink-700/60 dark:text-sand-100/60">· {branch.code}</span>
+        </p>
+        <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+          {branch.city}
+          {branch.isServiceCenter ? " · مركز صيانة" : ""}
+          {!branch.isActive ? " · معطّل" : ""}
+        </p>
+      </div>
+      <div className="flex gap-3">
+        {branch.isActive ? (
+          <>
+            <button type="button" className="text-ink-900 dark:text-sand-50" onClick={onEdit}>
+              تعديل
+            </button>
+            <button type="button" className="text-amber-700 dark:text-amber-300" onClick={onToggle}>
+              تعطيل
+            </button>
+          </>
+        ) : (
+          <button type="button" className="text-aroma-700 dark:text-aroma-200" onClick={onToggle}>
+            تفعيل
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AdminBranchesContent() {
@@ -22,8 +64,11 @@ function AdminBranchesContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const activeBranches = branches.filter((b) => b.isActive !== false);
+  const disabledBranches = branches.filter((b) => b.isActive === false);
+
   function refresh() {
-    setBranches(listOpsBranchRecords());
+    setBranches(listOpsBranchRecords({ includeInactive: true }));
   }
 
   useEffect(() => {
@@ -42,32 +87,31 @@ function AdminBranchesContent() {
     <div className="space-y-6">
       <PageHeader
         title="إدارة الفروع"
-        description="إضافة الفروع مع المدينة وكود تلقائي فريد، مع خيار اعتبار الفرع مركز صيانة."
+        description="إضافة الفروع مع المدينة وكود تلقائي فريد. التعطيل يُبقي السجل ويُخفي الفرع من الاختيارات النشطة."
       />
 
-      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+      {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
+      {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">{editingId ? "تعديل فرع" : "إضافة فرع"}</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block text-sm">
+      <ExpandableSection title={editingId ? "تعديل فرع" : "إضافة فرع"} defaultOpen>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm dark:text-sand-100">
             اسم الفرع *
             <input
               value={form.name}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             المدينة *
             <input
               value={form.city}
               onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="flex items-center gap-2 text-sm md:col-span-2">
+          <label className="flex items-center gap-2 text-sm md:col-span-2 dark:text-sand-100">
             <input
               type="checkbox"
               checked={form.isServiceCenter}
@@ -78,11 +122,11 @@ function AdminBranchesContent() {
             هذا الفرع مركز صيانة
           </label>
           {editingId ? (
-            <p className="text-xs text-ink-700/60 md:col-span-2">
+            <p className="text-xs text-ink-700/60 md:col-span-2 dark:text-sand-100/60">
               كود الفرع ثابت بعد الإنشاء ولا يمكن تعديله لضمان عدم التكرار.
             </p>
           ) : (
-            <p className="text-xs text-ink-700/60 md:col-span-2">
+            <p className="text-xs text-ink-700/60 md:col-span-2 dark:text-sand-100/60">
               يُنشأ كود الفرع تلقائيًا عند الحفظ (BR-xxxx للفروع أو SC-xxxx لمراكز الصيانة).
             </p>
           )}
@@ -91,7 +135,7 @@ function AdminBranchesContent() {
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
-            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
             onClick={() => {
               setError(null);
               setMessage(null);
@@ -116,71 +160,74 @@ function AdminBranchesContent() {
           {editingId ? (
             <button
               type="button"
-              className="rounded-full border border-ink-900/15 px-5 py-2.5 text-sm"
+              className="rounded-full border border-ink-900/15 px-5 py-2.5 text-sm dark:border-white/15 dark:text-sand-50"
               onClick={resetForm}
             >
               إلغاء
             </button>
           ) : null}
         </div>
-      </section>
+      </ExpandableSection>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">الفروع ({branches.length})</h2>
-        <div className="mt-4 space-y-3">
-          {branches.map((branch) => (
-            <div
-              key={branch.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-900/10 px-4 py-3 text-sm"
-            >
-              <div>
-                <p className="font-medium">
-                  {branch.name}{" "}
-                  <span className="text-xs text-ink-700/60">· {branch.code}</span>
-                </p>
-                <p className="text-xs text-ink-700/60">
-                  {branch.city}
-                  {branch.isServiceCenter ? " · مركز صيانة" : ""}
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  className="text-ink-900"
-                  onClick={() => {
-                    setEditingId(branch.id);
-                    setForm({
-                      name: branch.name,
-                      city: branch.city,
-                      isServiceCenter: branch.isServiceCenter,
-                    });
-                    setError(null);
-                    setMessage(null);
-                  }}
-                >
-                  تعديل
-                </button>
-                <button
-                  type="button"
-                  className="text-rose-700"
-                  onClick={() => {
-                    const result = deleteOpsBranch(branch.id);
-                    if (!result.ok) {
-                      setError(result.error);
-                      return;
-                    }
-                    if (editingId === branch.id) resetForm();
-                    setMessage(`تم حذف ${branch.name}.`);
-                    refresh();
-                  }}
-                >
-                  حذف
-                </button>
-              </div>
-            </div>
-          ))}
+      <ExpandableSection title={`الفروع النشطة (${activeBranches.length})`} defaultOpen>
+        <div className="space-y-3">
+          {activeBranches.length === 0 ? (
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد فروع نشطة.</p>
+          ) : (
+            activeBranches.map((branch) => (
+              <BranchRow
+                key={branch.id}
+                branch={branch}
+                onEdit={() => {
+                  setEditingId(branch.id);
+                  setForm({
+                    name: branch.name,
+                    city: branch.city,
+                    isServiceCenter: branch.isServiceCenter,
+                  });
+                  setError(null);
+                  setMessage(null);
+                }}
+                onToggle={() => {
+                  const result = setOpsBranchActive(branch.id, false);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  if (editingId === branch.id) resetForm();
+                  setMessage(`تم تعطيل ${branch.name}. السجل محفوظ.`);
+                  refresh();
+                }}
+              />
+            ))
+          )}
         </div>
-      </section>
+      </ExpandableSection>
+
+      <ExpandableSection title={`الفروع المعطّلة (${disabledBranches.length})`} defaultOpen={false}>
+        <div className="space-y-3">
+          {disabledBranches.length === 0 ? (
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد فروع معطّلة.</p>
+          ) : (
+            disabledBranches.map((branch) => (
+              <BranchRow
+                key={branch.id}
+                branch={branch}
+                onEdit={() => undefined}
+                onToggle={() => {
+                  const result = setOpsBranchActive(branch.id, true);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage(`تم تفعيل ${branch.name}.`);
+                  refresh();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </ExpandableSection>
     </div>
   );
 }

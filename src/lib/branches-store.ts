@@ -20,6 +20,13 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeBranch(branch: OpsBranchRecord): OpsBranchRecord {
+  return {
+    ...branch,
+    isActive: branch.isActive !== false,
+  };
+}
+
 function seedBranches(): OpsBranchRecord[] {
   return [
     {
@@ -28,6 +35,7 @@ function seedBranches(): OpsBranchRecord[] {
       city: "الرياض",
       code: "BR-0001",
       isServiceCenter: false,
+      isActive: true,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     },
@@ -37,6 +45,7 @@ function seedBranches(): OpsBranchRecord[] {
       city: "جدة",
       code: "BR-0002",
       isServiceCenter: false,
+      isActive: true,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     },
@@ -46,6 +55,7 @@ function seedBranches(): OpsBranchRecord[] {
       city: "الرياض",
       code: "SC-0001",
       isServiceCenter: true,
+      isActive: true,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     },
@@ -59,12 +69,12 @@ function schedulePersist(branches: OpsBranchRecord[]) {
 
 /** Raw localStorage read (no seed write). Used by Supabase hydrate. */
 export function listOpsBranchRecordsLocal(): OpsBranchRecord[] {
-  return readJson<OpsBranchRecord[]>(BRANCHES_KEY, []);
+  return readJson<OpsBranchRecord[]>(BRANCHES_KEY, []).map(normalizeBranch);
 }
 
 export function replaceOpsBranchRecords(branches: OpsBranchRecord[]) {
   if (typeof window === "undefined") return;
-  writeJson(BRANCHES_KEY, branches);
+  writeJson(BRANCHES_KEY, branches.map(normalizeBranch));
 }
 
 export function applyRemoteBranches(branches: OpsBranchRecord[]) {
@@ -75,7 +85,7 @@ export function applyRemoteBranches(branches: OpsBranchRecord[]) {
 
 function nextCode(isServiceCenter: boolean) {
   const prefix = isServiceCenter ? "SC" : "BR";
-  const existing = listOpsBranchRecords()
+  const existing = listOpsBranchRecords({ includeInactive: true })
     .map((item) => item.code)
     .filter((code) => code.startsWith(`${prefix}-`));
   let max = 0;
@@ -85,7 +95,9 @@ function nextCode(isServiceCenter: boolean) {
   }
   let seq = Math.max(max, readJson<number>(BRANCH_SEQ_KEY, 0));
   let code = "";
-  const used = new Set(listOpsBranchRecords().map((item) => item.code));
+  const used = new Set(
+    listOpsBranchRecords({ includeInactive: true }).map((item) => item.code),
+  );
   do {
     seq += 1;
     code = `${prefix}-${String(seq).padStart(4, "0")}`;
@@ -94,26 +106,30 @@ function nextCode(isServiceCenter: boolean) {
   return code;
 }
 
-export function listOpsBranchRecords(): OpsBranchRecord[] {
+export function listOpsBranchRecords(options?: {
+  includeInactive?: boolean;
+}): OpsBranchRecord[] {
   const stored = readJson<OpsBranchRecord[] | null>(BRANCHES_KEY, null);
+  let all: OpsBranchRecord[] = [];
   if (stored && stored.length > 0) {
-    return [...stored].sort((a, b) => a.name.localeCompare(b.name, "ar"));
+    all = stored.map(normalizeBranch).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  } else if (isSupabaseConfigured() && !isDemoMode()) {
+    // Cloud mode: never invent demo branches; hydrate owns empty/remote truth.
+    all = [];
+  } else {
+    const seeded = seedBranches();
+    if (typeof window !== "undefined") {
+      writeJson(BRANCHES_KEY, seeded);
+    }
+    all = seeded;
   }
 
-  // Cloud mode: never invent demo branches; hydrate owns empty/remote truth.
-  if (isSupabaseConfigured() && !isDemoMode()) {
-    return [];
-  }
-
-  const seeded = seedBranches();
-  if (typeof window !== "undefined") {
-    writeJson(BRANCHES_KEY, seeded);
-  }
-  return seeded;
+  if (options?.includeInactive) return all;
+  return all.filter((item) => item.isActive !== false);
 }
 
 export function getOpsBranch(id: string) {
-  return listOpsBranchRecords().find((item) => item.id === id) ?? null;
+  return listOpsBranchRecords({ includeInactive: true }).find((item) => item.id === id) ?? null;
 }
 
 export function listBranchOptions() {
@@ -140,7 +156,7 @@ export function createOpsBranch(input: {
   if (!name) return { ok: false, error: "اسم الفرع إلزامي." };
   if (!city) return { ok: false, error: "المدينة إلزامية." };
 
-  const all = listOpsBranchRecords();
+  const all = listOpsBranchRecords({ includeInactive: true });
   if (all.some((item) => item.name === name && item.city === city)) {
     return { ok: false, error: "يوجد فرع بنفس الاسم والمدينة." };
   }
@@ -153,6 +169,7 @@ export function createOpsBranch(input: {
     city,
     code: nextCode(isServiceCenter),
     isServiceCenter,
+    isActive: true,
     createdAt: now,
     updatedAt: now,
   };
@@ -172,7 +189,7 @@ export function updateOpsBranch(
   if (!name) return { ok: false, error: "اسم الفرع إلزامي." };
   if (!city) return { ok: false, error: "المدينة إلزامية." };
 
-  const all = listOpsBranchRecords();
+  const all = listOpsBranchRecords({ includeInactive: true });
   const existing = all.find((item) => item.id === id);
   if (!existing) return { ok: false, error: "الفرع غير موجود." };
   if (all.some((item) => item.id !== id && item.name === name && item.city === city)) {
@@ -193,11 +210,28 @@ export function updateOpsBranch(
   return { ok: true, branch: nextBranch };
 }
 
-export function deleteOpsBranch(id: string): { ok: true } | { ok: false; error: string } {
-  const all = listOpsBranchRecords();
-  if (!all.some((item) => item.id === id)) return { ok: false, error: "الفرع غير موجود." };
-  const next = all.filter((item) => item.id !== id);
+export function setOpsBranchActive(
+  id: string,
+  isActive: boolean,
+): { ok: true; branch: OpsBranchRecord } | { ok: false; error: string } {
+  const all = listOpsBranchRecords({ includeInactive: true });
+  const existing = all.find((item) => item.id === id);
+  if (!existing) return { ok: false, error: "الفرع غير موجود." };
+
+  const nextBranch: OpsBranchRecord = {
+    ...existing,
+    isActive,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = all.map((item) => (item.id === id ? nextBranch : item));
   writeJson(BRANCHES_KEY, next);
   schedulePersist(next);
+  return { ok: true, branch: nextBranch };
+}
+
+/** @deprecated Use setOpsBranchActive(false) — hard delete removed to preserve history. */
+export function deleteOpsBranch(id: string): { ok: true } | { ok: false; error: string } {
+  const result = setOpsBranchActive(id, false);
+  if (!result.ok) return result;
   return { ok: true };
 }

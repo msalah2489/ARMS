@@ -37,14 +37,17 @@ function tryLocalSignIn(login: string, password: string) {
   }
 
   const key = login.trim().toLowerCase();
-  const disabled = listManagedUsers().find(
+  const blocked = listManagedUsers({ includeArchived: true }).find(
     (item) =>
-      !item.isActive &&
+      (item.isArchived || !item.isActive) &&
       (item.username.toLowerCase() === key ||
         item.email.toLowerCase() === key ||
         item.mobile === login.trim()),
   );
-  if (disabled) {
+  if (blocked?.isArchived) {
+    return { error: "هذا الحساب مؤرشف. راجع مدير النظام." };
+  }
+  if (blocked) {
     return { error: "هذا الحساب معطّل. راجع مدير النظام." };
   }
 

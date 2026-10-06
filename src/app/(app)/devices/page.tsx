@@ -31,15 +31,27 @@ export default function DevicesPage() {
       ) : (
         <DataTable
           columns={[
-            t("devices.col.image"),
             t("devices.col.code"),
-            t("devices.col.serial"),
             t("devices.col.model"),
-            t("devices.col.customerBranch"),
-            t("devices.col.status"),
+            t("devices.col.serial"),
+            t("devices.col.customer"),
             t("devices.col.location"),
+            t("devices.col.status"),
+            t("devices.col.image"),
           ]}
           rows={devices.map((device) => [
+            <Link
+              key="c"
+              href={`/devices/detail/?id=${encodeURIComponent(device.id)}`}
+              className="font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 transition hover:text-aroma-800 dark:text-aroma-200 dark:decoration-aroma-500/80 dark:hover:text-aroma-100"
+            >
+              {device.deviceCode}
+            </Link>,
+            `${device.brand} ${device.modelName}`,
+            device.serialNumber,
+            device.customerName,
+            device.currentLocation,
+            <StatusBadge key="s" value={device.status} />,
             device.imageDataUrl ? (
               <ClickableImage
                 key="img"
@@ -50,18 +62,6 @@ export default function DevicesPage() {
             ) : (
               <ImagePlaceholder key="img" size="sm" />
             ),
-            <Link
-              key="c"
-              href={`/devices/detail/?id=${encodeURIComponent(device.id)}`}
-              className="font-medium text-aroma-700 dark:text-aroma-200"
-            >
-              {device.deviceCode}
-            </Link>,
-            device.serialNumber,
-            `${device.brand} ${device.modelName}`,
-            `${device.customerName} · ${device.branchName}`,
-            <StatusBadge key="s" value={device.status} />,
-            device.currentLocation,
           ])}
         />
       )}

@@ -88,6 +88,7 @@ function userToRow(user: ManagedUser) {
     ops_branch_name: user.opsBranchName,
     password_plain: user.password,
     is_active: user.isActive !== false,
+    is_archived: Boolean(user.isArchived),
     created_at: user.createdAt,
     updated_at: user.updatedAt,
     synced_at: nowIso(),
@@ -106,6 +107,7 @@ function rowToUser(row: Record<string, unknown>): ManagedUser {
     opsBranchName: (row.ops_branch_name as string | null) ?? null,
     password: String(row.password_plain ?? ""),
     isActive: row.is_active !== false,
+    isArchived: Boolean(row.is_archived),
     createdAt: String(row.created_at ?? nowIso()),
     updatedAt: String(row.updated_at ?? nowIso()),
   };
@@ -149,6 +151,7 @@ function branchToRow(branch: OpsBranchRecord) {
     city: branch.city,
     code: branch.code,
     is_service_center: Boolean(branch.isServiceCenter),
+    is_active: branch.isActive !== false,
     created_at: branch.createdAt,
     updated_at: branch.updatedAt,
     synced_at: nowIso(),
@@ -162,6 +165,7 @@ function rowToBranch(row: Record<string, unknown>): OpsBranchRecord {
     city: String(row.city ?? ""),
     code: String(row.code ?? ""),
     isServiceCenter: Boolean(row.is_service_center),
+    isActive: row.is_active !== false,
     createdAt: String(row.created_at ?? nowIso()),
     updatedAt: String(row.updated_at ?? nowIso()),
   };

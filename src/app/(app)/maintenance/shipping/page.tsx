@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { readSession } from "@/lib/session";
@@ -18,10 +19,11 @@ import {
   MANAGER_DECISION_LABELS,
   getDeviceHoldSummary,
   listAwaitingManagerDecisionDevices,
+  listMobilePathDevicesAtBranch,
   resolveManagerDecision,
   returnSuspendedDeviceToMaintenance,
 } from "@/lib/technician-store";
-import { deviceStatusLabel } from "@/lib/branch-store";
+import { deviceStatusLabel, formatMaintenanceDuration } from "@/lib/branch-store";
 import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
 
 function MaintenanceShippingContent() {
@@ -30,6 +32,7 @@ function MaintenanceShippingContent() {
   const [pendingManager, setPendingManager] = useState(
     () => listAwaitingManagerDecisionDevices(),
   );
+  const [mobileAtBranch, setMobileAtBranch] = useState(() => listMobilePathDevicesAtBranch());
   const [branchId, setBranchId] = useState("");
   const [returnBranchId, setReturnBranchId] = useState("");
   const [shipmentNumber, setShipmentNumber] = useState("");
@@ -56,6 +59,7 @@ function MaintenanceShippingContent() {
   function refresh() {
     setBatches(listShippingBatches());
     setPendingManager(listAwaitingManagerDecisionDevices());
+    setMobileAtBranch(listMobilePathDevicesAtBranch());
   }
 
   useEffect(() => {
@@ -75,16 +79,50 @@ function MaintenanceShippingContent() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="بوالص الشحن — مدير الصيانة"
+        title="بوليصات الشحن — مدير الصيانة"
         description="إرسال أجهزة فرع واحد إلى الصيانة، استلامها بعد تسليم الفرع للشحن، ثم إرجاعها لنفس الفرع."
       />
 
-      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+      {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
+      {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">1) بوليصة إرسال إلى الصيانة</h2>
-        <p className="mt-1 text-sm text-ink-700/70">أجهزة من فرع واحد فقط. الفرع يؤكد التسليم للشحن قبل الاستلام هنا.</p>
+      <ExpandableSection title="صيانة بالفرع (فني متنقل)" defaultOpen={mobileAtBranch.length > 0}>
+        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
+          أجهزة معيّنة للفني المتنقل — ظاهرة لمدير/مشرف الصيانة ومدير النظام. لا تظهر لفنّيي مركز
+          الصيانة.
+        </p>
+        <div className="mt-3 space-y-2">
+          {mobileAtBranch.length === 0 ? (
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد أجهزة في مسار الفني المتنقل حاليًا.</p>
+          ) : (
+            mobileAtBranch.map(({ request, device }) => (
+              <div
+                key={`mob-${request.id}-${device.localId}`}
+                className="rounded-xl border border-ink-900/10 px-3 py-3 text-sm dark:border-white/10"
+              >
+                <p className="font-medium dark:text-sand-50">
+                  {device.deviceCode} · {request.requestNumber} · {request.opsBranchName}
+                </p>
+                <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                  {deviceStatusLabel(device.lifecycleStatus, "technician")}
+                  {device.assignedTechnicianName
+                    ? ` · الفني: ${device.assignedTechnicianName}`
+                    : " · بانتظار فني متنقل"}
+                  {device.maintenanceStartedAt
+                    ? ` · المدة: ${formatMaintenanceDuration(
+                        device.maintenanceStartedAt,
+                        device.maintenanceFinishedAt,
+                      )}`
+                    : ""}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </ExpandableSection>
+
+      <ExpandableSection title="1) بوليصة إرسال إلى الصيانة" defaultOpen>
+        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">أجهزة من فرع واحد فقط. الفرع يؤكد التسليم للشحن قبل الاستلام هنا.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block text-sm">
             الفرع
@@ -188,11 +226,10 @@ function MaintenanceShippingContent() {
         >
           إنشاء بوليصة الإرسال
         </button>
-      </section>
+      </ExpandableSection>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">2) بوليصة إرجاع إلى الفرع</h2>
-        <p className="mt-1 text-sm text-ink-700/70">
+      <ExpandableSection title="2) بوليصة إرجاع إلى الفرع" defaultOpen={false}>
+        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
           أجهزة جاهزة للإرجاع تخص فرعًا واحدًا؛ الوجهة = نفس الفرع الوارد منه.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -299,13 +336,14 @@ function MaintenanceShippingContent() {
         >
           إنشاء بوليصة الإرجاع
         </button>
-      </section>
+      </ExpandableSection>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
-        <h2 className="font-display text-xl dark:text-sand-50">
-          أجهزة معلقة ({pendingManager.length})
-        </h2>
-        <p className="mt-1 text-sm text-ink-700/70 dark:text-sand-100/70">
+      <ExpandableSection
+        title={`أجهزة معلقة (${pendingManager.length})`}
+        defaultOpen={pendingManager.length > 0}
+        className="dark:bg-ink-800"
+      >
+        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
           أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«بانتظار الصيانة».
         </p>
         <div className="mt-4 space-y-3">
@@ -448,13 +486,12 @@ function MaintenanceShippingContent() {
             })
           )}
         </div>
-      </section>
+      </ExpandableSection>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">البوالص</h2>
-        <div className="mt-4 space-y-3">
+      <ExpandableSection title="قائمة بوليصات الشحن" defaultOpen>
+        <div className="space-y-3">
           {batches.length === 0 ? (
-            <p className="text-sm text-ink-700/60">لا توجد بوالص بعد.</p>
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد بوليصات بعد.</p>
           ) : (
             batches.map((batch) => {
               const activeItems = batch.items.filter((item) => item.status === "active");
@@ -511,7 +548,7 @@ function MaintenanceShippingContent() {
             })
           )}
         </div>
-      </section>
+      </ExpandableSection>
     </div>
   );
 }

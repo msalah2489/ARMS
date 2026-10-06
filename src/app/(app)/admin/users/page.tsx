@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
   ASSIGNABLE_ROLES,
   ASSIGNABLE_ROLE_LABELS,
+  archiveManagedUser,
   createManagedUser,
-  deleteManagedUser,
   listBranchOptionsForUsers,
   listManagedUsers,
   setManagedUserActive,
@@ -28,6 +29,67 @@ function emptyForm() {
   };
 }
 
+function UserRow({
+  user,
+  onEdit,
+  onToggleActive,
+  onArchive,
+  onUnarchive,
+}: {
+  user: ManagedUser;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-900/10 px-4 py-3 text-sm dark:border-white/10">
+      <div>
+        <p className="font-medium dark:text-sand-50">
+          {user.fullName}{" "}
+          <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
+            · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
+            {!user.isActive ? " · معطّل" : ""}
+            {user.isArchived ? " · مؤرشف" : ""}
+          </span>
+        </p>
+        <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+          {user.mobile}
+          {user.email ? ` · ${user.email}` : ""}
+          {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {!user.isArchived ? (
+          <>
+            <button type="button" className="text-ink-900 dark:text-sand-50" onClick={onEdit}>
+              تعديل
+            </button>
+            <button
+              type="button"
+              className={
+                user.isActive
+                  ? "text-amber-700 dark:text-amber-300"
+                  : "text-aroma-700 dark:text-aroma-200"
+              }
+              onClick={onToggleActive}
+            >
+              {user.isActive ? "تعطيل" : "تفعيل"}
+            </button>
+            <button type="button" className="text-rose-700 dark:text-rose-300" onClick={onArchive}>
+              أرشفة
+            </button>
+          </>
+        ) : (
+          <button type="button" className="text-aroma-700 dark:text-aroma-200" onClick={onUnarchive}>
+            إلغاء الأرشفة
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminUsersContent() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [form, setForm] = useState(emptyForm());
@@ -36,9 +98,11 @@ function AdminUsersContent() {
   const [error, setError] = useState<string | null>(null);
 
   const branches = useMemo(() => listBranchOptionsForUsers(), []);
+  const activeUsers = users.filter((u) => !u.isArchived);
+  const archivedUsers = users.filter((u) => u.isArchived);
 
   function refresh() {
-    setUsers(listManagedUsers());
+    setUsers(listManagedUsers({ includeArchived: true }));
   }
 
   useEffect(() => {
@@ -54,56 +118,55 @@ function AdminUsersContent() {
     <div className="space-y-6">
       <PageHeader
         title="إدارة المستخدمين"
-        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول فقط ولا يُعدَّل بعد الإنشاء. يمكن تعطيل الحساب أو تغيير الفرع."
+        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول فقط ولا يُعدَّل بعد الإنشاء. الأرشفة تحفظ السجل وتُخفي المستخدم من القوائم النشطة."
       />
 
-      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+      {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
+      {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">
-          {editingId ? "تعديل موظف" : "إضافة مستخدم"}
-        </h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block text-sm">
+      <ExpandableSection title={editingId ? "تعديل موظف" : "إضافة مستخدم"} defaultOpen>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm dark:text-sand-100">
             الاسم (اسم الشخص) *
             <input
               value={form.fullName}
               onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             اسم المستخدم (للدخول) *
             <input
               value={form.username}
               onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
               disabled={Boolean(editingId)}
               placeholder="مثال: nora.branch"
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 disabled:bg-sand-50"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 disabled:bg-sand-50 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50 dark:disabled:bg-ink-900"
             />
             {editingId ? (
-              <span className="mt-1 block text-xs text-ink-700/50">لا يمكن تعديل اسم المستخدم.</span>
+              <span className="mt-1 block text-xs text-ink-700/50 dark:text-sand-100/50">
+                لا يمكن تعديل اسم المستخدم.
+              </span>
             ) : null}
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             رقم الجوال *
             <input
               value={form.mobile}
               onChange={(e) => setForm((prev) => ({ ...prev, mobile: e.target.value }))}
               placeholder="05xxxxxxxx"
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             البريد الإلكتروني
             <input
               value={form.email}
               onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             صلاحية المستخدم *
             <select
               value={form.role}
@@ -113,7 +176,7 @@ function AdminUsersContent() {
                   role: e.target.value as AssignableUserRole | "",
                 }))
               }
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             >
               <option value="">اختر الصلاحية</option>
               {ASSIGNABLE_ROLES.map((role) => (
@@ -123,12 +186,12 @@ function AdminUsersContent() {
               ))}
             </select>
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             الفرع {form.role === "branch" ? "*" : "(اختياري)"}
             <select
               value={form.opsBranchId}
               onChange={(e) => setForm((prev) => ({ ...prev, opsBranchId: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             >
               <option value="">بدون فرع</option>
               {branches.map((branch) => (
@@ -138,16 +201,16 @@ function AdminUsersContent() {
               ))}
             </select>
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm dark:text-sand-100">
             كلمة المرور {editingId ? "(اتركها إن لم تتغير)" : "الأولية"}
             <input
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
           {editingId ? (
-            <label className="flex items-center gap-2 text-sm self-end pb-2">
+            <label className="flex items-center gap-2 self-end pb-2 text-sm dark:text-sand-100">
               <input
                 type="checkbox"
                 checked={form.isActive}
@@ -161,7 +224,7 @@ function AdminUsersContent() {
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
-            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
             onClick={() => {
               setError(null);
               setMessage(null);
@@ -211,103 +274,93 @@ function AdminUsersContent() {
           {editingId ? (
             <button
               type="button"
-              className="rounded-full border border-ink-900/15 px-5 py-2.5 text-sm"
+              className="rounded-full border border-ink-900/15 px-5 py-2.5 text-sm dark:border-white/15 dark:text-sand-50"
               onClick={resetForm}
             >
               إلغاء التعديل
             </button>
           ) : null}
         </div>
-      </section>
+      </ExpandableSection>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">المستخدمون ({users.length})</h2>
-        <div className="mt-4 space-y-3">
-          {users.length === 0 ? (
-            <p className="text-sm text-ink-700/60">لا يوجد مستخدمون مضافون بعد.</p>
+      <ExpandableSection title={`المستخدمون النشطون (${activeUsers.length})`} defaultOpen>
+        <div className="space-y-3">
+          {activeUsers.length === 0 ? (
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا يوجد مستخدمون نشطون.</p>
           ) : (
-            users.map((user) => (
-              <div
+            activeUsers.map((user) => (
+              <UserRow
                 key={user.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-900/10 px-4 py-3 text-sm"
-              >
-                <div>
-                  <p className="font-medium">
-                    {user.fullName}{" "}
-                    <span className="text-xs text-ink-700/60">
-                      · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
-                      {!user.isActive ? " · معطّل" : ""}
-                    </span>
-                  </p>
-                  <p className="text-xs text-ink-700/60">
-                    {user.mobile}
-                    {user.email ? ` · ${user.email}` : ""}
-                    {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    className="text-ink-900"
-                    onClick={() => {
-                      setEditingId(user.id);
-                      setForm({
-                        fullName: user.fullName,
-                        username: user.username,
-                        email: user.email.endsWith("@arms.local") ? "" : user.email,
-                        mobile: user.mobile,
-                        role: user.role,
-                        opsBranchId: user.opsBranchId ?? "",
-                        password: "",
-                        isActive: user.isActive,
-                      });
-                      setMessage(null);
-                      setError(null);
-                    }}
-                  >
-                    تعديل
-                  </button>
-                  <button
-                    type="button"
-                    className={user.isActive ? "text-amber-700" : "text-aroma-700"}
-                    onClick={() => {
-                      const result = setManagedUserActive(user.id, !user.isActive);
-                      if (!result.ok) {
-                        setError(result.error);
-                        return;
-                      }
-                      setMessage(
-                        result.user.isActive
-                          ? `تم تفعيل حساب ${result.user.fullName}.`
-                          : `تم تعطيل حساب ${result.user.fullName}.`,
-                      );
-                      refresh();
-                    }}
-                  >
-                    {user.isActive ? "تعطيل" : "تفعيل"}
-                  </button>
-                  <button
-                    type="button"
-                    className="text-rose-700"
-                    onClick={() => {
-                      const result = deleteManagedUser(user.id);
-                      if (!result.ok) {
-                        setError(result.error);
-                        return;
-                      }
-                      if (editingId === user.id) resetForm();
-                      setMessage(`تم حذف ${user.fullName}.`);
-                      refresh();
-                    }}
-                  >
-                    حذف
-                  </button>
-                </div>
-              </div>
+                user={user}
+                onEdit={() => {
+                  setEditingId(user.id);
+                  setForm({
+                    fullName: user.fullName,
+                    username: user.username,
+                    email: user.email.endsWith("@arms.local") ? "" : user.email,
+                    mobile: user.mobile,
+                    role: user.role,
+                    opsBranchId: user.opsBranchId ?? "",
+                    password: "",
+                    isActive: user.isActive,
+                  });
+                  setMessage(null);
+                  setError(null);
+                }}
+                onToggleActive={() => {
+                  const result = setManagedUserActive(user.id, !user.isActive);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage(
+                    result.user.isActive
+                      ? `تم تفعيل حساب ${result.user.fullName}.`
+                      : `تم تعطيل حساب ${result.user.fullName}.`,
+                  );
+                  refresh();
+                }}
+                onArchive={() => {
+                  const result = archiveManagedUser(user.id, true);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  if (editingId === user.id) resetForm();
+                  setMessage(`تم أرشفة ${user.fullName}. السجل محفوظ.`);
+                  refresh();
+                }}
+              />
             ))
           )}
         </div>
-      </section>
+      </ExpandableSection>
+
+      <ExpandableSection title={`المؤرشفون (${archivedUsers.length})`} defaultOpen={false}>
+        <div className="space-y-3">
+          {archivedUsers.length === 0 ? (
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا يوجد مستخدمون مؤرشفون.</p>
+          ) : (
+            archivedUsers.map((user) => (
+              <UserRow
+                key={user.id}
+                user={user}
+                onEdit={() => undefined}
+                onToggleActive={() => undefined}
+                onUnarchive={() => {
+                  const result = archiveManagedUser(user.id, false);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage(`أُلغيت أرشفة ${user.fullName}.`);
+                  refresh();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </ExpandableSection>
     </div>
   );
 }

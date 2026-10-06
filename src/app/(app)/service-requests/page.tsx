@@ -69,7 +69,7 @@ export default function ServiceRequestsPage() {
             <Link
               key="n"
               href={`/service-requests/detail/?id=${encodeURIComponent(request.id)}`}
-              className="font-medium text-aroma-700 dark:text-aroma-200"
+              className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 transition hover:text-aroma-800 hover:decoration-aroma-600 dark:text-aroma-200 dark:decoration-aroma-500/80 dark:hover:text-aroma-100 dark:hover:decoration-aroma-300"
             >
               {request.requestNumber}
             </Link>,

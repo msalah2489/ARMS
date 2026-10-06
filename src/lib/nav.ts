@@ -13,7 +13,6 @@ import {
   Store,
   Tags,
   Truck,
-  UserCircle2,
   Users,
   Wrench,
   type LucideIcon,
@@ -34,7 +33,7 @@ const BRANCH_NAV: NavItem[] = [
   { href: "/branch/shipping", labelKey: "nav.branchShipping", icon: Truck, roles: ["branch", "branch_employee"] },
   { href: "/scan", labelKey: "nav.scan", icon: QrCode, roles: ["branch", "branch_employee"] },
   { href: "/reports", labelKey: "nav.reports", icon: ClipboardList, roles: ["branch", "branch_employee"] },
-  { href: "/account", labelKey: "nav.account", icon: UserCircle2, roles: ["branch", "branch_employee"] },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings, roles: ["branch", "branch_employee"] },
 ];
 
 /** Technician account tabs only */
@@ -42,7 +41,7 @@ const TECHNICIAN_NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, roles: ["technician", "mobile_technician"] },
   { href: "/scan", labelKey: "nav.scan", icon: QrCode, roles: ["technician", "mobile_technician"] },
   { href: "/technician/work", labelKey: "nav.technicianWork", icon: Wrench, roles: ["technician", "mobile_technician"] },
-  { href: "/account", labelKey: "nav.account", icon: UserCircle2, roles: ["technician", "mobile_technician"] },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings, roles: ["technician", "mobile_technician"] },
 ];
 
 /** Admin / managers / supervisors */
@@ -120,16 +119,10 @@ const ADMIN_NAV: NavItem[] = [
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
   {
-    href: "/account",
-    labelKey: "nav.account",
-    icon: UserCircle2,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
-  },
-  {
     href: "/settings",
     labelKey: "nav.settings",
     icon: Settings,
-    roles: ["system_admin", "manager"],
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
   },
 ];
 
