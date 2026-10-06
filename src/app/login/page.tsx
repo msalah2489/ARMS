@@ -24,48 +24,25 @@ export default function LoginPage() {
   const [revealPassword, setRevealPassword] = useState(false);
   // TEMPORARY: visible account shortcuts for easier login during setup — remove later.
   const [accounts, setAccounts] = useState<ManagedUser[]>([]);
-  const [recoveryBusy, setRecoveryBusy] = useState(false);
-  const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
-  const [localUserCount, setLocalUserCount] = useState(0);
 
   const refreshAccounts = () => {
     setAccounts(listLoginShortcutUsers());
-    setLocalUserCount(listManagedUsersLocal().length);
-  };
-
-  const runRecovery = async (source: "auto" | "button") => {
-    if (demo || recoveryBusy) return;
-    setRecoveryBusy(true);
-    setRecoveryMsg(source === "auto" ? "جاري استعادة الحسابات المحلية تلقائيًا…" : "جاري الاستعادة…");
-    try {
-      const result = await recoverLocalUsersToSupabase();
-      if (result.ok) {
-        setRecoveryMsg(
-          `تمت الاستعادة: ${result.recovered} حساب محلي → السحابة (الإجمالي بعد الدمج: ${result.mergedCount}).`,
-        );
-      } else {
-        setRecoveryMsg(result.error);
-      }
-      refreshAccounts();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setRecoveryMsg(`فشلت الاستعادة: ${message}`);
-    } finally {
-      setRecoveryBusy(false);
-    }
   };
 
   useEffect(() => {
-    // Show any local/bootstrap accounts immediately, then recover + hydrate.
     refreshAccounts();
 
     void (async () => {
-      // CRITICAL: push local users to cloud BEFORE hydrate can overwrite a rich local cache.
+      // Push local users to cloud BEFORE hydrate can overwrite a rich local cache.
       const alreadyAuto = sessionStorage.getItem(RECOVERY_AUTO_FLAG) === "1";
       const localCount = listManagedUsersLocal().length;
       if (!demo && !alreadyAuto && localCount > 1) {
         sessionStorage.setItem(RECOVERY_AUTO_FLAG, "1");
-        await runRecovery("auto");
+        try {
+          await recoverLocalUsersToSupabase();
+        } catch {
+          // Silent safety merge only — no recovery UI.
+        }
       }
 
       await hydrateOpsFromSupabase();
@@ -74,7 +51,7 @@ export default function LoginPage() {
 
     window.addEventListener("arms-ops-hydrated", refreshAccounts);
     return () => window.removeEventListener("arms-ops-hydrated", refreshAccounts);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once recovery
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once hydrate/recovery
   }, []);
 
   const hidePassword = () => setRevealPassword(false);
@@ -104,31 +81,6 @@ export default function LoginPage() {
               ? "اختر حسابًا من القائمة أو سجّل باسم المستخدم وكلمة المرور."
               : "سجّل الدخول بحساب موجود في قاعدة البيانات، أو اختر من القائمة المؤقتة أدناه."}
           </p>
-
-          {/* TEMPORARY recovery: restore localStorage users → app_users after accidental cloud wipe */}
-          {!demo ? (
-            <div className="mt-4 rounded-2xl border-2 border-amber-500/70 bg-amber-50 p-4 text-sm text-ink-900 dark:border-amber-400/60 dark:bg-amber-950/40 dark:text-sand-50">
-              <p className="font-medium">استعادة الحسابات (مؤقت)</p>
-              <p className="mt-1 text-xs text-ink-700/80 dark:text-sand-100/70">
-                إذا اختفت الحسابات من السحابة وما زالت محفوظة في هذا المتصفح، اضغط الزر أو انتظر
-                الاستعادة التلقائية بعد التحديث. لا تمسح بيانات الموقع.
-                {localUserCount > 0 ? ` (محليًا الآن: ${localUserCount})` : ""}
-              </p>
-              <button
-                type="button"
-                disabled={recoveryBusy}
-                onClick={() => void runRecovery("button")}
-                className="mt-3 min-h-11 w-full rounded-full bg-amber-600 py-2.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-60"
-              >
-                {recoveryBusy ? "جاري الاستعادة…" : "استعادة الحسابات"}
-              </button>
-              {recoveryMsg ? (
-                <p className="mt-2 text-xs leading-relaxed text-ink-800 dark:text-sand-100/90">
-                  {recoveryMsg}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
 
           {/* TEMPORARY: account picker for convenience — remove when accounts are known. */}
           {accounts.length > 0 ? (
