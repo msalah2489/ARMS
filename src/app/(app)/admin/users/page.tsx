@@ -107,6 +107,9 @@ function AdminUsersContent() {
 
   useEffect(() => {
     refresh();
+    const onHydrated = () => refresh();
+    window.addEventListener("arms-ops-hydrated", onHydrated);
+    return () => window.removeEventListener("arms-ops-hydrated", onHydrated);
   }, []);
 
   function resetForm() {
@@ -226,47 +229,49 @@ function AdminUsersContent() {
             type="button"
             className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
             onClick={() => {
-              setError(null);
-              setMessage(null);
-              if (!form.role) {
-                setError("صلاحية المستخدم إلزامية.");
-                return;
-              }
-              if (editingId) {
-                const result = updateManagedUserByAdmin(editingId, {
-                  fullName: form.fullName,
-                  email: form.email,
-                  mobile: form.mobile,
-                  role: form.role,
-                  opsBranchId: form.opsBranchId || null,
-                  password: form.password,
-                  isActive: form.isActive,
-                });
-                if (!result.ok) {
-                  setError(result.error);
+              void (async () => {
+                setError(null);
+                setMessage(null);
+                if (!form.role) {
+                  setError("صلاحية المستخدم إلزامية.");
                   return;
                 }
-                setMessage(`تم تحديث بيانات ${result.user.fullName}.`);
-              } else {
-                const result = createManagedUser({
-                  fullName: form.fullName,
-                  username: form.username,
-                  email: form.email,
-                  mobile: form.mobile,
-                  role: form.role,
-                  opsBranchId: form.opsBranchId || null,
-                  password: form.password,
-                });
-                if (!result.ok) {
-                  setError(result.error);
-                  return;
+                if (editingId) {
+                  const result = await updateManagedUserByAdmin(editingId, {
+                    fullName: form.fullName,
+                    email: form.email,
+                    mobile: form.mobile,
+                    role: form.role,
+                    opsBranchId: form.opsBranchId || null,
+                    password: form.password,
+                    isActive: form.isActive,
+                  });
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage(`تم تحديث بيانات ${result.user.fullName}.`);
+                } else {
+                  const result = await createManagedUser({
+                    fullName: form.fullName,
+                    username: form.username,
+                    email: form.email,
+                    mobile: form.mobile,
+                    role: form.role,
+                    opsBranchId: form.opsBranchId || null,
+                    password: form.password,
+                  });
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage(
+                    `تم إنشاء ${result.user.fullName}. الدخول باسم المستخدم: ${result.user.username} / ${result.user.password}`,
+                  );
                 }
-                setMessage(
-                  `تم إنشاء ${result.user.fullName}. الدخول باسم المستخدم: ${result.user.username} / ${result.user.password}`,
-                );
-              }
-              resetForm();
-              refresh();
+                resetForm();
+                refresh();
+              })();
             }}
           >
             {editingId ? "حفظ التعديل" : "إضافة المستخدم"}
@@ -308,27 +313,31 @@ function AdminUsersContent() {
                   setError(null);
                 }}
                 onToggleActive={() => {
-                  const result = setManagedUserActive(user.id, !user.isActive);
-                  if (!result.ok) {
-                    setError(result.error);
-                    return;
-                  }
-                  setMessage(
-                    result.user.isActive
-                      ? `تم تفعيل حساب ${result.user.fullName}.`
-                      : `تم تعطيل حساب ${result.user.fullName}.`,
-                  );
-                  refresh();
+                  void (async () => {
+                    const result = await setManagedUserActive(user.id, !user.isActive);
+                    if (!result.ok) {
+                      setError(result.error);
+                      return;
+                    }
+                    setMessage(
+                      result.user.isActive
+                        ? `تم تفعيل حساب ${result.user.fullName}.`
+                        : `تم تعطيل حساب ${result.user.fullName}.`,
+                    );
+                    refresh();
+                  })();
                 }}
                 onArchive={() => {
-                  const result = archiveManagedUser(user.id, true);
-                  if (!result.ok) {
-                    setError(result.error);
-                    return;
-                  }
-                  if (editingId === user.id) resetForm();
-                  setMessage(`تم أرشفة ${user.fullName}. السجل محفوظ.`);
-                  refresh();
+                  void (async () => {
+                    const result = await archiveManagedUser(user.id, true);
+                    if (!result.ok) {
+                      setError(result.error);
+                      return;
+                    }
+                    if (editingId === user.id) resetForm();
+                    setMessage(`تم أرشفة ${user.fullName}. السجل محفوظ.`);
+                    refresh();
+                  })();
                 }}
               />
             ))
@@ -348,13 +357,15 @@ function AdminUsersContent() {
                 onEdit={() => undefined}
                 onToggleActive={() => undefined}
                 onUnarchive={() => {
-                  const result = archiveManagedUser(user.id, false);
-                  if (!result.ok) {
-                    setError(result.error);
-                    return;
-                  }
-                  setMessage(`أُلغيت أرشفة ${user.fullName}.`);
-                  refresh();
+                  void (async () => {
+                    const result = await archiveManagedUser(user.id, false);
+                    if (!result.ok) {
+                      setError(result.error);
+                      return;
+                    }
+                    setMessage(`أُلغيت أرشفة ${user.fullName}.`);
+                    refresh();
+                  })();
                 }}
               />
             ))

@@ -1,7 +1,7 @@
 import { isDemoMode } from "@/lib/auth";
 import { isValidSaudiMobile } from "@/lib/branch-catalog";
 import { listBranchOptions } from "@/lib/branches-store";
-import { pushAppUsers } from "@/lib/supabase/app-sync";
+import { pushAppUsers, pullAppUsers } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
 
@@ -115,7 +115,48 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersist(users: ManagedUser[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushAppUsers(users);
+  // Never schedule an empty wipe — pushAppUsers also guards, but skip the round-trip.
+  if (!Array.isArray(users) || users.length === 0) {
+    console.warn("[arms] schedulePersist: skipped empty users push");
+    return;
+  }
+  void persistUsersNow(users);
+}
+
+/** Awaited cloud persist — used by admin create/update so UI can surface sync failures. */
+async function persistUsersNow(
+  users: ManagedUser[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isSupabaseConfigured() || isDemoMode()) return { ok: true };
+  if (!Array.isArray(users) || users.length === 0) {
+    return { ok: false, error: "رفض مزامنة قائمة مستخدمين فارغة." };
+  }
+  const result = await pushAppUsers(users);
+  if (!result.ok) {
+    console.error("[arms] persist users failed:", result.error);
+    return { ok: false, error: result.error };
+  }
+  return { ok: true };
+}
+
+/**
+ * Merge remote app_users into local cache before a write/push.
+ * Prevents creating a user on an empty/partial local cache from orphan-deleting
+ * everyone else already in the cloud.
+ */
+async function mergeRemoteUsersIntoLocal(): Promise<void> {
+  if (!isSupabaseConfigured() || isDemoMode() || typeof window === "undefined") return;
+  try {
+    const remote = await pullAppUsers();
+    if (remote.length === 0) return;
+    const local = listManagedUsersLocal();
+    const byId = new Map<string, ManagedUser>();
+    for (const user of remote) byId.set(user.id, normalizeUser(user));
+    for (const user of local) byId.set(user.id, normalizeUser(user));
+    replaceManagedUsers([...byId.values()]);
+  } catch (error) {
+    console.warn("[arms] mergeRemoteUsersIntoLocal", error);
+  }
 }
 
 /** Raw localStorage read (no seed). Used by Supabase hydrate. */
@@ -143,15 +184,16 @@ export function getBootstrapAdminUser(): ManagedUser {
 }
 
 /**
- * Keep at least one loginable account when remote hydrate returns empty.
- * Preserves any local cache; otherwise writes bootstrap admin and pushes to cloud.
+ * Keep at least one loginable account when local cache is empty.
+ * Writes bootstrap admin to localStorage only — does NOT push to cloud.
+ * Pushing here (before hydrate) used to wipe remote users down to admin alone.
+ * Hydrate seeds remote when it confirms app_users is empty.
  */
 export function ensureBootstrapAdminIfEmpty(): ManagedUser[] {
   const existing = listManagedUsersLocal();
   if (existing.length > 0) return existing;
   const admin = getBootstrapAdminUser();
   replaceManagedUsers([admin]);
-  schedulePersist([admin]);
   return [admin];
 }
 
@@ -349,7 +391,7 @@ function validateUserInput(input: {
   };
 }
 
-export function createManagedUser(input: {
+export async function createManagedUser(input: {
   fullName: string;
   username: string;
   email?: string;
@@ -357,7 +399,8 @@ export function createManagedUser(input: {
   role: AssignableUserRole;
   opsBranchId?: string | null;
   password?: string;
-}): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+}): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
+  await mergeRemoteUsersIntoLocal();
   const checked = validateUserInput({ ...input, requireUsername: true });
   if (!checked.ok) return checked;
 
@@ -381,12 +424,18 @@ export function createManagedUser(input: {
 
   const next = [user, ...listManagedUsers({ includeArchived: true })];
   writeJson(USERS_KEY, next);
-  schedulePersist(next);
+  const synced = await persistUsersNow(next);
+  if (!synced.ok) {
+    return {
+      ok: false,
+      error: `حُفظ محليًا لكن المزامنة مع السحابة فشلت: ${synced.error}`,
+    };
+  }
   return { ok: true, user };
 }
 
 /** Admin update — username is immutable; branch/role/active can change. */
-export function updateManagedUserByAdmin(
+export async function updateManagedUserByAdmin(
   id: string,
   input: {
     fullName: string;
@@ -397,7 +446,8 @@ export function updateManagedUserByAdmin(
     password?: string;
     isActive?: boolean;
   },
-): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
+  await mergeRemoteUsersIntoLocal();
   const all = listManagedUsers({ includeArchived: true });
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
@@ -427,14 +477,20 @@ export function updateManagedUserByAdmin(
 
   const updated = all.map((user) => (user.id === id ? next : user));
   writeJson(USERS_KEY, updated);
-  schedulePersist(updated);
+  const synced = await persistUsersNow(updated);
+  if (!synced.ok) {
+    return {
+      ok: false,
+      error: `حُفظ محليًا لكن المزامنة مع السحابة فشلت: ${synced.error}`,
+    };
+  }
   return { ok: true, user: next };
 }
 
-export function setManagedUserActive(
+export async function setManagedUserActive(
   id: string,
   isActive: boolean,
-): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
   const existing = getManagedUser(id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
   return updateManagedUserByAdmin(id, {
@@ -448,14 +504,15 @@ export function setManagedUserActive(
 }
 
 /** Employee self-service: mobile + password only. No branch/role/username. */
-export function updateManagedUserSelf(
+export async function updateManagedUserSelf(
   id: string,
   input: {
     mobile: string;
     currentPassword?: string;
     newPassword?: string;
   },
-): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
+  await mergeRemoteUsersIntoLocal();
   const all = listManagedUsers({ includeArchived: true });
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
@@ -494,15 +551,22 @@ export function updateManagedUserSelf(
 
   const updated = all.map((user) => (user.id === id ? next : user));
   writeJson(USERS_KEY, updated);
-  schedulePersist(updated);
+  const synced = await persistUsersNow(updated);
+  if (!synced.ok) {
+    return {
+      ok: false,
+      error: `حُفظ محليًا لكن المزامنة مع السحابة فشلت: ${synced.error}`,
+    };
+  }
   return { ok: true, user: next };
 }
 
 /** Soft-archive: keep history/related data, hide from active lists. */
-export function archiveManagedUser(
+export async function archiveManagedUser(
   id: string,
   archived = true,
-): { ok: true; user: ManagedUser } | { ok: false; error: string } {
+): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
+  await mergeRemoteUsersIntoLocal();
   const all = listManagedUsers({ includeArchived: true });
   const existing = all.find((user) => user.id === id);
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
@@ -515,13 +579,21 @@ export function archiveManagedUser(
   };
   const updated = all.map((user) => (user.id === id ? next : user));
   writeJson(USERS_KEY, updated);
-  schedulePersist(updated);
+  const synced = await persistUsersNow(updated);
+  if (!synced.ok) {
+    return {
+      ok: false,
+      error: `حُفظ محليًا لكن المزامنة مع السحابة فشلت: ${synced.error}`,
+    };
+  }
   return { ok: true, user: next };
 }
 
 /** @deprecated Use archiveManagedUser — hard delete removed to preserve history. */
-export function deleteManagedUser(id: string): { ok: true } | { ok: false; error: string } {
-  const result = archiveManagedUser(id, true);
+export async function deleteManagedUser(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await archiveManagedUser(id, true);
   if (!result.ok) return result;
   return { ok: true };
 }

@@ -40,14 +40,33 @@ async function deleteAll(table: string) {
   if (error) throw error;
 }
 
-/** Insert rows; strip unknown columns (e.g. is_archived pre-018) and retry. */
-async function insertRows(table: string, rows: Record<string, unknown>[]) {
+async function deleteRowsByIds(table: string, ids: string[]) {
+  if (ids.length === 0) return;
+  const supabase = createClient();
+  for (const id of ids) {
+    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (error) throw error;
+  }
+}
+
+/**
+ * Strip columns missing from remote schema (e.g. is_archived before migration 018)
+ * and retry insert/upsert. Returns the rows that succeeded (possibly stripped).
+ */
+async function writeRowsWithSchemaCompat(
+  table: string,
+  rows: Record<string, unknown>[],
+  mode: "insert" | "upsert",
+): Promise<void> {
   if (rows.length === 0) return;
   const supabase = createClient();
   let current = rows.map((row) => ({ ...row }));
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const { error } = await supabase.from(table).insert(current);
+    const { error } =
+      mode === "upsert"
+        ? await supabase.from(table).upsert(current, { onConflict: "id" })
+        : await supabase.from(table).insert(current);
     if (!error) return;
 
     const message = error.message ?? "";
@@ -74,7 +93,17 @@ async function insertRows(table: string, rows: Record<string, unknown>[]) {
     throw error;
   }
 
-  throw new Error(`insertRows(${table}): exceeded schema-compat retries`);
+  throw new Error(`${mode}Rows(${table}): exceeded schema-compat retries`);
+}
+
+/** Insert rows; strip unknown columns (e.g. is_archived pre-018) and retry. */
+async function insertRows(table: string, rows: Record<string, unknown>[]) {
+  await writeRowsWithSchemaCompat(table, rows, "insert");
+}
+
+/** Upsert by id; strip unknown columns and retry. Safer than delete-all + insert. */
+async function upsertRows(table: string, rows: Record<string, unknown>[]) {
+  await writeRowsWithSchemaCompat(table, rows, "upsert");
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -147,10 +176,42 @@ export async function pushAppUsers(users: ManagedUser[]): Promise<SyncResult> {
     return { ok: false, error: "Supabase is not configured." };
   }
   try {
-    // Schema-compat insertRows strips unknown cols (e.g. is_archived pre-018)
-    // so delete+insert no longer leaves the table empty on PGRST204.
-    await deleteAll("app_users");
-    await insertRows("app_users", users.map(userToRow));
+    // Read remote first so we never wipe on empty/failed replace.
+    const remote = await pullAppUsers();
+
+    // CRITICAL: never push an empty array over a non-empty remote (wipes all logins).
+    if (users.length === 0) {
+      if (remote.length > 0) {
+        const msg = "Refusing to push empty users over non-empty remote.";
+        console.warn("[arms] pushAppUsers:", msg);
+        return { ok: false, error: msg };
+      }
+      return { ok: true };
+    }
+
+    // Upsert first (schema-compat strips is_archived etc. if migration 018 not applied).
+    // Only then remove remote orphans — never delete-all before write.
+    await upsertRows("app_users", users.map(userToRow));
+
+    const keepIds = new Set(users.map((user) => user.id).filter(Boolean));
+    const orphanIds = remote
+      .map((user) => user.id)
+      .filter((id) => id && !keepIds.has(id));
+
+    // Guard: bootstrap-only payload must never prune a multi-user remote
+    // (login shortcut used to push [admin] before hydrate finished).
+    const bootstrapOnly =
+      keepIds.size === 1 && (keepIds.has("admin-local") || users[0]?.username === "admin");
+    if (orphanIds.length > 0 && bootstrapOnly && remote.length > 1) {
+      console.warn(
+        "[arms] pushAppUsers: refusing to delete remote users via bootstrap-only payload",
+        { keep: [...keepIds], orphans: orphanIds.length, remote: remote.length },
+      );
+      return { ok: true };
+    }
+
+    await deleteRowsByIds("app_users", orphanIds);
+
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

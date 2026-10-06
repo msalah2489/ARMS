@@ -23,6 +23,7 @@ import { applyRemoteTechnicianWork } from "@/lib/technician-store";
 import {
   applyRemoteManagedUsers,
   ensureBootstrapAdminIfEmpty,
+  listManagedUsersLocal,
 } from "@/lib/users-store";
 import {
   pullAppAuditEvents,
@@ -34,6 +35,7 @@ import {
   pullAppTechnicianWork,
   pullAppUsers,
   pullAppWaybills,
+  pushAppUsers,
 } from "@/lib/supabase/app-sync";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
 import {
@@ -179,12 +181,28 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           },
         });
 
-        // Users: remote wins when present. Never wipe local/bootstrap when remote is empty
-        // (otherwise login shortcuts disappear and Pages cannot sign in as admin).
+        // Users: remote is source of truth when present, but keep any local-only accounts
+        // that were created before their push finished (avoids wiping mid-create on refresh).
+        // Never clear local/bootstrap when remote is empty.
         if (remoteUsers.length > 0) {
-          applyRemoteManagedUsers(remoteUsers);
+          const local = listManagedUsersLocal();
+          const remoteIds = new Set(remoteUsers.map((user) => user.id));
+          const localOnly = local.filter((user) => user.id && !remoteIds.has(user.id));
+          if (localOnly.length > 0) {
+            const merged = [...remoteUsers, ...localOnly];
+            applyRemoteManagedUsers(merged);
+            // Best-effort catch-up so admin-created users survive the next refresh.
+            void pushAppUsers(merged);
+          } else {
+            applyRemoteManagedUsers(remoteUsers);
+          }
         } else {
-          ensureBootstrapAdminIfEmpty();
+          // Remote empty: keep/seed local, then push so cloud gets at least admin
+          // (or any local cache that survived a prior failed wipe).
+          const localUsers = ensureBootstrapAdminIfEmpty();
+          if (localUsers.length > 0) {
+            void pushAppUsers(localUsers);
+          }
         }
 
         const remoteShippingHas = remoteBatches.length > 0 || remoteAudit.length > 0;

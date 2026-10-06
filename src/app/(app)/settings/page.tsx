@@ -175,28 +175,30 @@ export default function SettingsPage() {
             type="button"
             className="mt-5 rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
             onClick={() => {
-              setError(null);
-              setMessage(null);
-              if (newPassword && newPassword !== confirmPassword) {
-                setError(t("account.passwordMismatch"));
-                return;
-              }
-              const result = updateManagedUserSelf(managedId, {
-                mobile,
-                currentPassword: newPassword ? currentPassword : undefined,
-                newPassword: newPassword || undefined,
-              });
-              if (!result.ok) {
-                setError(result.error);
-                return;
-              }
-              const nextSession = managedUserToProfile(result.user);
-              writeSession(nextSession);
-              setUser(nextSession);
-              setCurrentPassword("");
-              setNewPassword("");
-              setConfirmPassword("");
-              setMessage(t("account.saved"));
+              void (async () => {
+                setError(null);
+                setMessage(null);
+                if (newPassword && newPassword !== confirmPassword) {
+                  setError(t("account.passwordMismatch"));
+                  return;
+                }
+                const result = await updateManagedUserSelf(managedId, {
+                  mobile,
+                  currentPassword: newPassword ? currentPassword : undefined,
+                  newPassword: newPassword || undefined,
+                });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
+                const nextSession = managedUserToProfile(result.user);
+                writeSession(nextSession);
+                setUser(nextSession);
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setMessage(t("account.saved"));
+              })();
             }}
           >
             {t("common.save")}
