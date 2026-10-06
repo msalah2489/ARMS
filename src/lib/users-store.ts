@@ -1,5 +1,8 @@
+import { isDemoMode } from "@/lib/auth";
 import { isValidSaudiMobile } from "@/lib/branch-catalog";
 import { listBranchOptions } from "@/lib/branches-store";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
 
 const USERS_KEY = "arms_managed_users_v1";
@@ -104,6 +107,39 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function schedulePersist(users: ManagedUser[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("managed_users", users);
+}
+
+/** Raw localStorage read (no seed). Used by Supabase hydrate. */
+export function listManagedUsersLocal(): ManagedUser[] {
+  return readJson<ManagedUser[]>(USERS_KEY, []).map(normalizeUser);
+}
+
+export function replaceManagedUsers(users: ManagedUser[]) {
+  if (typeof window === "undefined") return;
+  writeJson(USERS_KEY, users.map(normalizeUser));
+}
+
+export function applyRemoteManagedUsers(users: ManagedUser[]) {
+  replaceManagedUsers(users);
+}
+
+/** Seed demo accounts when both remote and local are empty. */
+export function seedManagedUsersIfEmpty(): ManagedUser[] {
+  const existing = listManagedUsersLocal();
+  if (existing.length > 0) return existing;
+  const now = new Date().toISOString();
+  return SEED_USERS.map((seed) =>
+    normalizeUser({
+      ...seed,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  );
+}
+
 function normalizeUser(user: ManagedUser): ManagedUser {
   const username =
     user.username?.trim() ||
@@ -121,6 +157,15 @@ function normalizeUser(user: ManagedUser): ManagedUser {
 /** Ensure built-in demo accounts appear in the admin users list. */
 function ensureSeededUsers(): ManagedUser[] {
   const existing = readJson<ManagedUser[]>(USERS_KEY, []).map(normalizeUser);
+
+  // Cloud mode: hydrate owns bootstrap; do not re-inject seed accounts after deletes.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    if (existing.length > 0) return existing;
+    const seeded = seedManagedUsersIfEmpty();
+    writeJson(USERS_KEY, seeded);
+    return seeded;
+  }
+
   const ids = new Set(existing.map((user) => user.id));
   const emails = new Set(existing.map((user) => user.email.toLowerCase()));
   const usernames = new Set(existing.map((user) => user.username.toLowerCase()));
@@ -293,7 +338,9 @@ export function createManagedUser(input: {
     updatedAt: now,
   };
 
-  writeJson(USERS_KEY, [user, ...listManagedUsers()]);
+  const next = [user, ...listManagedUsers()];
+  writeJson(USERS_KEY, next);
+  schedulePersist(next);
   return { ok: true, user };
 }
 
@@ -336,10 +383,9 @@ export function updateManagedUserByAdmin(
     updatedAt: new Date().toISOString(),
   };
 
-  writeJson(
-    USERS_KEY,
-    all.map((user) => (user.id === id ? next : user)),
-  );
+  const updated = all.map((user) => (user.id === id ? next : user));
+  writeJson(USERS_KEY, updated);
+  schedulePersist(updated);
   return { ok: true, user: next };
 }
 
@@ -403,20 +449,18 @@ export function updateManagedUserSelf(
     updatedAt: new Date().toISOString(),
   };
 
-  writeJson(
-    USERS_KEY,
-    all.map((user) => (user.id === id ? next : user)),
-  );
+  const updated = all.map((user) => (user.id === id ? next : user));
+  writeJson(USERS_KEY, updated);
+  schedulePersist(updated);
   return { ok: true, user: next };
 }
 
 export function deleteManagedUser(id: string): { ok: true } | { ok: false; error: string } {
   const all = listManagedUsers();
   if (!all.some((user) => user.id === id)) return { ok: false, error: "المستخدم غير موجود." };
-  writeJson(
-    USERS_KEY,
-    all.filter((user) => user.id !== id),
-  );
+  const next = all.filter((user) => user.id !== id);
+  writeJson(USERS_KEY, next);
+  schedulePersist(next);
   return { ok: true };
 }
 

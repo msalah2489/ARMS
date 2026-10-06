@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEMO_USERS, ROLE_LABELS, isDemoMode } from "@/lib/auth";
 import { signIn, writeSession } from "@/lib/session";
+import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { getManagedUser, listManagedUsers, managedUserToProfile } from "@/lib/users-store";
 
 export default function LoginPage() {
@@ -13,7 +14,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
-  function enterAs(role: "branch" | "technician" | "maintenance_manager" | "system_admin") {
+  useEffect(() => {
+    void hydrateOpsFromSupabase();
+  }, []);
+
+  async function enterAs(role: "branch" | "technician" | "maintenance_manager" | "system_admin") {
+    await hydrateOpsFromSupabase();
     // Ensure seeded users exist, then open the matching managed account.
     listManagedUsers();
     const idByRole: Record<typeof role, string> = {

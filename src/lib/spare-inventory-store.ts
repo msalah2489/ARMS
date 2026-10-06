@@ -1,4 +1,7 @@
 import { getModelById, getModels, getSparePartsForModel } from "@/lib/catalog-store";
+import { isDemoMode } from "@/lib/auth";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   Profile,
   SpareInventoryBalance,
@@ -10,6 +13,12 @@ import type {
 const BALANCE_KEY = "arms_spare_inventory_v1";
 const RECEIPTS_KEY = "arms_spare_receipts_v1";
 const MOVEMENTS_KEY = "arms_spare_movements_v1";
+
+export type SpareInventoryState = {
+  balances: SpareInventoryBalance[];
+  receipts: SpareReceiveReceipt[];
+  movements: SpareStockMovement[];
+};
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -23,6 +32,34 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function schedulePersist() {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("spare_inventory", getSpareInventoryLocal());
+}
+
+export function getSpareInventoryLocal(): SpareInventoryState {
+  return {
+    balances: readJson<SpareInventoryBalance[]>(BALANCE_KEY, []),
+    receipts: readJson<SpareReceiveReceipt[]>(RECEIPTS_KEY, []).map(normalizeReceipt),
+    movements: readJson<SpareStockMovement[]>(MOVEMENTS_KEY, []),
+  };
+}
+
+export function replaceSpareInventory(state: SpareInventoryState) {
+  if (typeof window === "undefined") return;
+  writeJson(BALANCE_KEY, state.balances ?? []);
+  writeJson(RECEIPTS_KEY, state.receipts ?? []);
+  writeJson(MOVEMENTS_KEY, state.movements ?? []);
+}
+
+export function applyRemoteSpareInventory(state: SpareInventoryState) {
+  replaceSpareInventory({
+    balances: state.balances ?? [],
+    receipts: (state.receipts ?? []).map(normalizeReceipt),
+    movements: state.movements ?? [],
+  });
 }
 
 export function balanceIdFor(modelId: string, partId: string) {
@@ -110,11 +147,13 @@ function upsertBalance(input: {
     BALANCE_KEY,
     existing ? all.map((item) => (item.id === id ? balance : item)) : [balance, ...all],
   );
+  schedulePersist();
   return { ok: true, balance };
 }
 
 function addMovement(movement: SpareStockMovement) {
   writeJson(MOVEMENTS_KEY, [movement, ...listStockMovements()].slice(0, 1000));
+  schedulePersist();
 }
 
 export function receiveSpareParts(input: {
@@ -231,6 +270,7 @@ export function receiveSpareParts(input: {
   };
 
   writeJson(RECEIPTS_KEY, [receipt, ...listReceiveReceipts()]);
+  schedulePersist();
   return { ok: true, receipt };
 }
 

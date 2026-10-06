@@ -6,27 +6,29 @@
 - Ops branches (admin branches CRUD)
 - Maintenance / service requests + devices (branch receiving workflow)
 - Device catalog (types / brands / models)
+- Managed users + passwords (`managed_users`) — same plaintext model as before (not hashed)
+- Shipping batches (`shipping_batches`) + ops audit events (`audit_events`)
+- Technician work records (`technician_work`)
+- Spare inventory balances / receipts / movements (`spare_inventory`)
+- Legacy waybills UI state (`waybills`)
 
-Dashboard CRM lists (customers, branches, devices, service requests) prefer this ops data after hydrate. If empty, they fall back to classic CRM tables (`customers`, `branches`, `devices`, `service_requests`).
+Dashboard CRM lists prefer ops data after hydrate. If empty, they fall back to classic CRM tables.
 
-### Still localStorage-only (for now)
-- Managed users / passwords (`users-store`)
-- Shipping batches UI state (`shipping-store`) beyond what is mirrored through request device updates
-- Technician work scratch records (`technician-store`) except device lifecycle patches (those persist with requests)
-- Spare inventory balances (`spare-inventory-store`)
-- Theme / locale preferences
+### Stays localStorage-only
+- Theme (`arms_theme`) and language/locale (`arms_locale`)
+- Current browser session (`arms_session`)
 
-### Auth
-- Local managed users (`admin@arms.local` / `demo`, etc.) still work on Pages.
-- When `NEXT_PUBLIC_USE_DEMO=false` and no local match, login tries Supabase Auth.
+### Auth / RLS note
+- Managed users (including passwords) are stored as JSON in `arms_client_store` and readable/writable with the **anon** key under the starter Pages policies.
+- That is **weak** for production: anyone with the anon key can read user payloads. Acceptable only for this static-export prototype; tighten with real Auth + RLS before production.
+- Password handling matches the existing app (plaintext comparison today) — not made worse, not upgraded to hashing in this pass.
 
 ## One-time setup in Supabase
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project.
-2. **SQL Editor** → paste and run **once**:
-   - **`supabase/migrations/000_apply_all_for_pages.sql`**
-   - This creates missing CRM tables + `ops_branches` + `arms_client_store` and anon RLS policies.
-   - Safe to re-run. Ignore any earlier error from running `007` alone (`ops_branches` missing).
+2. **SQL Editor**:
+   - **New project / never ran sync:** paste and run **`supabase/migrations/000_apply_all_for_pages.sql`** once.
+   - **Already ran `000` or `007` earlier:** run **`supabase/migrations/008_extend_client_store_keys.sql`** once (adds the new store keys only). Safe to re-run.
 3. **Project Settings → API**:
    - copy **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - copy **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -56,8 +58,9 @@ After setting secrets, re-run **Deploy GitHub Pages** (push to `main` or **Actio
 
 ## Verify
 
-1. Open https://msalah2489.github.io/ARMS/dashboard/
-2. Sign in (e.g. `branch@arms.local` / `demo`)
-3. Create a maintenance request or admin branch
-4. In Supabase → **Table Editor** → `arms_client_store` → confirm `payload` updated
-5. Open the site in another browser / device → same data appears after load
+1. Open https://msalah2489.github.io/ARMS/
+2. Sign in (e.g. `admin` / `demo` or `branch@arms.local` / `demo`)
+3. Change shared data: create a user, shipping batch, technician work, or spare receive
+4. In Supabase → **Table Editor** → `arms_client_store` → confirm keys like `managed_users`, `shipping_batches`, `technician_work`, `spare_inventory` updated
+5. Open the site in another browser / device → same ops data after load
+6. Change language or theme → stays on that device only (not in Supabase)

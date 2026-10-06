@@ -6,7 +6,10 @@ import {
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
+import { isDemoMode } from "@/lib/auth";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { HOLD_REASON_LABELS } from "@/lib/technician-catalog";
 import type {
   ManagerDeviceDecision,
@@ -30,8 +33,26 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-export function listTechnicianWork() {
+function schedulePersist(work: TechnicianWorkRecord[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("technician_work", work);
+}
+
+export function listTechnicianWorkLocal(): TechnicianWorkRecord[] {
   return readJson<TechnicianWorkRecord[]>(WORK_KEY, []);
+}
+
+export function replaceTechnicianWork(work: TechnicianWorkRecord[]) {
+  if (typeof window === "undefined") return;
+  writeJson(WORK_KEY, work);
+}
+
+export function applyRemoteTechnicianWork(work: TechnicianWorkRecord[]) {
+  replaceTechnicianWork(work);
+}
+
+export function listTechnicianWork() {
+  return listTechnicianWorkLocal();
 }
 
 /** Free devices stuck in maintenance after a hold/complete that left a stale assignment. */
@@ -139,7 +160,9 @@ export function startDeviceWork(item: TechnicianQueueItem, technician: Profile) 
     },
   };
 
-  writeJson(WORK_KEY, [record, ...listTechnicianWork()]);
+  const next = [record, ...listTechnicianWork()];
+  writeJson(WORK_KEY, next);
+  schedulePersist(next);
   return record;
 }
 
@@ -149,6 +172,7 @@ export function saveTechnicianWork(record: TechnicianWorkRecord) {
   if (idx >= 0) all[idx] = record;
   else all.unshift(record);
   writeJson(WORK_KEY, all);
+  schedulePersist(all);
   return record;
 }
 
@@ -237,6 +261,7 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
   });
   if (!all.some((item) => item.id === record.id)) all.unshift(held);
   writeJson(WORK_KEY, all);
+  schedulePersist(all);
 
   const match = listAllRequestDevices().find(
     (item) =>

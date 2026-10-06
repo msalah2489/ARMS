@@ -4,7 +4,13 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 export type ArmsClientStoreKey =
   | "ops_branches"
   | "maintenance_requests"
-  | "device_catalog";
+  | "device_catalog"
+  | "managed_users"
+  | "shipping_batches"
+  | "audit_events"
+  | "technician_work"
+  | "spare_inventory"
+  | "waybills";
 
 export async function pullClientStore<T>(
   storeKey: ArmsClientStoreKey,

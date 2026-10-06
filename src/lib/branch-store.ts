@@ -51,6 +51,30 @@ export function applyRemoteMaintenanceRequests(requests: MaintenanceRequestRecor
   replaceMaintenanceRequests(requests);
 }
 
+function schedulePersistWaybills(waybills: WaybillRecord[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("waybills", waybills);
+}
+
+/** Raw localStorage waybills (no demo seed). */
+export function listWaybillsLocal(): WaybillRecord[] {
+  return readJson<WaybillRecord[]>(WAYBILLS_KEY, []);
+}
+
+export function replaceWaybills(waybills: WaybillRecord[]) {
+  if (typeof window === "undefined") return;
+  writeJson(WAYBILLS_KEY, waybills);
+}
+
+export function applyRemoteWaybills(waybills: WaybillRecord[]) {
+  replaceWaybills(waybills);
+}
+
+function writeWaybills(waybills: WaybillRecord[]) {
+  writeJson(WAYBILLS_KEY, waybills);
+  schedulePersistWaybills(waybills);
+}
+
 function sampleDevice(
   input: Partial<DraftRequestDevice> &
     Pick<DraftRequestDevice, "localId" | "deviceCode" | "serialNumber" | "receiptNumber" | "lifecycleStatus">,
@@ -294,8 +318,14 @@ export function listWaybills(opsBranchId?: string | null) {
       removedDeviceCodes: [],
     },
   ];
-  const stored = readJson<WaybillRecord[]>(WAYBILLS_KEY, []);
-  const all = stored.length ? stored : seeded;
+  const stored = listWaybillsLocal();
+  // Cloud mode: never invent demo waybills; empty until hydrate/bootstrap.
+  const all =
+    stored.length > 0
+      ? stored
+      : isSupabaseConfigured() && !isDemoMode()
+        ? []
+        : seeded;
   if (!opsBranchId) return all;
   return all.filter((item) => item.opsBranchId === opsBranchId);
 }
@@ -313,18 +343,20 @@ export function ensureWaybillsHaveDevices(opsBranchId: string) {
       deviceCodes: deviceCodes.slice(0, 3),
       removedDeviceCodes: [],
     };
-    writeJson(WAYBILLS_KEY, [created]);
+    const all = [created, ...listWaybillsLocal().filter((item) => item.opsBranchId !== opsBranchId)];
+    writeWaybills(all);
     return [created];
   }
   if (!waybills[0].deviceCodes.length && deviceCodes.length) {
     waybills[0].deviceCodes = deviceCodes.slice(0, 3);
-    writeJson(WAYBILLS_KEY, waybills);
+    const rest = listWaybillsLocal().filter((item) => item.id !== waybills[0].id);
+    writeWaybills([waybills[0], ...rest]);
   }
   return waybills;
 }
 
 export function removeDeviceFromWaybill(waybillId: string, deviceCode: string, note: string) {
-  const all = listWaybills();
+  const all = listWaybillsLocal().length ? listWaybillsLocal() : listWaybills();
   const next = all.map((wb) => {
     if (wb.id !== waybillId) return wb;
     return {
@@ -333,7 +365,7 @@ export function removeDeviceFromWaybill(waybillId: string, deviceCode: string, n
       removedDeviceCodes: [...wb.removedDeviceCodes, { deviceCode, note }],
     };
   });
-  writeJson(WAYBILLS_KEY, next);
+  writeWaybills(next);
   return next;
 }
 

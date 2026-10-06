@@ -52,6 +52,14 @@ function tryLocalSignIn(login: string, password: string) {
 }
 
 export async function signIn(email: string, password: string) {
+  // Pull cloud users (and other ops) before authenticating so Pages logins see shared accounts.
+  try {
+    const { hydrateOpsFromSupabase } = await import("@/lib/supabase/hydrate");
+    await hydrateOpsFromSupabase();
+  } catch {
+    // Offline / misconfigured: fall through to local cache.
+  }
+
   // Local managed users work in demo and on GitHub Pages static export.
   const local = tryLocalSignIn(email, password);
   if (local) return local;

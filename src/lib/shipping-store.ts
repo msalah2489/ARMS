@@ -5,6 +5,9 @@ import {
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { listBranchOptions } from "@/lib/branches-store";
+import { isDemoMode } from "@/lib/auth";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   BranchReturnReceiveOutcome,
   Profile,
@@ -29,6 +32,40 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function schedulePersistBatches(batches: ShippingBatch[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("shipping_batches", batches);
+}
+
+function schedulePersistAudit(audit: Array<Record<string, unknown>>) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("audit_events", audit);
+}
+
+export function listShippingBatchesLocal(): ShippingBatch[] {
+  return readJson<ShippingBatch[]>(BATCHES_KEY, []);
+}
+
+export function listAuditEventsLocal(): Array<Record<string, unknown>> {
+  return readJson<Array<Record<string, unknown>>>(AUDIT_KEY, []);
+}
+
+export function replaceShippingState(input: {
+  batches: ShippingBatch[];
+  audit: Array<Record<string, unknown>>;
+}) {
+  if (typeof window === "undefined") return;
+  writeJson(BATCHES_KEY, input.batches);
+  writeJson(AUDIT_KEY, input.audit);
+}
+
+export function applyRemoteShippingState(input: {
+  batches: ShippingBatch[];
+  audit: Array<Record<string, unknown>>;
+}) {
+  replaceShippingState(input);
+}
+
 function writeAudit(input: {
   actorId: string;
   actorName: string;
@@ -44,11 +81,18 @@ function writeAudit(input: {
     ...input,
     createdAt: new Date().toISOString(),
   });
-  writeJson(AUDIT_KEY, all.slice(0, 500));
+  const next = all.slice(0, 500);
+  writeJson(AUDIT_KEY, next);
+  schedulePersistAudit(next);
 }
 
 function readAllBatches() {
   return readJson<ShippingBatch[]>(BATCHES_KEY, []);
+}
+
+function writeBatches(batches: ShippingBatch[]) {
+  writeJson(BATCHES_KEY, batches);
+  schedulePersistBatches(batches);
 }
 
 function activeDeviceIdsOnOpenBatches(excludeBatchId?: string) {
@@ -173,7 +217,7 @@ export function createShippingBatch(input: {
     });
   }
 
-  writeJson(BATCHES_KEY, [batch, ...readAllBatches()]);
+  writeBatches([batch, ...readAllBatches()]);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,
@@ -255,7 +299,7 @@ export function createReturnShippingBatch(input: {
     });
   }
 
-  writeJson(BATCHES_KEY, [batch, ...readAllBatches()]);
+  writeBatches([batch, ...readAllBatches()]);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,
@@ -308,7 +352,7 @@ export function removeDeviceFromShippingBatch(input: {
     });
   }
 
-  writeJson(BATCHES_KEY, all);
+  writeBatches(all);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,
@@ -390,7 +434,7 @@ export function confirmHandedToCarrier(input: {
     }
   }
 
-  writeJson(BATCHES_KEY, all);
+  writeBatches(all);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,
@@ -456,7 +500,7 @@ export function confirmReceivedAtService(input: {
     }
   }
 
-  writeJson(BATCHES_KEY, all);
+  writeBatches(all);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,
@@ -570,7 +614,7 @@ export function receiveReturnBatchDevices(input: {
     batch.receivedByName = input.user.fullName;
   }
 
-  writeJson(BATCHES_KEY, all);
+  writeBatches(all);
   writeAudit({
     actorId: input.user.id,
     actorName: input.user.fullName,

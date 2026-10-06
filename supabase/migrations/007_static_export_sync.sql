@@ -142,5 +142,11 @@ insert into public.arms_client_store (store_key, payload)
 values
   ('ops_branches', '[]'::jsonb),
   ('maintenance_requests', '[]'::jsonb),
-  ('device_catalog', '{}'::jsonb)
+  ('device_catalog', '{}'::jsonb),
+  ('managed_users', '[]'::jsonb),
+  ('shipping_batches', '[]'::jsonb),
+  ('audit_events', '[]'::jsonb),
+  ('technician_work', '[]'::jsonb),
+  ('spare_inventory', '{"balances":[],"receipts":[],"movements":[]}'::jsonb),
+  ('waybills', '[]'::jsonb)
 on conflict (store_key) do nothing;
