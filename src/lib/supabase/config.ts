@@ -1,26 +1,17 @@
 /**
- * Accept classic anon JWT (eyJ…, 3 segments) OR newer sb_publishable_* keys.
- * Reject obvious placeholders only.
+ * Classic Supabase "anon public" JWTs look like eyJ...payload...sig
+ * Short sb_publishable_* placeholders return 401 Invalid API key on this project.
  */
 export function isValidSupabaseAnonKey(key: string): boolean {
   const k = key.trim();
-  if (!k) return false;
+  if (!k.startsWith("eyJ")) return false;
+  if (k.split(".").length !== 3) return false;
+  if (k.length < 100) return false;
   if (k.includes("your-anon") || k.includes("your-publishable")) return false;
-
-  // Classic anon / service JWT
-  if (k.startsWith("eyJ") && k.split(".").length === 3 && k.length >= 100) {
-    return true;
-  }
-
-  // New publishable API keys (verified against this project's REST API)
-  if (k.startsWith("sb_publishable_") && k.length >= 40) {
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
-/** True when browser build has a real Supabase project URL + usable anon/publishable key. */
+/** True when browser build has a real Supabase project URL + classic anon JWT. */
 export function isSupabaseConfigured(): boolean {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
   const key = (
