@@ -61,9 +61,44 @@ After setting secrets, re-run **Deploy GitHub Pages** (push to `main` or **Actio
 
 ## Where maintenance / service requests live
 
-Do **not** look at the classic CRM table `service_requests` (often empty).
+### السبب الشائع للخلط (Arabic)
 
-Open Supabase → **Table Editor** → **`arms_client_store`** → row `store_key` = **`maintenance_requests`**. The JSON `payload` array holds the `SR-…` requests.
+المنصة **لا تكتب** طلبات الصيانة كصفوف في جدول `service_requests` (هذا الجدول غالباً فارغ بعد تنظيف 009).  
+البيانات الحية كلها داخل جدول واحد: **`arms_client_store`** — كل نوع بيانات = صف واحد (`store_key`)، والطلبات نفسها داخل عمود **`payload`** كـ JSON.
+
+### أين تنظر بالضبط (نقرات)
+
+1. Supabase Dashboard → مشروعك  
+2. من القائمة اليسرى: **Table Editor**  
+3. افتح الجدول **`arms_client_store`** (ليس `service_requests` ولا `customers`)  
+4. ابحث عن الصف الذي `store_key` = **`maintenance_requests`**  
+5. افتح عمود **`payload`** — ستجد مصفوفة JSON فيها `SR-2026-…`
+
+### عرض أسهل (اختياري)
+
+شغّل مرة **`supabase/migrations/010_v_maintenance_requests_list.sql`** في SQL Editor.  
+بعدها من Table Editor (أو Database → Views) افتح **`v_maintenance_requests_list`** — كل رقم طلب يظهر كصف منفصل.
+
+Do **not** look at the classic CRM table `service_requests` (often empty after migration 009).
+
+## Where managed users live
+
+### السبب الشائع للخلط (Arabic)
+
+حسابات المنصة (مثل `rakan12`) **ليست** صفوفًا في جدول `profiles` (تم تنظيفه في 011).  
+تعيش داخل **`arms_client_store`** → الصف `store_key` = **`managed_users`** → عمود **`payload`** (مصفوفة JSON).
+
+### أين تنظر بالضبط (نقرات)
+
+1. Supabase Dashboard → مشروعك  
+2. **Table Editor** → الجدول **`arms_client_store`** (ليس `profiles`)  
+3. الصف الذي `store_key` = **`managed_users`**  
+4. افتح **`payload`** وابحث عن `"username":"rakan12"` (أو البريد/الجوال)
+
+### عرض أسهل (اختياري)
+
+شغّل مرة **`supabase/migrations/012_v_managed_users_list.sql`** في SQL Editor.  
+بعدها افتح الـ VIEW **`v_managed_users_list`** — كل مستخدم يظهر كصف (بدون كلمة المرور).
 
 ## Verify
 
