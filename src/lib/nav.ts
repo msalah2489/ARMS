@@ -81,7 +81,13 @@ const ADMIN_NAV: NavItem[] = [
     href: "/maintenance/shipping",
     labelKey: "nav.maintenanceShipping",
     icon: Truck,
-    roles: ["maintenance_manager", "system_admin", "manager"],
+    roles: [
+      "maintenance_manager",
+      "maintenance_supervisor",
+      "system_admin",
+      "manager",
+      "supervisor",
+    ],
   },
   {
     href: "/admin/catalog",

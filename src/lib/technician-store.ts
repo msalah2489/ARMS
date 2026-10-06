@@ -1,12 +1,12 @@
 import {
   listAllRequestDevices,
-  listAwaitingMaintenanceDevices,
   listMaintenanceRequests,
   repairStaleTechnicianAssignments,
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
+import { HOLD_REASON_LABELS } from "@/lib/technician-catalog";
 import type {
   ManagerDeviceDecision,
   Profile,
@@ -33,8 +33,40 @@ export function listTechnicianWork() {
   return readJson<TechnicianWorkRecord[]>(WORK_KEY, []);
 }
 
+/** Free devices stuck in maintenance after a hold/complete that left a stale assignment. */
+function repairOrphanedMaintenanceDevices() {
+  const work = listTechnicianWork();
+  for (const item of listAllRequestDevices()) {
+    const status = (item.device.lifecycleStatus ?? "").trim();
+    if (!["in_maintenance", "under_maintenance"].includes(status)) continue;
+
+    const hasOpen = work.some(
+      (record) =>
+        record.deviceLocalId === item.device.localId &&
+        record.requestId === item.request.id &&
+        record.status === "in_progress",
+    );
+    if (hasOpen) continue;
+
+    const held = work.find(
+      (record) =>
+        record.deviceLocalId === item.device.localId &&
+        record.requestId === item.request.id &&
+        record.status === "held",
+    );
+
+    updateDeviceLifecycle(item.request.id, item.device.localId, {
+      lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+    });
+  }
+}
+
 export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
   repairStaleTechnicianAssignments();
+  repairOrphanedMaintenanceDevices();
 
   const awaiting = listAllRequestDevices().filter((item) => {
     const status = (item.device.lifecycleStatus ?? "").trim();
@@ -163,17 +195,58 @@ export function completeTechnicianWork(
   return { ok: true, record: finished };
 }
 
+function formatHoldReasonNote(record: TechnicianWorkRecord) {
+  if (!record.holdReason) return "إرجاع للمشرف بدون سبب مسجّل";
+  const label = HOLD_REASON_LABELS[record.holdReason] ?? record.holdReason;
+  const extra =
+    record.holdReason === "other" && record.holdOtherNote?.trim()
+      ? ` — ${record.holdOtherNote.trim()}`
+      : "";
+  return `إرجاع للمشرف: ${label}${extra}`;
+}
+
+/** Technician returns a device to the supervisor; frees the technician for other ready devices. */
 export function holdTechnicianWork(record: TechnicianWorkRecord) {
+  const finishedAt = new Date().toISOString();
   const held: TechnicianWorkRecord = {
     ...record,
     status: "held",
-    finishedAt: new Date().toISOString(),
+    finishedAt,
   };
-  saveTechnicianWork(held);
+
+  // Close every open work row for this device so the technician is fully free.
+  const all = listTechnicianWork().map((item) => {
+    if (
+      item.deviceLocalId === record.deviceLocalId &&
+      item.requestId === record.requestId &&
+      item.status === "in_progress"
+    ) {
+      return {
+        ...item,
+        ...held,
+        id: item.id === record.id ? held.id : item.id,
+        status: "held" as const,
+        finishedAt,
+      };
+    }
+    if (item.id === record.id) return held;
+    return item;
+  });
+  if (!all.some((item) => item.id === record.id)) all.unshift(held);
+  writeJson(WORK_KEY, all);
+
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === record.requestId && item.device.localId === record.deviceLocalId,
+  );
+  const reasonNote = formatHoldReasonNote(held);
   updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
     lifecycleStatus: "awaiting_manager_decision",
+    currentLocation: "service_center",
     assignedTechnicianId: null,
     assignedTechnicianName: null,
+    lockedAfterShip: false,
+    extraDetails: [match?.device.extraDetails, reasonNote].filter(Boolean).join(" | "),
   });
   return held;
 }
@@ -184,7 +257,26 @@ export function listAwaitingManagerDecisionDevices(): TechnicianQueueItem[] {
   );
 }
 
+/** Latest hold / return-to-supervisor note for manager UI. */
+export function getDeviceHoldSummary(requestId: string, deviceLocalId: string) {
+  const held = listTechnicianWork()
+    .filter(
+      (item) =>
+        item.requestId === requestId &&
+        item.deviceLocalId === deviceLocalId &&
+        item.status === "held",
+    )
+    .sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt))[0];
+  if (!held) return null;
+  return {
+    technicianName: held.technicianName,
+    reason: formatHoldReasonNote(held),
+    finishedAt: held.finishedAt ?? held.startedAt,
+  };
+}
+
 export function listMyInProgressDevices(technicianId: string): TechnicianQueueItem[] {
+  repairOrphanedMaintenanceDevices();
   return listAllRequestDevices().filter(
     (item) =>
       ["in_maintenance", "under_maintenance"].includes(item.device.lifecycleStatus ?? "") &&
@@ -204,10 +296,23 @@ export function findOpenWorkForDevice(deviceLocalId: string, technicianId: strin
 }
 
 export const MANAGER_DECISION_LABELS: Record<ManagerDeviceDecision, string> = {
-  requeue_technician: "إعادة الجهاز لطابور الفني",
+  requeue_technician: "إعادة للصيانة",
   approve_return: "اعتماد الإرجاع للفرع",
   close_case: "إغلاق الحالة بدون إرجاع",
 };
+
+/** Supervisor sends a suspended device back into the technician queue. */
+export function returnSuspendedDeviceToMaintenance(input: {
+  user: Profile;
+  requestId: string;
+  deviceLocalId: string;
+  note?: string;
+}): { ok: true } | { ok: false; error: string } {
+  return resolveManagerDecision({
+    ...input,
+    decision: "requeue_technician",
+  });
+}
 
 export function resolveManagerDecision(input: {
   user: Profile;
@@ -217,8 +322,12 @@ export function resolveManagerDecision(input: {
   note?: string;
 }): { ok: true } | { ok: false; error: string } {
   const role = input.user.role;
-  if (!["maintenance_manager", "system_admin", "manager"].includes(role)) {
-    return { ok: false, error: "قرار مدير الصيانة مسموح لمدير الصيانة فقط." };
+  if (
+    !["maintenance_manager", "system_admin", "manager", "maintenance_supervisor", "supervisor"].includes(
+      role,
+    )
+  ) {
+    return { ok: false, error: "قرار مدير/مشرف الصيانة مسموح لمدير أو مشرف الصيانة فقط." };
   }
 
   const match = listAllRequestDevices().find(
@@ -227,16 +336,20 @@ export function resolveManagerDecision(input: {
   );
   if (!match) return { ok: false, error: "الجهاز غير موجود." };
   if (match.device.lifecycleStatus !== "awaiting_manager_decision") {
-    return { ok: false, error: "هذا الجهاز ليس بانتظار قرار المدير." };
+    return { ok: false, error: "هذا الجهاز ليس بانتظار قرار المشرف." };
   }
 
   if (input.decision === "requeue_technician") {
+    const note = input.note?.trim();
     updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
       lifecycleStatus: "awaiting_maintenance",
       currentLocation: "service_center",
       assignedTechnicianId: null,
       assignedTechnicianName: null,
       lockedAfterShip: false,
+      extraDetails: [match.device.extraDetails, note ? `إعادة للصيانة: ${note}` : "إعادة للصيانة"]
+        .filter(Boolean)
+        .join(" | "),
     });
   } else if (input.decision === "approve_return") {
     updateDeviceLifecycle(input.requestId, input.deviceLocalId, {

@@ -401,14 +401,18 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
         ) : null}
 
         {showHold ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-            <h3 className="font-display text-lg">تعليق الصيانة</h3>
-            <label className="mt-3 block text-sm">
-              سبب التعليق *
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/40">
+            <h3 className="font-display text-lg dark:text-sand-50">إرجاع الجهاز للمشرف</h3>
+            <p className="mt-1 text-xs text-ink-700/70 dark:text-sand-100/70">
+              سيُحرَّر الجهاز من عملك وتظهر لك الأجهزة الجاهزة للصيانة فورًا. المشرف يمكنه إعادة الجهاز
+              لطابور الصيانة لاحقًا.
+            </p>
+            <label className="mt-3 block text-sm dark:text-sand-100">
+              سبب الإرجاع *
               <select
                 value={holdReason}
                 onChange={(e) => setHoldReason(e.target.value as HoldReason)}
-                className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
               >
                 <option value="">اختر</option>
                 {(Object.keys(HOLD_REASON_LABELS) as HoldReason[]).map((key) => (
@@ -422,8 +426,8 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
               <input
                 value={holdOtherNote}
                 onChange={(e) => setHoldOtherNote(e.target.value)}
-                placeholder="سجّل سبب التعليق"
-                className="mt-3 w-full rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                placeholder="سجّل سبب الإرجاع"
+                className="mt-3 w-full rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
               />
             ) : null}
           </div>
@@ -522,11 +526,11 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
               }
               setError(null);
               if (!holdReason) {
-                setError("سبب التعليق إلزامي.");
+                setError("سبب الإرجاع للمشرف إلزامي.");
                 return;
               }
               if (holdReason === "other" && !holdOtherNote.trim()) {
-                setError("سجّل سبب التعليق.");
+                setError("سجّل سبب الإرجاع.");
                 return;
               }
               const record = patchWork({
@@ -539,9 +543,9 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
               holdTechnicianWork(record);
               onDone();
             }}
-            className="rounded-full border border-rose-300 px-5 py-2.5 text-sm text-rose-700"
+            className="rounded-full border border-rose-300 px-5 py-2.5 text-sm text-rose-700 dark:border-rose-700 dark:text-rose-300"
           >
-            {showHold ? "تأكيد التعليق" : "تعليق الصيانة"}
+            {showHold ? "تأكيد الإرجاع للمشرف" : "إرجاع للمشرف"}
           </button>
         </div>
       </div>

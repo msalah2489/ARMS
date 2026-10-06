@@ -390,7 +390,7 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   in_maintenance: "جاري الصيانة",
   under_maintenance: "جاري الصيانة",
   ready_to_return: "جاهز للإرجاع للفرع",
-  awaiting_manager_decision: "بانتظار قرار مدير الصيانة",
+  awaiting_manager_decision: "مُرجع للمشرف — بانتظار القرار",
   in_return_transit: "في الطريق إلى الفرع",
   received_at_destination: "مستلم بالفرع (سليم)",
   received_damaged: "مستلم بالفرع (تالف)",
@@ -401,7 +401,7 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   delivered_to_customer: "تم التسليم للعميل",
   closed: "تم إغلاق الحالة",
   ready_to_send: "جاهز للإرجاع للفرع",
-  excluded: "بانتظار قرار مدير الصيانة",
+  excluded: "مُرجع للمشرف — بانتظار القرار",
 };
 
 /** Branch-facing labels: once at service center, show "في الصيانة". */

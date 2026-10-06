@@ -38,7 +38,7 @@ function TechnicianWorkContent() {
     <div className="space-y-6">
       <PageHeader
         title="عمل الفني"
-        description="أجهزة بحالة «جاهز للصيانة» بعد استلام مدير الصيانة للبوليصة. إن لم تظهر أجهزة معروفة، حدّث الصفحة بعد الاستلام."
+        description="أجهزة بحالة «جاهز للصيانة» بعد استلام مدير الصيانة للبوليصة. إن أرجعت جهازًا للمشرف تظل باقي الأجهزة الجاهزة متاحة لك."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">

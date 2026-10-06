@@ -16,8 +16,10 @@ import {
 } from "@/lib/shipping-store";
 import {
   MANAGER_DECISION_LABELS,
+  getDeviceHoldSummary,
   listAwaitingManagerDecisionDevices,
   resolveManagerDecision,
+  returnSuspendedDeviceToMaintenance,
 } from "@/lib/technician-store";
 import { deviceStatusLabel } from "@/lib/branch-store";
 import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
@@ -296,38 +298,77 @@ function MaintenanceShippingContent() {
         </button>
       </section>
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">
-          قرارات مدير الصيانة ({pendingManager.length})
+      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
+        <h2 className="font-display text-xl dark:text-sand-50">
+          أجهزة مُرجعة للمشرف ({pendingManager.length})
         </h2>
-        <p className="mt-1 text-sm text-ink-700/70">
-          أجهزة معلّقة أو غير قابلة للإصلاح أو لم تُستلم في الفرع — اختر القرار المناسب.
+        <p className="mt-1 text-sm text-ink-700/70 dark:text-sand-100/70">
+          أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«جاهز للصيانة».
         </p>
         <div className="mt-4 space-y-3">
           {pendingManager.length === 0 ? (
-            <p className="text-sm text-ink-700/60">لا توجد أجهزة بانتظار قرارك.</p>
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد أجهزة بانتظار قرارك.</p>
           ) : (
             pendingManager.map((item) => {
               const key = `${item.request.id}:${item.device.localId}`;
               const draft = managerDraft[key] ?? { decision: "", note: "" };
+              const hold = getDeviceHoldSummary(item.request.id, item.device.localId);
               return (
                 <div
                   key={key}
-                  className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm"
+                  className="rounded-xl border border-ink-900/10 px-4 py-3 text-sm dark:border-white/10"
                 >
-                  <p className="font-medium">
+                  <p className="font-medium dark:text-sand-50">
                     {item.device.deviceCode} · {item.request.requestNumber}
                   </p>
-                  <p className="text-xs text-ink-700/60">
+                  <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
                     {item.request.opsBranchName} · {item.device.modelName} ·{" "}
                     {deviceStatusLabel(item.device.lifecycleStatus, "technician")}
                   </p>
-                  {item.device.extraDetails ? (
-                    <p className="mt-1 text-xs text-ink-700/50">{item.device.extraDetails}</p>
+                  {hold ? (
+                    <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                      {hold.technicianName} · {hold.reason}
+                    </p>
                   ) : null}
+                  {item.device.extraDetails ? (
+                    <p className="mt-1 text-xs text-ink-700/50 dark:text-sand-100/50">
+                      {item.device.extraDetails}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full bg-aroma-600 px-4 py-2 text-sm text-white"
+                      onClick={() => {
+                        setError(null);
+                        setMessage(null);
+                        const result = returnSuspendedDeviceToMaintenance({
+                          user,
+                          requestId: item.request.id,
+                          deviceLocalId: item.device.localId,
+                          note: draft.note,
+                        });
+                        if (!result.ok) {
+                          setError(result.error);
+                          return;
+                        }
+                        setMessage(
+                          `أُعيد الجهاز ${item.device.deviceCode} للصيانة — أصبح متاحًا للفنيين.`,
+                        );
+                        setManagerDraft((prev) => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        });
+                        refresh();
+                      }}
+                    >
+                      إعادة للصيانة
+                    </button>
+                  </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <label className="block">
-                      القرار *
+                    <label className="block dark:text-sand-100">
+                      قرار آخر (اختياري)
                       <select
                         value={draft.decision}
                         onChange={(e) =>
@@ -339,19 +380,19 @@ function MaintenanceShippingContent() {
                             },
                           }))
                         }
-                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
                       >
                         <option value="">اختر القرار</option>
-                        {(Object.keys(MANAGER_DECISION_LABELS) as ManagerDeviceDecision[]).map(
-                          (decision) => (
+                        {(Object.keys(MANAGER_DECISION_LABELS) as ManagerDeviceDecision[])
+                          .filter((decision) => decision !== "requeue_technician")
+                          .map((decision) => (
                             <option key={decision} value={decision}>
                               {MANAGER_DECISION_LABELS[decision]}
                             </option>
-                          ),
-                        )}
+                          ))}
                       </select>
                     </label>
-                    <label className="block">
+                    <label className="block dark:text-sand-100">
                       ملاحظة (اختياري)
                       <input
                         value={draft.note}
@@ -361,18 +402,18 @@ function MaintenanceShippingContent() {
                             [key]: { ...draft, note: e.target.value },
                           }))
                         }
-                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                        className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
                       />
                     </label>
                   </div>
                   <button
                     type="button"
-                    className="mt-3 rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
+                    className="mt-3 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-700"
                     onClick={() => {
                       setError(null);
                       setMessage(null);
                       if (!draft.decision) {
-                        setError("اختر قرارًا للجهاز.");
+                        setError("اختر قرارًا للجهاز أو استخدم «إعادة للصيانة».");
                         return;
                       }
                       const result = resolveManagerDecision({
@@ -474,7 +515,15 @@ function MaintenanceShippingContent() {
 
 export default function MaintenanceShippingPage() {
   return (
-    <RoleGuard allow={["maintenance_manager", "system_admin", "manager"]}>
+    <RoleGuard
+      allow={[
+        "maintenance_manager",
+        "maintenance_supervisor",
+        "system_admin",
+        "manager",
+        "supervisor",
+      ]}
+    >
       <MaintenanceShippingContent />
     </RoleGuard>
   );
