@@ -154,16 +154,13 @@ function normalizeUser(user: ManagedUser): ManagedUser {
   };
 }
 
-/** Ensure built-in demo accounts appear in the admin users list. */
+/** Ensure built-in demo accounts appear in the admin users list (demo mode only). */
 function ensureSeededUsers(): ManagedUser[] {
   const existing = readJson<ManagedUser[]>(USERS_KEY, []).map(normalizeUser);
 
-  // Cloud mode: hydrate owns bootstrap; do not re-inject seed accounts after deletes.
+  // Cloud mode: never inject demo users; hydrate/remote is the source of truth.
   if (isSupabaseConfigured() && !isDemoMode()) {
-    if (existing.length > 0) return existing;
-    const seeded = seedManagedUsersIfEmpty();
-    writeJson(USERS_KEY, seeded);
-    return seeded;
+    return existing;
   }
 
   const ids = new Set(existing.map((user) => user.id));

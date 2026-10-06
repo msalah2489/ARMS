@@ -68,16 +68,28 @@ function seedCatalog(): DeviceCatalogState {
   };
 }
 
-export function getCatalogLocal(): DeviceCatalogState {
-  const fallback = seedCatalog();
-  if (typeof window === "undefined") return fallback;
+/** Raw localStorage catalog with no demo seed fallback (for Supabase hydrate). */
+export function getCatalogLocalRaw(): DeviceCatalogState | null {
+  if (typeof window === "undefined") return null;
   const stored = readJson<DeviceCatalogState | null>(CATALOG_KEY, null);
-  if (!stored) return fallback;
+  if (!stored) return null;
   return {
-    deviceTypes: stored.deviceTypes?.length ? stored.deviceTypes : fallback.deviceTypes,
-    brands: stored.brands?.length ? stored.brands : fallback.brands,
-    models: (stored.models?.length ? stored.models : fallback.models).map(normalizeModel),
+    deviceTypes: stored.deviceTypes ?? [],
+    brands: stored.brands ?? [],
+    models: (stored.models ?? []).map(normalizeModel),
   };
+}
+
+export function getCatalogLocal(): DeviceCatalogState {
+  const raw = getCatalogLocalRaw();
+  if (raw && (raw.deviceTypes.length || raw.brands.length || raw.models.length)) {
+    return raw;
+  }
+  // Cloud mode: empty until hydrate / admin fills catalog.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    return raw ?? { deviceTypes: [], brands: [], models: [] };
+  }
+  return seedCatalog();
 }
 
 export function replaceCatalog(catalog: DeviceCatalogState) {
@@ -94,14 +106,27 @@ export function applyRemoteCatalog(catalog: DeviceCatalogState) {
 }
 
 export function getCatalog(): DeviceCatalogState {
-  const fallback = seedCatalog();
-  if (typeof window === "undefined") return fallback;
+  if (typeof window === "undefined") {
+    return isSupabaseConfigured() && !isDemoMode()
+      ? { deviceTypes: [], brands: [], models: [] }
+      : seedCatalog();
+  }
+
   const stored = readJson<DeviceCatalogState | null>(CATALOG_KEY, null);
+
+  // Cloud mode: never auto-seed or push demo catalog; show stored or empty.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    if (!stored) return { deviceTypes: [], brands: [], models: [] };
+    return {
+      deviceTypes: stored.deviceTypes ?? [],
+      brands: stored.brands ?? [],
+      models: (stored.models ?? []).map(normalizeModel),
+    };
+  }
+
+  const fallback = seedCatalog();
   if (!stored) {
     writeJson(CATALOG_KEY, fallback);
-    if (isSupabaseConfigured() && !isDemoMode()) {
-      void pushClientStore("device_catalog", fallback);
-    }
     return fallback;
   }
   return {

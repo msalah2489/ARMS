@@ -96,18 +96,20 @@ function nextCode(isServiceCenter: boolean) {
 
 export function listOpsBranchRecords(): OpsBranchRecord[] {
   const stored = readJson<OpsBranchRecord[] | null>(BRANCHES_KEY, null);
-  if (!stored || stored.length === 0) {
-    const seeded = seedBranches();
-    if (typeof window !== "undefined") {
-      writeJson(BRANCHES_KEY, seeded);
-      // In Supabase mode, hydrate may replace this; still persist seed if remote empty.
-      if (isSupabaseConfigured() && !isDemoMode()) {
-        schedulePersist(seeded);
-      }
-    }
-    return seeded;
+  if (stored && stored.length > 0) {
+    return [...stored].sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }
-  return [...stored].sort((a, b) => a.name.localeCompare(b.name, "ar"));
+
+  // Cloud mode: never invent demo branches; hydrate owns empty/remote truth.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    return [];
+  }
+
+  const seeded = seedBranches();
+  if (typeof window !== "undefined") {
+    writeJson(BRANCHES_KEY, seeded);
+  }
+  return seeded;
 }
 
 export function getOpsBranch(id: string) {

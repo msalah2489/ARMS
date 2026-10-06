@@ -19,20 +19,30 @@ export async function pullClientStore<T>(
   if (!isSupabaseConfigured() || typeof window === "undefined") return fallback;
 
   try {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("arms_client_store")
-      .select("payload")
-      .eq("store_key", storeKey)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data?.payload === undefined || data?.payload === null) return fallback;
-    return data.payload as T;
+    return await pullClientStoreStrict(storeKey, fallback);
   } catch (error) {
     console.error(`[arms] pullClientStore(${storeKey})`, error);
     return fallback;
   }
+}
+
+/** Like pullClientStore but throws on network/RLS errors (hydrate must not wipe cache). */
+export async function pullClientStoreStrict<T>(
+  storeKey: ArmsClientStoreKey,
+  fallback: T,
+): Promise<T> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") return fallback;
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("arms_client_store")
+    .select("payload")
+    .eq("store_key", storeKey)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data?.payload === undefined || data?.payload === null) return fallback;
+  return data.payload as T;
 }
 
 export async function pushClientStore<T>(
