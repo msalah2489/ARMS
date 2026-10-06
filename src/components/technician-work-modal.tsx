@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { TechnicianQueueItem } from "@/lib/branch-store";
+import {
+  formatMaintenanceDuration,
+  getDeviceAssignmentPath,
+  type TechnicianQueueItem,
+} from "@/lib/branch-store";
+import { normalizeRole } from "@/lib/auth";
 import {
   ACTION_OPTIONS,
   FAULT_CAUSE_OPTIONS,
@@ -14,6 +19,7 @@ import {
   completeTechnicianWork,
   findOpenWorkForDevice,
   holdTechnicianWork,
+  markMaintenanceFailed,
   saveTechnicianWork,
   startDeviceWork,
 } from "@/lib/technician-store";
@@ -34,6 +40,7 @@ type Props = {
   technician: Profile;
   onClose: () => void;
   onDone: () => void;
+  onClaimError?: (message: string) => void;
 };
 
 const TEST_LABELS = {
@@ -54,7 +61,14 @@ function emptyTests() {
   } as Record<keyof typeof TEST_LABELS, boolean | null>;
 }
 
-export function TechnicianWorkModal({ open, item, technician, onClose, onDone }: Props) {
+export function TechnicianWorkModal({
+  open,
+  item,
+  technician,
+  onClose,
+  onDone,
+  onClaimError,
+}: Props) {
   const [work, setWork] = useState<TechnicianWorkRecord | null>(null);
   const [externalCheck, setExternalCheck] = useState<TechnicianExternalCheck | "">("");
   const [damageOptions, setDamageOptions] = useState<DamageOption[]>([]);
@@ -71,7 +85,10 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
   const [showHold, setShowHold] = useState(false);
   const [holdReason, setHoldReason] = useState<HoldReason | "">("");
   const [holdOtherNote, setHoldOtherNote] = useState("");
+  const [failNote, setFailNote] = useState("");
+  const [showFail, setShowFail] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -106,8 +123,16 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
     setShowHold(false);
     setHoldReason("");
     setHoldOtherNote("");
+    setFailNote("");
+    setShowFail(false);
     setError(null);
   }, [open, item, technician.id]);
+
+  useEffect(() => {
+    if (!open || !work) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 15_000);
+    return () => window.clearInterval(id);
+  }, [open, work]);
 
   const showClosing = useMemo(() => {
     return Object.values(tests).every((value) => value === true);
@@ -117,26 +142,37 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
 
   const spareParts = getModelSpareParts(item.device.modelId);
   const isResume = Boolean(work);
+  const isMobilePath =
+    normalizeRole(technician.role) === "mobile_technician" ||
+    getDeviceAssignmentPath(item.request, item.device) === "mobile_technician";
 
-  function ensureWork() {
+  function ensureWork(): TechnicianWorkRecord | null {
     if (work) return work;
     const existing = findOpenWorkForDevice(item!.device.localId, technician.id);
     if (existing) {
       setWork(existing);
       return existing;
     }
-    const created = startDeviceWork(item!, technician);
-    setWork(created);
-    return created;
+    const result = startDeviceWork(item!, technician);
+    if (!result.ok) {
+      setError(result.error);
+      onClaimError?.(result.error);
+      return null;
+    }
+    setWork(result.record);
+    return result.record;
   }
 
   function patchWork(partial: Partial<TechnicianWorkRecord>) {
     const base = ensureWork();
+    if (!base) return null;
     const next = { ...base, ...partial };
     setWork(next);
     saveTechnicianWork(next);
     return next;
   }
+
+  const startedAt = work?.startedAt ?? item.device.maintenanceStartedAt;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4">
@@ -150,7 +186,7 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
           </button>
         </div>
 
-        <dl className="mt-4 grid gap-3 rounded-xl bg-sand-50 p-4 text-sm sm:grid-cols-3">
+        <dl className="mt-4 grid gap-3 rounded-xl bg-sand-50 p-4 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-ink-700/60">نوع الجهاز</dt>
             <dd className="font-medium">{item.device.deviceTypeName}</dd>
@@ -162,6 +198,10 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
           <div>
             <dt className="text-ink-700/60">شكوى العميل</dt>
             <dd className="font-medium">{item.device.fault || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-ink-700/60">مدة الصيانة</dt>
+            <dd className="font-medium">{formatMaintenanceDuration(startedAt)}</dd>
           </div>
         </dl>
 
@@ -433,9 +473,38 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
           </div>
         ) : null}
 
+        {isMobilePath && showFail ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <h3 className="font-display text-lg">تعذر الصيانة</h3>
+            <p className="mt-1 text-xs text-ink-700/70">
+              بعد التأكيد يمكنك إرجاع الجهاز لموظف الفرع للشحن، أو شحنه مباشرة لمركز الصيانة من صفحة عمل
+              الفني.
+            </p>
+            <input
+              value={failNote}
+              onChange={(e) => setFailNote(e.target.value)}
+              placeholder="ملاحظة اختيارية عن سبب التعذر"
+              className="mt-3 w-full rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+            />
+          </div>
+        ) : null}
+
         {error ? <p className="mt-4 text-sm text-rose-700">{error}</p> : null}
 
         <div className="mt-6 flex flex-wrap gap-3">
+          {!isResume ? (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                const created = ensureWork();
+                if (!created) return;
+              }}
+              className="rounded-full bg-aroma-600 px-5 py-2.5 text-sm text-white"
+            >
+              بدء العمل على الجهاز
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -502,6 +571,7 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
                 })),
                 outcome,
               });
+              if (!record) return;
               const result = completeTechnicianWork(record, {
                 modelId: item.device.modelId,
                 modelName: item.device.modelName,
@@ -517,11 +587,37 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
           >
             إنهاء العملية
           </button>
+          {isMobilePath ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!showFail) {
+                  setShowFail(true);
+                  setShowHold(false);
+                  return;
+                }
+                setError(null);
+                const record = patchWork({
+                  externalCheck: externalCheck || undefined,
+                  deviceState: deviceState || undefined,
+                  tests,
+                  outcome: "not_repairable",
+                });
+                if (!record) return;
+                markMaintenanceFailed(record, failNote);
+                onDone();
+              }}
+              className="rounded-full border border-rose-400 px-5 py-2.5 text-sm text-rose-800"
+            >
+              {showFail ? "تأكيد تعذر الصيانة" : "تعذر الصيانة"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               if (!showHold) {
                 setShowHold(true);
+                setShowFail(false);
                 return;
               }
               setError(null);
@@ -540,6 +636,7 @@ export function TechnicianWorkModal({ open, item, technician, onClose, onDone }:
                 holdReason,
                 holdOtherNote,
               });
+              if (!record) return;
               holdTechnicianWork(record);
               onDone();
             }}

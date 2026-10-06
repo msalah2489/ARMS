@@ -59,6 +59,8 @@ export const DEMO_USERS: Array<{
     password: "demo",
     fullName: "ياسر المتنقل",
     role: "mobile_technician",
+    opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    opsBranchName: "فرع الرياض",
   },
 ];
 

@@ -38,7 +38,7 @@ export default function DashboardPage() {
       }
 
       if (isTechnicianRole(session.role)) {
-        setTechStats(getTechnicianDashboardStats(session.id));
+        setTechStats(getTechnicianDashboardStats(session.id, session));
       }
 
       void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {

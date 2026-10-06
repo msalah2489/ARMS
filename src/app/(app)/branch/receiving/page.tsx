@@ -70,6 +70,8 @@ function BranchReceivingContent() {
           [
             "received_at_branch",
             "excluded_from_shipment",
+            "in_maintenance_at_branch",
+            "maintenance_failed",
           ].includes(status)
         ) {
           atBranch.push(row);
@@ -101,7 +103,7 @@ function BranchReceivingContent() {
 
   function renderTable(rows: Row[], withDeliver = false) {
     return (
-      <div className="mt-4 overflow-x-auto">
+      <div className="arms-scroll-x mt-4">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-ink-900/10 text-right text-ink-700/70">

@@ -138,7 +138,21 @@ export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQ
       "received_at_branch",
       "excluded_from_shipment",
       "ready_to_ship",
+      "maintenance_failed",
     ].includes(status);
+  });
+}
+
+/** Failed mobile-maintenance devices a mobile tech can ship directly to the service center. */
+export function listDevicesEligibleForMobileDirectShip(
+  opsBranchId: string,
+): TechnicianQueueItem[] {
+  const activeIds = activeDeviceIdsOnOpenBatches();
+  return listAllRequestDevices().filter(({ request, device }) => {
+    if (request.opsBranchId !== opsBranchId) return false;
+    if (device.lockedAfterShip) return false;
+    if (activeIds.has(device.localId)) return false;
+    return device.lifecycleStatus === "maintenance_failed";
   });
 }
 
@@ -163,8 +177,13 @@ export function createShippingBatch(input: {
   notes?: string;
 }): { ok: true; batch: ShippingBatch } | { ok: false; error: string } {
   const role = input.user.role;
-  if (!["maintenance_manager", "system_admin", "manager"].includes(role)) {
-    return { ok: false, error: "إنشاء البوليصة مسموح لمدير الصيانة فقط." };
+  const isManager = ["maintenance_manager", "system_admin", "manager"].includes(role);
+  const isMobileTech = role === "mobile_technician";
+  if (!isManager && !isMobileTech) {
+    return {
+      ok: false,
+      error: "إنشاء البوليصة مسموح لمدير الصيانة أو الفني المتنقل (بعد تعذر الصيانة).",
+    };
   }
   if (!input.shipmentNumber.trim() || !input.carrier.trim()) {
     return { ok: false, error: "رقم البوليصة وشركة الشحن إلزاميان." };
@@ -173,7 +192,15 @@ export function createShippingBatch(input: {
     return { ok: false, error: "اختر جهازًا واحدًا على الأقل." };
   }
 
-  const eligible = listDevicesEligibleForShipment(input.opsBranchId);
+  if (isMobileTech) {
+    if (input.user.opsBranchId && input.opsBranchId !== input.user.opsBranchId) {
+      return { ok: false, error: "يمكنك إنشاء بوليصة لفرعك فقط." };
+    }
+  }
+
+  const eligible = isMobileTech
+    ? listDevicesEligibleForMobileDirectShip(input.opsBranchId)
+    : listDevicesEligibleForShipment(input.opsBranchId);
   const selected = eligible.filter((item) => input.deviceLocalIds.includes(item.device.localId));
   if (selected.length !== input.deviceLocalIds.length) {
     return { ok: false, error: "أحد الأجهزة غير متاح للشحن أو مرتبط ببوليصة نشطة." };
@@ -190,6 +217,8 @@ export function createShippingBatch(input: {
     status: "active",
   }));
 
+  const now = new Date().toISOString();
+  // Mobile tech shipping after failure: treat as already handed to carrier.
   const batch: ShippingBatch = {
     id: crypto.randomUUID(),
     batchNumber: `SB-${year}-${seq}`,
@@ -201,10 +230,12 @@ export function createShippingBatch(input: {
     opsBranchId: input.opsBranchId,
     destinationType: "service_center",
     destinationName: "مركز الصيانة",
-    status: "ready",
+    status: isMobileTech ? "handed_to_carrier" : "ready",
     createdBy: input.user.id,
     createdByName: input.user.fullName,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    handedToCarrierAt: isMobileTech ? now : null,
+    handedToCarrierBy: isMobileTech ? input.user.id : null,
     notes: input.notes?.trim() || undefined,
     items,
   };
@@ -214,6 +245,9 @@ export function createShippingBatch(input: {
       lifecycleStatus: "in_transit_to_service",
       currentLocation: "in_transit_to_service",
       lockedAfterShip: true,
+      assignmentPath: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
     });
   }
 
@@ -224,7 +258,11 @@ export function createShippingBatch(input: {
     action: "create_shipping_batch",
     entityType: "shipping_batch",
     entityId: batch.id,
-    after: { shipmentNumber: batch.shipmentNumber, deviceCount: items.length },
+    after: {
+      shipmentNumber: batch.shipmentNumber,
+      deviceCount: items.length,
+      mobileDirectShip: isMobileTech,
+    },
   });
 
   return { ok: true, batch };

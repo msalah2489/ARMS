@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { deviceStatusLabel } from "@/lib/branch-store";
+import {
+  ASSIGNMENT_PATH_LABELS,
+  deviceStatusLabel,
+  formatMaintenanceDuration,
+} from "@/lib/branch-store";
 import { getMaintenanceRequestById, getOpsServiceRequest } from "@/lib/ops-data";
 import { formatDate } from "@/lib/utils";
 import type { MaintenanceRequestRecord, ServiceRequest } from "@/types/domain";
@@ -77,6 +81,14 @@ export function RequestDetailClient({ id }: { id: string }) {
                 <dt className="text-ink-700/60 dark:text-sand-100/60">موظف الفرع</dt>
                 <dd>{record.branchStaffName}</dd>
               </div>
+              <div>
+                <dt className="text-ink-700/60 dark:text-sand-100/60">مسار الصيانة</dt>
+                <dd>
+                  {record.assignmentPath
+                    ? ASSIGNMENT_PATH_LABELS[record.assignmentPath]
+                    : "إرسال لمركز الصيانة (افتراضي)"}
+                </dd>
+              </div>
               <div className="sm:col-span-2">
                 <dt className="text-ink-700/60 dark:text-sand-100/60">ملاحظات عامة</dt>
                 <dd className="mt-1">{record.generalNotes || "—"}</dd>
@@ -146,6 +158,15 @@ export function RequestDetailClient({ id }: { id: string }) {
                     {device.assignedTechnicianName ? (
                       <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
                         الفني: {device.assignedTechnicianName}
+                      </p>
+                    ) : null}
+                    {device.maintenanceStartedAt ? (
+                      <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                        مدة الصيانة:{" "}
+                        {formatMaintenanceDuration(
+                          device.maintenanceStartedAt,
+                          device.maintenanceFinishedAt,
+                        )}
                       </p>
                     ) : null}
                     {device.receiptPhotoDataUrl ? (

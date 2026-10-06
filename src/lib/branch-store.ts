@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   DeviceLifecycleStatus,
   DraftRequestDevice,
+  MaintenanceAssignmentPath,
   MaintenanceRequestRecord,
   Profile,
   WaybillRecord,
@@ -241,6 +242,8 @@ export function getMaintenanceRequestById(id: string) {
 export function saveMaintenanceRequest(input: {
   user: Profile;
   priority: "normal" | "urgent";
+  /** Must choose: mobile technician at branch OR ship to service center */
+  assignmentPath: MaintenanceAssignmentPath;
   customerMobile: string;
   contactName: string;
   purchaseInvoice: string;
@@ -248,6 +251,13 @@ export function saveMaintenanceRequest(input: {
   devices: DraftRequestDevice[];
   requestNumber?: string;
 }) {
+  if (
+    input.assignmentPath !== "mobile_technician" &&
+    input.assignmentPath !== "service_center"
+  ) {
+    throw new Error("يجب اختيار مسار الصيانة: فني متنقل أو إرسال لمركز الصيانة.");
+  }
+
   const existingReceipts = new Set(
     listMaintenanceRequests()
       .flatMap((request) => request.devices)
@@ -268,6 +278,8 @@ export function saveMaintenanceRequest(input: {
     throw new Error("حساب الفرع غير مرتبط بفرع في قاعدة البيانات. راجع مدير النظام.");
   }
 
+  const isMobile = input.assignmentPath === "mobile_technician";
+
   const record: MaintenanceRequestRecord = {
     id: crypto.randomUUID(),
     requestNumber: input.requestNumber || generateRequestNumber(),
@@ -277,17 +289,23 @@ export function saveMaintenanceRequest(input: {
     branchStaffId: input.user.id,
     branchStaffName: input.user.fullName,
     priority: input.priority,
+    assignmentPath: input.assignmentPath,
     customerMobile: input.customerMobile,
     contactName: input.contactName,
     purchaseInvoice: input.purchaseInvoice,
     generalNotes: input.generalNotes,
     devices: input.devices.map((device) => ({
       ...device,
-      lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
-      currentLocation: device.currentLocation ?? "branch",
+      assignmentPath: input.assignmentPath,
+      lifecycleStatus: isMobile
+        ? "in_maintenance_at_branch"
+        : (device.lifecycleStatus ?? "received_at_branch"),
+      currentLocation: "branch",
       lockedAfterShip: device.lockedAfterShip ?? false,
-      assignedTechnicianId: device.assignedTechnicianId ?? null,
-      assignedTechnicianName: device.assignedTechnicianName ?? null,
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      maintenanceStartedAt: null,
+      maintenanceFinishedAt: null,
     })),
   };
 
@@ -450,12 +468,14 @@ export function repairStaleTechnicianAssignments() {
   }
 }
 
-/** Canonical English keys → Arabic labels (7 primary + internal/legacy). */
+/** Canonical English keys → Arabic labels (primary + internal/legacy). */
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
   received_at_branch: "مستلم بالفرع",
   in_transit_to_service: "جاري الشحن",
   awaiting_maintenance: "بانتظار الصيانة",
   in_maintenance: "جاري الصيانة",
+  in_maintenance_at_branch: "جاري الصيانة بالفرع",
+  maintenance_failed: "تعذر الصيانة",
   in_return_transit: "فى الطريق الى الفرع",
   awaiting_customer: "بانتظار العميل",
   awaiting_manager_decision: "معلق",
@@ -485,6 +505,8 @@ export const DEVICE_STATUS_LABELS_EN: Record<string, string> = {
   in_transit_to_service: "Shipping in progress",
   awaiting_maintenance: "Awaiting maintenance",
   in_maintenance: "In maintenance",
+  in_maintenance_at_branch: "In maintenance at branch",
+  maintenance_failed: "Maintenance failed",
   in_return_transit: "On the way to branch",
   awaiting_customer: "Awaiting customer",
   awaiting_manager_decision: "On hold",
@@ -504,6 +526,16 @@ export const DEVICE_STATUS_LABELS_EN: Record<string, string> = {
   received_at_destination: "Awaiting customer",
   received_damaged: "Awaiting customer",
   excluded: "On hold",
+};
+
+export const ASSIGNMENT_PATH_LABELS: Record<MaintenanceAssignmentPath, string> = {
+  mobile_technician: "تعيين لفني متنقل",
+  service_center: "إرسال لمركز الصيانة",
+};
+
+export const ASSIGNMENT_PATH_LABELS_EN: Record<MaintenanceAssignmentPath, string> = {
+  mobile_technician: "Assign to mobile technician",
+  service_center: "Send to service center",
 };
 
 /** Machine location keys → Arabic. */
@@ -532,6 +564,8 @@ export function normalizeLifecycleStatus(
     awaiting_maintenance: "awaiting_maintenance",
     in_maintenance: "in_maintenance",
     under_maintenance: "in_maintenance",
+    in_maintenance_at_branch: "in_maintenance_at_branch",
+    maintenance_failed: "maintenance_failed",
     ready_to_return: "ready_to_return",
     ready_to_send: "ready_to_return",
     awaiting_manager_decision: "awaiting_manager_decision",
@@ -556,6 +590,8 @@ export function locationForLifecycleStatus(
     case "received_at_branch":
     case "awaiting_customer":
     case "excluded_from_shipment":
+    case "in_maintenance_at_branch":
+    case "maintenance_failed":
       return "branch";
     case "in_transit_to_service":
       return "in_transit_to_service";
@@ -574,6 +610,43 @@ export function locationForLifecycleStatus(
   }
 }
 
+/** Resolve assignment path from request or device (defaults to service_center). */
+export function getDeviceAssignmentPath(
+  request: MaintenanceRequestRecord,
+  device: DraftRequestDevice,
+): MaintenanceAssignmentPath {
+  if (device.assignmentPath === "mobile_technician" || device.assignmentPath === "service_center") {
+    return device.assignmentPath;
+  }
+  if (request.assignmentPath === "mobile_technician" || request.assignmentPath === "service_center") {
+    return request.assignmentPath;
+  }
+  const status = normalizeLifecycleStatus(device.lifecycleStatus);
+  if (status === "in_maintenance_at_branch" || status === "maintenance_failed") {
+    return "mobile_technician";
+  }
+  return "service_center";
+}
+
+/** Human-readable elapsed maintenance duration (AR). */
+export function formatMaintenanceDuration(
+  startedAt: string | null | undefined,
+  finishedAt?: string | null,
+): string {
+  if (!startedAt) return "—";
+  const start = Date.parse(startedAt);
+  if (Number.isNaN(start)) return "—";
+  const end = finishedAt ? Date.parse(finishedAt) : Date.now();
+  if (Number.isNaN(end) || end < start) return "—";
+  const totalSec = Math.floor((end - start) / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (hours > 0) return `${hours} س ${minutes} د`;
+  if (minutes > 0) return `${minutes} د ${seconds} ث`;
+  return `${seconds} ث`;
+}
+
 export function deviceLocationLabel(location: string | null | undefined) {
   const key = (location ?? "").trim();
   return DEVICE_LOCATION_LABELS[key] ?? key;
@@ -589,10 +662,19 @@ export function repairLegacyDeviceStatuses() {
       const raw = (device.lifecycleStatus ?? "").trim();
       if (!raw) continue;
       const next = normalizeLifecycleStatus(raw);
-      const nextLoc = locationForLifecycleStatus(next);
+      const path = getDeviceAssignmentPath(request, device);
+      // Mobile-path hold stays at the branch even though status is awaiting_manager_decision.
+      const nextLoc =
+        path === "mobile_technician" && next === "awaiting_manager_decision"
+          ? "branch"
+          : locationForLifecycleStatus(next);
       if (device.lifecycleStatus !== next || (device.currentLocation ?? "") !== nextLoc) {
         device.lifecycleStatus = next;
         device.currentLocation = nextLoc;
+        changed = true;
+      }
+      if (!device.assignmentPath && request.assignmentPath) {
+        device.assignmentPath = request.assignmentPath;
         changed = true;
       }
     }

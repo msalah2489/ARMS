@@ -1,4 +1,5 @@
 import {
+  getDeviceAssignmentPath,
   listAllRequestDevices,
   listMaintenanceRequests,
   normalizeLifecycleStatus,
@@ -6,7 +7,7 @@ import {
   updateDeviceLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
-import { isDemoMode } from "@/lib/auth";
+import { isDemoMode, normalizeRole } from "@/lib/auth";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
 import { pushAppTechnicianWork } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -18,6 +19,9 @@ import type {
 } from "@/types/domain";
 
 const WORK_KEY = "arms_technician_work_v1";
+
+const CLAIM_RACE_MESSAGE =
+  "بدأ فني آخر العمل على هذا الجهاز. اختر جهازًا آخر.";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -55,12 +59,29 @@ export function listTechnicianWork() {
   return listTechnicianWorkLocal();
 }
 
+function isMobileRole(role: Profile["role"]) {
+  return normalizeRole(role) === "mobile_technician";
+}
+
+function isServiceCenterTechRole(role: Profile["role"]) {
+  return normalizeRole(role) === "technician";
+}
+
+function hasOpenWorkForDevice(requestId: string, deviceLocalId: string) {
+  return listTechnicianWork().some(
+    (work) =>
+      work.requestId === requestId &&
+      work.deviceLocalId === deviceLocalId &&
+      work.status === "in_progress",
+  );
+}
+
 /** Free devices stuck in maintenance after a hold/complete that left a stale assignment. */
 function repairOrphanedMaintenanceDevices() {
   const work = listTechnicianWork();
   for (const item of listAllRequestDevices()) {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
-    if (status !== "in_maintenance") continue;
+    if (status !== "in_maintenance" && status !== "in_maintenance_at_branch") continue;
 
     const hasOpen = work.some(
       (record) =>
@@ -77,40 +98,135 @@ function repairOrphanedMaintenanceDevices() {
         record.status === "held",
     );
 
+    const path = getDeviceAssignmentPath(item.request, item.device);
+    if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
+      updateDeviceLifecycle(item.request.id, item.device.localId, {
+        lifecycleStatus: held ? "awaiting_manager_decision" : "in_maintenance_at_branch",
+        currentLocation: "branch",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceStartedAt: null,
+        maintenanceFinishedAt: held ? item.device.maintenanceFinishedAt ?? null : null,
+      });
+      continue;
+    }
+
     updateDeviceLifecycle(item.request.id, item.device.localId, {
       lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
       currentLocation: "service_center",
       assignedTechnicianId: null,
       assignedTechnicianName: null,
+      maintenanceStartedAt: null,
     });
   }
 }
 
-export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
+/** Apply urgent-only rule: if any urgent exists in the set, keep only urgent. */
+function applyUrgentOnlyFilter(items: TechnicianQueueItem[]): TechnicianQueueItem[] {
+  const hasUrgent = items.some((item) => item.request.priority === "urgent");
+  const filtered = hasUrgent
+    ? items.filter((item) => item.request.priority === "urgent")
+    : items;
+  return [...filtered].sort((a, b) => {
+    const aUrgent = a.request.priority === "urgent" ? 0 : 1;
+    const bUrgent = b.request.priority === "urgent" ? 0 : 1;
+    if (aUrgent !== bUrgent) return aUrgent - bUrgent;
+    return b.request.receivedAt.localeCompare(a.request.receivedAt);
+  });
+}
+
+function isClaimedByOther(item: TechnicianQueueItem, technicianId: string) {
+  const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+  if (!assigned) return false;
+  if (assigned === technicianId) return false;
+  return hasOpenWorkForDevice(item.request.id, item.device.localId);
+}
+
+/**
+ * Eligible queue for a technician:
+ * - service-center tech: awaiting_maintenance at SC only (never mobile path)
+ * - mobile tech: in_maintenance_at_branch for their branch only
+ * - claimed-by-other devices hidden
+ * - urgent-only when any urgent exists
+ */
+export function getEligibleQueueForTechnician(technician: Profile): TechnicianQueueItem[] {
   repairStaleTechnicianAssignments();
   repairOrphanedMaintenanceDevices();
 
+  const role = normalizeRole(technician.role);
+  const raw = listAllRequestDevices().filter((item) => {
+    if (isClaimedByOther(item, technician.id)) return false;
+
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    const path = getDeviceAssignmentPath(item.request, item.device);
+
+    if (role === "mobile_technician") {
+      if (status !== "in_maintenance_at_branch") return false;
+      if (path !== "mobile_technician") return false;
+      if (technician.opsBranchId && item.request.opsBranchId !== technician.opsBranchId) {
+        return false;
+      }
+      const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+      if (assigned && assigned !== technician.id) return false;
+      if (assigned === technician.id && hasOpenWorkForDevice(item.request.id, item.device.localId)) {
+        return false; // shown under in-progress, not queue
+      }
+      return true;
+    }
+
+    if (role === "technician") {
+      if (path === "mobile_technician") return false;
+      if (status === "in_maintenance_at_branch" || status === "maintenance_failed") return false;
+
+      if (status !== "awaiting_maintenance") {
+        if (
+          (item.device.currentLocation ?? "").trim() === "service_center" &&
+          status === "in_transit_to_service"
+        ) {
+          updateDeviceLifecycle(item.request.id, item.device.localId, {
+            lifecycleStatus: "awaiting_maintenance",
+            currentLocation: "service_center",
+            assignedTechnicianId: null,
+            assignedTechnicianName: null,
+          });
+          return true;
+        }
+        return false;
+      }
+
+      const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+      if (!assigned) return true;
+      const openWork = listTechnicianWork().some(
+        (work) =>
+          work.deviceLocalId === item.device.localId &&
+          work.status === "in_progress" &&
+          work.technicianId === assigned,
+      );
+      if (openWork) return false;
+      updateDeviceLifecycle(item.request.id, item.device.localId, {
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+      });
+      return true;
+    }
+
+    return false;
+  });
+
+  return applyUrgentOnlyFilter(raw);
+}
+
+/** @deprecated prefer getEligibleQueueForTechnician — kept for older callers */
+export function getSortedAwaitingDevices(technician?: Profile): TechnicianQueueItem[] {
+  if (technician) return getEligibleQueueForTechnician(technician);
+  repairStaleTechnicianAssignments();
+  repairOrphanedMaintenanceDevices();
   const awaiting = listAllRequestDevices().filter((item) => {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
-    if (status !== "awaiting_maintenance") {
-      // Recover devices already at the service center with a mismatched status.
-      if (
-        (item.device.currentLocation ?? "").trim() === "service_center" &&
-        status === "in_transit_to_service"
-      ) {
-        updateDeviceLifecycle(item.request.id, item.device.localId, {
-          lifecycleStatus: "awaiting_maintenance",
-          currentLocation: "service_center",
-          assignedTechnicianId: null,
-          assignedTechnicianName: null,
-        });
-        return true;
-      }
-      return false;
-    }
+    if (status !== "awaiting_maintenance") return false;
+    if (getDeviceAssignmentPath(item.request, item.device) === "mobile_technician") return false;
     const assigned = String(item.device.assignedTechnicianId ?? "").trim();
     if (!assigned) return true;
-    // Assigned but still "ready" means stale claim — free it.
     const openWork = listTechnicianWork().some(
       (work) =>
         work.deviceLocalId === item.device.localId &&
@@ -124,32 +240,93 @@ export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
     });
     return true;
   });
-
-  return [...awaiting].sort((a, b) => {
-    const aUrgent = a.request.priority === "urgent" ? 0 : 1;
-    const bUrgent = b.request.priority === "urgent" ? 0 : 1;
-    if (aUrgent !== bUrgent) return aUrgent - bUrgent;
-    return b.request.receivedAt.localeCompare(a.request.receivedAt);
-  });
+  return applyUrgentOnlyFilter(awaiting);
 }
 
-export function startDeviceWork(item: TechnicianQueueItem, technician: Profile) {
-  updateDeviceLifecycle(item.request.id, item.device.localId, {
-    lifecycleStatus: "in_maintenance",
-    currentLocation: "service_center",
+export function startDeviceWork(
+  item: TechnicianQueueItem,
+  technician: Profile,
+): { ok: true; record: TechnicianWorkRecord } | { ok: false; error: string } {
+  const fresh = listAllRequestDevices().find(
+    (row) =>
+      row.request.id === item.request.id && row.device.localId === item.device.localId,
+  );
+  if (!fresh) return { ok: false, error: "الجهاز غير موجود." };
+
+  const status = normalizeLifecycleStatus(fresh.device.lifecycleStatus);
+  const path = getDeviceAssignmentPath(fresh.request, fresh.device);
+  const mobile = isMobileRole(technician.role);
+
+  if (mobile) {
+    if (status !== "in_maintenance_at_branch" || path !== "mobile_technician") {
+      return { ok: false, error: "هذا الجهاز غير متاح للفني المتنقل." };
+    }
+    if (technician.opsBranchId && fresh.request.opsBranchId !== technician.opsBranchId) {
+      return { ok: false, error: "هذا الجهاز لا يخص فرعك." };
+    }
+  } else if (isServiceCenterTechRole(technician.role)) {
+    if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
+      return { ok: false, error: "أجهزة الفني المتنقل غير ظاهرة لفنّيي مركز الصيانة." };
+    }
+    if (status !== "awaiting_maintenance" && status !== "in_maintenance") {
+      return { ok: false, error: "الجهاز ليس بانتظار الصيانة." };
+    }
+  }
+
+  const assigned = String(fresh.device.assignedTechnicianId ?? "").trim();
+  if (assigned && assigned !== technician.id) {
+    if (hasOpenWorkForDevice(fresh.request.id, fresh.device.localId)) {
+      return { ok: false, error: CLAIM_RACE_MESSAGE };
+    }
+  }
+
+  const existingOpen = findOpenWorkForDevice(fresh.device.localId, technician.id);
+  if (existingOpen) return { ok: true, record: existingOpen };
+
+  const otherOpen = listTechnicianWork().find(
+    (work) =>
+      work.deviceLocalId === fresh.device.localId &&
+      work.requestId === fresh.request.id &&
+      work.status === "in_progress" &&
+      work.technicianId !== technician.id,
+  );
+  if (otherOpen) return { ok: false, error: CLAIM_RACE_MESSAGE };
+
+  const startedAt = new Date().toISOString();
+  const nextStatus = mobile ? "in_maintenance_at_branch" : "in_maintenance";
+  const nextLocation = mobile ? "branch" : "service_center";
+
+  updateDeviceLifecycle(fresh.request.id, fresh.device.localId, {
+    lifecycleStatus: nextStatus,
+    currentLocation: nextLocation,
     assignedTechnicianId: technician.id,
     assignedTechnicianName: technician.fullName,
+    maintenanceStartedAt: startedAt,
+    maintenanceFinishedAt: null,
   });
+
+  // Re-check after write (local optimistic lock against concurrent tabs/sync).
+  const after = listAllRequestDevices().find(
+    (row) =>
+      row.request.id === fresh.request.id && row.device.localId === fresh.device.localId,
+  );
+  if (
+    after &&
+    after.device.assignedTechnicianId &&
+    after.device.assignedTechnicianId !== technician.id
+  ) {
+    return { ok: false, error: CLAIM_RACE_MESSAGE };
+  }
 
   const record: TechnicianWorkRecord = {
     id: crypto.randomUUID(),
-    requestId: item.request.id,
-    requestNumber: item.request.requestNumber,
-    deviceLocalId: item.device.localId,
-    deviceCode: item.device.deviceCode,
+    requestId: fresh.request.id,
+    requestNumber: fresh.request.requestNumber,
+    deviceLocalId: fresh.device.localId,
+    deviceCode: fresh.device.deviceCode,
     technicianId: technician.id,
     technicianName: technician.fullName,
-    startedAt: new Date().toISOString(),
+    startedAt,
     status: "in_progress",
     tests: {
       power: null,
@@ -163,7 +340,7 @@ export function startDeviceWork(item: TechnicianQueueItem, technician: Profile) 
   const next = [record, ...listTechnicianWork()];
   writeJson(WORK_KEY, next);
   schedulePersist(next);
-  return record;
+  return { ok: true, record };
 }
 
 export function saveTechnicianWork(record: TechnicianWorkRecord) {
@@ -204,21 +381,50 @@ export function completeTechnicianWork(
     if (!consumed.ok) return consumed;
   }
 
+  const finishedAt = new Date().toISOString();
   const finished: TechnicianWorkRecord = {
     ...record,
     status: "completed",
-    finishedAt: new Date().toISOString(),
+    finishedAt,
   };
   saveTechnicianWork(finished);
 
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === record.requestId && item.device.localId === record.deviceLocalId,
+  );
+  const path = match ? getDeviceAssignmentPath(match.request, match.device) : "service_center";
+  const mobile = path === "mobile_technician";
   const success =
     record.outcome === "repaired" || record.outcome === "no_repair_needed";
-  updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
-    lifecycleStatus: success ? "ready_to_return" : "awaiting_manager_decision",
-    currentLocation: "service_center",
-    assignedTechnicianId: null,
-    assignedTechnicianName: null,
-  });
+
+  if (mobile) {
+    if (success) {
+      updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
+        lifecycleStatus: "awaiting_customer",
+        currentLocation: "branch",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceFinishedAt: finishedAt,
+      });
+    } else {
+      updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
+        lifecycleStatus: "maintenance_failed",
+        currentLocation: "branch",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceFinishedAt: finishedAt,
+      });
+    }
+  } else {
+    updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
+      lifecycleStatus: success ? "ready_to_return" : "awaiting_manager_decision",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      maintenanceFinishedAt: finishedAt,
+    });
+  }
   return { ok: true, record: finished };
 }
 
@@ -232,6 +438,87 @@ function formatHoldReasonNote(record: TechnicianWorkRecord) {
   return `إرجاع للمشرف: ${label}${extra}`;
 }
 
+/** Explicit «تعذر الصيانة» for mobile technicians. */
+export function markMaintenanceFailed(
+  record: TechnicianWorkRecord,
+  note?: string,
+): TechnicianWorkRecord {
+  const finishedAt = new Date().toISOString();
+  const failed: TechnicianWorkRecord = {
+    ...record,
+    status: "completed",
+    finishedAt,
+    outcome: record.outcome ?? "not_repairable",
+  };
+
+  const all = listTechnicianWork().map((item) => {
+    if (
+      item.deviceLocalId === record.deviceLocalId &&
+      item.requestId === record.requestId &&
+      item.status === "in_progress"
+    ) {
+      return { ...item, ...failed, id: item.id === record.id ? failed.id : item.id };
+    }
+    if (item.id === record.id) return failed;
+    return item;
+  });
+  if (!all.some((item) => item.id === record.id)) all.unshift(failed);
+  writeJson(WORK_KEY, all);
+  schedulePersist(all);
+
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === record.requestId && item.device.localId === record.deviceLocalId,
+  );
+  updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
+    lifecycleStatus: "maintenance_failed",
+    currentLocation: "branch",
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
+    maintenanceFinishedAt: finishedAt,
+    extraDetails: [match?.device.extraDetails, note?.trim() ? `تعذر الصيانة: ${note.trim()}` : "تعذر الصيانة"]
+      .filter(Boolean)
+      .join(" | "),
+  });
+  return failed;
+}
+
+/** After failure: hand device back to branch employee so they can ship to SC. */
+export function returnFailedDeviceToBranchEmployee(input: {
+  user: Profile;
+  requestId: string;
+  deviceLocalId: string;
+}): { ok: true } | { ok: false; error: string } {
+  const match = listAllRequestDevices().find(
+    (item) =>
+      item.request.id === input.requestId && item.device.localId === input.deviceLocalId,
+  );
+  if (!match) return { ok: false, error: "الجهاز غير موجود." };
+  if (normalizeLifecycleStatus(match.device.lifecycleStatus) !== "maintenance_failed") {
+    return { ok: false, error: "الجهاز ليس في حالة تعذر الصيانة." };
+  }
+  if (
+    isMobileRole(input.user.role) &&
+    input.user.opsBranchId &&
+    match.request.opsBranchId !== input.user.opsBranchId
+  ) {
+    return { ok: false, error: "هذا الجهاز لا يخص فرعك." };
+  }
+
+  updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+    lifecycleStatus: "received_at_branch",
+    currentLocation: "branch",
+    assignmentPath: "service_center",
+    lockedAfterShip: false,
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
+    extraDetails: [match.device.extraDetails, "أُعيد لموظف الفرع للشحن لمركز الصيانة"]
+      .filter(Boolean)
+      .join(" | "),
+  });
+  return { ok: true };
+}
+
 /** Technician returns a device to the supervisor; frees the technician for other ready devices. */
 export function holdTechnicianWork(record: TechnicianWorkRecord) {
   const finishedAt = new Date().toISOString();
@@ -241,7 +528,6 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
     finishedAt,
   };
 
-  // Close every open work row for this device so the technician is fully free.
   const all = listTechnicianWork().map((item) => {
     if (
       item.deviceLocalId === record.deviceLocalId &&
@@ -267,13 +553,15 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
     (item) =>
       item.request.id === record.requestId && item.device.localId === record.deviceLocalId,
   );
+  const path = match ? getDeviceAssignmentPath(match.request, match.device) : "service_center";
   const reasonNote = formatHoldReasonNote(held);
   updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
     lifecycleStatus: "awaiting_manager_decision",
-    currentLocation: "service_center",
+    currentLocation: path === "mobile_technician" ? "branch" : "service_center",
     assignedTechnicianId: null,
     assignedTechnicianName: null,
     lockedAfterShip: false,
+    maintenanceFinishedAt: finishedAt,
     extraDetails: [match?.device.extraDetails, reasonNote].filter(Boolean).join(" | "),
   });
   return held;
@@ -283,6 +571,34 @@ export function listAwaitingManagerDecisionDevices(): TechnicianQueueItem[] {
   return listAllRequestDevices().filter(
     (item) => item.device.lifecycleStatus === "awaiting_manager_decision",
   );
+}
+
+/** Devices with تعذر الصيانة — visible to mobile tech, branch, managers. */
+export function listMaintenanceFailedDevices(opsBranchId?: string | null): TechnicianQueueItem[] {
+  return listAllRequestDevices().filter((item) => {
+    if (normalizeLifecycleStatus(item.device.lifecycleStatus) !== "maintenance_failed") {
+      return false;
+    }
+    if (opsBranchId && item.request.opsBranchId !== opsBranchId) return false;
+    return true;
+  });
+}
+
+/** Branch / manager visibility: mobile-path devices currently at branch. */
+export function listMobilePathDevicesAtBranch(opsBranchId?: string | null): TechnicianQueueItem[] {
+  return listAllRequestDevices().filter((item) => {
+    if (getDeviceAssignmentPath(item.request, item.device) !== "mobile_technician") return false;
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (
+      !["in_maintenance_at_branch", "maintenance_failed", "awaiting_manager_decision"].includes(
+        status,
+      )
+    ) {
+      return false;
+    }
+    if (opsBranchId && item.request.opsBranchId !== opsBranchId) return false;
+    return true;
+  });
 }
 
 /** Latest hold / return-to-supervisor note for manager UI. */
@@ -305,11 +621,11 @@ export function getDeviceHoldSummary(requestId: string, deviceLocalId: string) {
 
 export function listMyInProgressDevices(technicianId: string): TechnicianQueueItem[] {
   repairOrphanedMaintenanceDevices();
-  return listAllRequestDevices().filter(
-    (item) =>
-      normalizeLifecycleStatus(item.device.lifecycleStatus) === "in_maintenance" &&
-      item.device.assignedTechnicianId === technicianId,
-  );
+  return listAllRequestDevices().filter((item) => {
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status !== "in_maintenance" && status !== "in_maintenance_at_branch") return false;
+    return item.device.assignedTechnicianId === technicianId;
+  });
 }
 
 export function findOpenWorkForDevice(deviceLocalId: string, technicianId: string) {
@@ -367,22 +683,41 @@ export function resolveManagerDecision(input: {
     return { ok: false, error: "هذا الجهاز ليس في حالة معلق." };
   }
 
+  const path = getDeviceAssignmentPath(match.request, match.device);
+
   if (input.decision === "requeue_technician") {
     const note = input.note?.trim();
-    updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
-      lifecycleStatus: "awaiting_maintenance",
-      currentLocation: "service_center",
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-      lockedAfterShip: false,
-      extraDetails: [match.device.extraDetails, note ? `إعادة للصيانة: ${note}` : "إعادة للصيانة"]
-        .filter(Boolean)
-        .join(" | "),
-    });
+    if (path === "mobile_technician") {
+      updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+        lifecycleStatus: "in_maintenance_at_branch",
+        currentLocation: "branch",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        lockedAfterShip: false,
+        maintenanceStartedAt: null,
+        maintenanceFinishedAt: null,
+        extraDetails: [match.device.extraDetails, note ? `إعادة للصيانة: ${note}` : "إعادة للصيانة"]
+          .filter(Boolean)
+          .join(" | "),
+      });
+    } else {
+      updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
+        lifecycleStatus: "awaiting_maintenance",
+        currentLocation: "service_center",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        lockedAfterShip: false,
+        maintenanceStartedAt: null,
+        maintenanceFinishedAt: null,
+        extraDetails: [match.device.extraDetails, note ? `إعادة للصيانة: ${note}` : "إعادة للصيانة"]
+          .filter(Boolean)
+          .join(" | "),
+      });
+    }
   } else if (input.decision === "approve_return") {
     updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
-      lifecycleStatus: "ready_to_return",
-      currentLocation: "service_center",
+      lifecycleStatus: path === "mobile_technician" ? "awaiting_customer" : "ready_to_return",
+      currentLocation: path === "mobile_technician" ? "branch" : "service_center",
       assignedTechnicianId: null,
       assignedTechnicianName: null,
       lockedAfterShip: false,
@@ -390,7 +725,7 @@ export function resolveManagerDecision(input: {
   } else {
     updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
       lifecycleStatus: "closed",
-      currentLocation: "service_center",
+      currentLocation: path === "mobile_technician" ? "branch" : "service_center",
       assignedTechnicianId: null,
       assignedTechnicianName: null,
       lockedAfterShip: true,
@@ -437,9 +772,19 @@ export function markDeliveredToCustomer(input: {
   return { ok: true };
 }
 
-export function getTechnicianDashboardStats(technicianId: string) {
+export function getTechnicianDashboardStats(technicianId: string, technician?: Profile) {
   repairStaleTechnicianAssignments();
-  const awaiting = getSortedAwaitingDevices();
+  const profile =
+    technician ??
+    ({
+      id: technicianId,
+      fullName: "",
+      role: "technician",
+      email: "",
+    } as Profile);
+  const awaiting = technician
+    ? getEligibleQueueForTechnician(technician)
+    : getSortedAwaitingDevices();
   const allDevices = listAllRequestDevices();
   const work = listTechnicianWork().filter((item) => item.technicianId === technicianId);
 
@@ -466,9 +811,12 @@ export function getTechnicianDashboardStats(technicianId: string) {
     awaitingManager,
     todayRequests,
     myInProgress: work.filter((item) => item.status === "in_progress").length,
+    profileRole: profile.role,
   };
 }
 
 export function getDeviceWorkHistory(deviceCode: string) {
   return listTechnicianWork().filter((item) => item.deviceCode === deviceCode);
 }
+
+export { CLAIM_RACE_MESSAGE };

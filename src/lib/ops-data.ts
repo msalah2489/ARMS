@@ -34,7 +34,9 @@ function mapLifecycleToRequestStatus(status: string | undefined): ServiceRequest
     case "awaiting_maintenance":
       return "at_service_center";
     case "in_maintenance":
+    case "in_maintenance_at_branch":
       return "in_progress";
+    case "maintenance_failed":
     case "awaiting_manager_decision":
       return "in_review";
     case "ready_to_return":
@@ -52,8 +54,10 @@ function mapLifecycleToRequestStatus(status: string | undefined): ServiceRequest
 function mapLifecycleToDeviceStatus(status: string | undefined): DeviceStatus {
   switch (normalizeLifecycleStatus(status)) {
     case "in_maintenance":
+    case "in_maintenance_at_branch":
     case "awaiting_maintenance":
     case "awaiting_manager_decision":
+    case "maintenance_failed":
       return "under_maintenance";
     case "in_transit_to_service":
       return "sent_to_service_center";
@@ -83,10 +87,14 @@ function summarizeRequestStatus(request: MaintenanceRequestRecord): ServiceReque
   ) {
     return "completed";
   }
-  if (statuses.some((status) => status === "in_maintenance")) {
+  if (statuses.some((status) => status === "in_maintenance" || status === "in_maintenance_at_branch")) {
     return "in_progress";
   }
-  if (statuses.some((status) => status === "awaiting_manager_decision")) {
+  if (
+    statuses.some(
+      (status) => status === "awaiting_manager_decision" || status === "maintenance_failed",
+    )
+  ) {
     return "in_review";
   }
   if (statuses.some((status) => status === "awaiting_maintenance")) {
