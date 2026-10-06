@@ -36,6 +36,7 @@ Service Requests (`طلبات الصيانة`) always read the ops cache of `arm
    - **Already ran `000` or `007` earlier:** run **`supabase/migrations/008_extend_client_store_keys.sql`** once (adds the new store keys only). Safe to re-run.
    - **Cleanup old CRM / demo / unused relational workflow** (optional, after sync works): run **`supabase/migrations/009_cleanup_old_database.sql`** once. Empties classic CRM seed and drops obsolete waybill/shipping/maintenance **tables** from older migrations. Does **not** wipe live `arms_client_store` payloads. Safe to re-run.
    - **جداول مرتّبة (موصى به الآن):** شغّل مرة **`supabase/migrations/013_normalized_app_tables.sql`**. ينشئ جداول `app_*` وينسخ بيانات JSON الحالية إليها. Safe to re-run.
+   - **حذف الجداول غير المستخدمة (موصى به لتنظيف Table Editor):** شغّل مرة **`supabase/migrations/015_drop_unused_tables.sql`**. يحذف CRM الكلاسيكي + `ops_branches` العلائقي + `profiles` إن وُجدت. **لا يمس** `arms_client_store` ولا `app_*`. Safe to re-run.
 3. **Project Settings → API**:
    - copy **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - copy the long JWT **anon public** / **anon** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -90,7 +91,7 @@ After setting secrets, re-run **Deploy GitHub Pages** (push to `main` or **Actio
 
 بعدها أي تعديل من المنصة يحدّث JSON **و** الجداول العلائقية تلقائياً (dual-write).
 
-Do **not** look at classic CRM `service_requests` / `profiles` (often empty after cleanup).
+Do **not** look at classic CRM `service_requests` / `profiles` — after **`015_drop_unused_tables.sql`** those tables should be gone from Table Editor.
 
 ## Verify
 
