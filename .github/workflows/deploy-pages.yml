@@ -33,9 +33,32 @@ jobs:
           KEY_VAR: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           USE_DEMO_VAR: ${{ vars.NEXT_PUBLIC_USE_DEMO }}
         run: |
+          # Secrets/vars override committed .env.production when set.
           URL="${URL_SECRET:-$URL_VAR}"
           KEY="${KEY_SECRET:-$KEY_VAR}"
-          USE_DEMO="${USE_DEMO_VAR:-false}"
+          USE_DEMO="${USE_DEMO_VAR:-}"
+
+          read_dotenv_value() {
+            local file="$1" name="$2"
+            [ -f "$file" ] || return 0
+            local line
+            line="$(grep -E "^${name}=" "$file" | tail -n 1 || true)"
+            [ -n "$line" ] || return 0
+            printf '%s' "${line#*=}"
+          }
+
+          if [ -z "$URL" ]; then
+            URL="$(read_dotenv_value .env.production NEXT_PUBLIC_SUPABASE_URL)"
+          fi
+          if [ -z "$KEY" ]; then
+            KEY="$(read_dotenv_value .env.production NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+          fi
+          if [ -z "$USE_DEMO" ]; then
+            USE_DEMO="$(read_dotenv_value .env.production NEXT_PUBLIC_USE_DEMO)"
+          fi
+          if [ -z "$USE_DEMO" ]; then
+            USE_DEMO="false"
+          fi
           if [ -z "$URL" ]; then
             URL="https://khjjfqqaeaeynnaizycq.supabase.co"
           fi
@@ -53,7 +76,7 @@ jobs:
 
           if [ "$USE_DEMO" != "true" ]; then
             if [ -z "$KEY" ]; then
-              echo "::error::Missing NEXT_PUBLIC_SUPABASE_ANON_KEY. In Supabase → Project Settings → API, copy the long JWT «anon public» key (starts with eyJ), then set Actions secret/variable NEXT_PUBLIC_SUPABASE_ANON_KEY and re-run this workflow."
+              echo "::error::Missing NEXT_PUBLIC_SUPABASE_ANON_KEY. Add a classic anon JWT (eyJ…) to committed .env.production, or set Actions secret/variable NEXT_PUBLIC_SUPABASE_ANON_KEY."
               exit 1
             fi
             if ! is_valid_anon_jwt "$KEY"; then
