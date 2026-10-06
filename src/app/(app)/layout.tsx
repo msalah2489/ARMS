@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { Sidebar } from "@/components/sidebar";
+import { SyncStatusBanner } from "@/components/sync-status-banner";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { migrateExistingShippingToReceived } from "@/lib/shipping-store";
 
@@ -25,6 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <span className="font-display text-xl text-ink-900 dark:text-sand-50">ARMS</span>
               <span className="truncate text-xs text-ink-700/70 dark:text-sand-100/70">{user.fullName}</span>
             </header>
+            <SyncStatusBanner />
             <main className="flex-1 px-4 py-6 text-ink-900 dark:text-sand-50 md:px-8">{children}</main>
           </div>
         </div>

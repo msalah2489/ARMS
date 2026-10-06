@@ -10,6 +10,12 @@ const messagesAr = {
   "common.save": "حفظ التغييرات",
   "common.cancel": "إلغاء",
 
+  "sync.invalidKey": "مفتاح Supabase غير صالح. استخدم anon JWT (يبدأ بـ eyJ) أو مفتاح sb_publishable_ من Project Settings → API، ثم حدّث GitHub Actions وملف .env.local وأعد البناء.",
+  "sync.missingKey": "مفتاح Supabase (anon) غير مضبوط. انسخه من Project Settings → API إلى NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+  "sync.missingUrl": "رابط مشروع Supabase غير مضبوط. عيّن NEXT_PUBLIC_SUPABASE_URL.",
+  "sync.authError": "فشل الاتصال بـ Supabase (مفتاح API مرفوض أو غير مصرّح). البيانات المعروضة قد تكون من المتصفح فقط وليست في قاعدة البيانات.",
+  "sync.genericError": "تعذّرت مزامنة البيانات مع Supabase. تُعرض النسخة المحلية مؤقتًا — تحقق من الاتصال ثم حدّث الصفحة.",
+
   "nav.dashboard": "الرئيسية",
   "nav.serviceRequests": "طلبات الصيانة",
   "nav.newRequest": "إنشاء طلب",
@@ -172,6 +178,12 @@ const messagesEn: Record<MessageKey, string> = {
   "common.unassigned": "Unassigned",
   "common.save": "Save changes",
   "common.cancel": "Cancel",
+
+  "sync.invalidKey": "Supabase key is invalid. Use the anon JWT (starts with eyJ) or an sb_publishable_ key from Project Settings → API, then update GitHub Actions and .env.local and rebuild.",
+  "sync.missingKey": "Supabase anon key is missing. Copy it from Project Settings → API into NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+  "sync.missingUrl": "Supabase project URL is missing. Set NEXT_PUBLIC_SUPABASE_URL.",
+  "sync.authError": "Supabase rejected the API key (401/unauthorized). What you see may be browser-only data, not the database.",
+  "sync.genericError": "Could not sync with Supabase. Showing the local cache temporarily — check the connection and refresh.",
 
   "nav.dashboard": "Dashboard",
   "nav.serviceRequests": "Service requests",

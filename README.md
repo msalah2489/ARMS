@@ -38,14 +38,15 @@ The sidebar changes with the role.
 Full GitHub Pages steps: [`docs/SUPABASE_GITHUB_PAGES.md`](docs/SUPABASE_GITHUB_PAGES.md).
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Put the project URL and anon key in `.env.local`.
+2. Put the project URL and the long JWT **anon public** key (starts with `eyJ`) in `.env.local`. Short `sb_publishable_…` keys are rejected.
 3. Run **once** in the SQL editor:
    - Fresh: **`supabase/migrations/000_apply_all_for_pages.sql`**
    - Already applied `000`/`007`: **`supabase/migrations/008_extend_client_store_keys.sql`**
    Ignore any earlier failure from running `007` alone.
 4. Set `NEXT_PUBLIC_USE_DEMO=false`.
-5. For GitHub Pages: set Actions secret/variable `NEXT_PUBLIC_SUPABASE_ANON_KEY` (and optionally `NEXT_PUBLIC_SUPABASE_URL`), then re-run **Deploy GitHub Pages**.
-6. Optional: create Supabase Auth users for non-local logins.
+5. For GitHub Pages: set Actions secret/variable `NEXT_PUBLIC_SUPABASE_ANON_KEY` to that same JWT (and optionally `NEXT_PUBLIC_SUPABASE_URL`), then re-run **Deploy GitHub Pages**.
+6. Confirm data in **Table Editor → `arms_client_store` → `maintenance_requests`** (not the empty CRM `service_requests` table).
+7. Optional: create Supabase Auth users for non-local logins.
 
 ## First slice vs later work
 

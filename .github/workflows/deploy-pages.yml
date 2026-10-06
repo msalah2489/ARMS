@@ -39,12 +39,35 @@ jobs:
           if [ -z "$URL" ]; then
             URL="https://khjjfqqaeaeynnaizycq.supabase.co"
           fi
-          # Prefer Actions secret/variable. Fallback is the project's public anon key
-          # (safe for NEXT_PUBLIC client use; override via secret when rotating).
-          if [ -z "$KEY" ]; then
-            KEY="sb_publishable_JBRwZuqY4b37FqOrJ0tv7g_oLUnyLvU"
-            echo "::notice::Using built-in anon key fallback. Prefer setting secret NEXT_PUBLIC_SUPABASE_ANON_KEY."
+
+          # Accept classic anon JWT (eyJ…) or newer sb_publishable_* keys.
+          is_valid_anon_key() {
+            local k="$1"
+            case "$k" in
+              *your-anon*|*your-publishable*) return 1 ;;
+              eyJ*.*.*)
+                [ "${#k}" -ge 100 ] || return 1
+                return 0
+                ;;
+              sb_publishable_*)
+                [ "${#k}" -ge 40 ] || return 1
+                return 0
+                ;;
+              *) return 1 ;;
+            esac
+          }
+
+          if [ "$USE_DEMO" != "true" ]; then
+            if [ -z "$KEY" ]; then
+              echo "::error::Missing NEXT_PUBLIC_SUPABASE_ANON_KEY. In Supabase → Project Settings → API, copy the anon public JWT (eyJ…) or sb_publishable_ key, then set Actions secret/variable NEXT_PUBLIC_SUPABASE_ANON_KEY and re-run this workflow."
+              exit 1
+            fi
+            if ! is_valid_anon_key "$KEY"; then
+              echo "::error::NEXT_PUBLIC_SUPABASE_ANON_KEY is not a usable anon/publishable key. Copy «anon public» or sb_publishable_ from Supabase → Settings → API."
+              exit 1
+            fi
           fi
+
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "use_demo=$USE_DEMO" >> "$GITHUB_OUTPUT"

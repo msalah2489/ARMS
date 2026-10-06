@@ -35,8 +35,12 @@ import {
   applyRemoteManagedUsers,
   listManagedUsersLocal,
 } from "@/lib/users-store";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
 import { pullClientStoreStrict, pushClientStore } from "@/lib/supabase/client-store";
+import {
+  isAuthLikeSupabaseError,
+  setArmsSyncStatus,
+} from "@/lib/supabase/sync-status";
 import type {
   ManagedUser,
   MaintenanceRequestRecord,
@@ -47,8 +51,10 @@ import type {
 } from "@/types/domain";
 
 const HYDRATED_FLAG = "arms_supabase_hydrated_v1";
-/** One-time local→remote bootstrap so orphan localStorage is not shown forever. */
+/** Legacy: set even when push may have failed (pre-fix builds). */
 const BOOTSTRAP_FLAG = "arms_supabase_ops_bootstrapped_v1";
+/** Only set after every bootstrap push in a hydrate cycle succeeded. */
+const BOOTSTRAP_OK_FLAG = "arms_supabase_ops_bootstrap_ok_v1";
 
 let hydratePromise: Promise<boolean> | null = null;
 
@@ -58,14 +64,16 @@ function markHydrated() {
   window.dispatchEvent(new CustomEvent("arms-ops-hydrated"));
 }
 
-function isBootstrapped() {
+/** True only when a prior hydrate confirmed remote bootstrap uploads succeeded. */
+function isBootstrapConfirmed() {
   if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(BOOTSTRAP_FLAG) === "1";
+  return window.localStorage.getItem(BOOTSTRAP_OK_FLAG) === "1";
 }
 
-function markBootstrapped() {
+function markBootstrapConfirmed() {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(BOOTSTRAP_FLAG, "1");
+  window.localStorage.setItem(BOOTSTRAP_OK_FLAG, "1");
 }
 
 export function wasOpsHydratedThisSession() {
@@ -105,10 +113,17 @@ const EMPTY_SPARE: SpareInventoryState = {
   movements: [],
 };
 
+async function pushOrThrow(key: Parameters<typeof pushClientStore>[0], value: unknown) {
+  const result = await pushClientStore(key, value);
+  if (!result.ok) {
+    throw new Error(result.error || `pushClientStore(${key}) failed`);
+  }
+}
+
 /**
  * Reconcile one store key:
  * - remote has data → overwrite local (remote is source of truth)
- * - remote empty + local has data + not yet bootstrapped → upload local once
+ * - remote empty + local has data + bootstrap not confirmed → upload local (retry until OK)
  * - otherwise → clear local to match empty remote (never re-seed demo)
  */
 async function reconcilePayload<T>(options: {
@@ -120,15 +135,15 @@ async function reconcilePayload<T>(options: {
   emptyValue: T;
   apply: (value: T) => void;
 }) {
-  const bootstrapped = isBootstrapped();
+  const bootstrappedOk = isBootstrapConfirmed();
 
   if (options.remoteHas) {
     options.apply(options.remoteValue);
     return;
   }
 
-  if (options.localHas && !bootstrapped) {
-    await pushClientStore(options.key, options.localValue);
+  if (options.localHas && !bootstrappedOk) {
+    await pushOrThrow(options.key, options.localValue);
     options.apply(options.localValue);
     return;
   }
@@ -144,6 +159,13 @@ async function reconcilePayload<T>(options: {
  */
 export async function hydrateOpsFromSupabase(): Promise<boolean> {
   if (typeof window === "undefined") return false;
+
+  const configProblem = getSupabaseConfigProblem();
+  if (configProblem) {
+    setArmsSyncStatus({ state: "config_error", code: configProblem });
+    return false;
+  }
+
   if (!isSupabaseConfigured() || isDemoMode()) return false;
 
   if (!hydratePromise) {
@@ -233,18 +255,17 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
         const localAudit = listAuditEventsLocal();
         const remoteShippingHas = remoteBatches.length > 0 || remoteAudit.length > 0;
         const localShippingHas = localBatches.length > 0 || localAudit.length > 0;
-        const bootstrapped = isBootstrapped();
+        const bootstrappedOk = isBootstrapConfirmed();
 
         if (remoteShippingHas) {
           applyRemoteShippingState({
             batches: remoteBatches,
             audit: remoteAudit,
           });
-        } else if (localShippingHas && !bootstrapped) {
-          await Promise.all([
-            pushClientStore("shipping_batches", localBatches),
-            pushClientStore("audit_events", localAudit),
-          ]);
+        } else if (localShippingHas && !bootstrappedOk) {
+          await pushOrThrow("shipping_batches", localBatches);
+          await pushOrThrow("audit_events", localAudit);
+          applyRemoteShippingState({ batches: localBatches, audit: localAudit });
         } else {
           replaceShippingState({ batches: [], audit: [] });
         }
@@ -289,12 +310,20 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           apply: applyRemoteWaybills,
         });
 
-        markBootstrapped();
+        markBootstrapConfirmed();
         markHydrated();
+        setArmsSyncStatus({ state: "ok" });
         return true;
       } catch (error) {
         console.error("[arms] hydrateOpsFromSupabase", error);
         hydratePromise = null;
+        const message = error instanceof Error ? error.message : String(error);
+        if (isAuthLikeSupabaseError(error) || /invalid api key/i.test(message)) {
+          setArmsSyncStatus({ state: "auth_error", message });
+        } else {
+          setArmsSyncStatus({ state: "error", message });
+        }
+        // Do not mark hydrated/bootstrap-ok — keep local cache, surface banner.
         return false;
       }
     })();

@@ -16,11 +16,23 @@ export default function ServiceRequestsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    void getServiceRequests(locale).then((rows) => {
-      setRequests(rows);
-      setLoading(false);
-    });
+    let cancelled = false;
+    const load = () => {
+      setLoading(true);
+      void getServiceRequests(locale).then((rows) => {
+        if (cancelled) return;
+        setRequests(rows);
+        setLoading(false);
+      });
+    };
+    load();
+    window.addEventListener("arms-ops-hydrated", load);
+    window.addEventListener("arms-sync-status", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("arms-ops-hydrated", load);
+      window.removeEventListener("arms-sync-status", load);
+    };
   }, [locale]);
 
   return (

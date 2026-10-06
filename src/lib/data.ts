@@ -17,17 +17,16 @@ import {
 import { getStoredLocale, type AppLocale } from "@/lib/preferences";
 import { listInventoryBalances } from "@/lib/spare-inventory-store";
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
+import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
+import { hydrateOpsFromSupabase, wasOpsHydratedThisSession } from "@/lib/supabase/hydrate";
+import { getArmsSyncStatus, setArmsSyncStatus } from "@/lib/supabase/sync-status";
 import type {
   Branch,
   Customer,
   DashboardStats,
   Device,
   DeviceStatus,
-  RequestPriority,
   ServiceRequest,
-  ServiceRequestStatus,
   SparePart,
 } from "@/types/domain";
 
@@ -37,31 +36,52 @@ function resolveLocale(locale?: AppLocale): AppLocale {
 
 async function ensureOpsHydrated() {
   if (typeof window === "undefined") return;
+  const problem = getSupabaseConfigProblem();
+  if (problem) {
+    setArmsSyncStatus({ state: "config_error", code: problem });
+    return;
+  }
   if (!isSupabaseConfigured() || isDemoMode()) return;
   await hydrateOpsFromSupabase();
 }
 
-/** Prefer ops (branch workflow) data after Supabase hydrate; else CRM tables. */
-function clientOpsRequests(): ServiceRequest[] | null {
-  if (typeof window === "undefined") return null;
-  const rows = listOpsServiceRequests();
-  return rows.length > 0 ? rows : null;
+/**
+ * Prefer ops (branch workflow) cache only when cloud hydrate succeeded,
+ * or when running without cloud (demo). Never treat orphan localStorage as
+ * platform data when Supabase keys are missing/invalid or auth failed.
+ */
+function canUseOpsLocalCache(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isDemoMode()) return true;
+
+  const problem = getSupabaseConfigProblem();
+  if (problem) return false;
+
+  if (!isSupabaseConfigured()) return true;
+
+  const sync = getArmsSyncStatus();
+  if (sync.state === "config_error" || sync.state === "auth_error") return false;
+  if (!wasOpsHydratedThisSession()) {
+    // Transient network/API errors: keep local cache + banner; otherwise wait.
+    return sync.state === "error";
+  }
+  return true;
 }
 
 function clientOpsDevices(): Device[] | null {
-  if (typeof window === "undefined") return null;
+  if (!canUseOpsLocalCache()) return null;
   const rows = listOpsDevices();
   return rows.length > 0 ? rows : null;
 }
 
 function clientOpsCustomers(): Customer[] | null {
-  if (typeof window === "undefined") return null;
+  if (!canUseOpsLocalCache()) return null;
   const rows = listOpsCustomers();
   return rows.length > 0 ? rows : null;
 }
 
 function clientOpsBranches(locale?: AppLocale): Branch[] | null {
-  if (typeof window === "undefined") return null;
+  if (!canUseOpsLocalCache()) return null;
   const rows = listOpsBranches(resolveLocale(locale));
   return rows.length > 0 ? rows : null;
 }
@@ -75,7 +95,7 @@ export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
   if (ops) return ops;
 
   if (!isSupabaseConfigured()) {
-    return localizedDemoCustomers(resolveLocale(locale));
+    return getSupabaseConfigProblem() ? [] : localizedDemoCustomers(resolveLocale(locale));
   }
 
   try {
@@ -108,7 +128,7 @@ export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
   if (ops) return ops;
 
   if (!isSupabaseConfigured()) {
-    return localizedDemoBranches(resolveLocale(locale));
+    return getSupabaseConfigProblem() ? [] : localizedDemoBranches(resolveLocale(locale));
   }
 
   try {
@@ -142,7 +162,7 @@ export async function getDevices(locale?: AppLocale): Promise<Device[]> {
   if (ops) return ops;
 
   if (!isSupabaseConfigured()) {
-    return localizedDemoDevices(resolveLocale(locale));
+    return getSupabaseConfigProblem() ? [] : localizedDemoDevices(resolveLocale(locale));
   }
 
   try {
@@ -176,37 +196,14 @@ export async function getServiceRequests(locale?: AppLocale): Promise<ServiceReq
 
   if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
 
-  const ops = clientOpsRequests();
-  if (ops) return ops;
-
-  if (!isSupabaseConfigured()) {
-    return localizedDemoRequests(resolveLocale(locale));
+  // Ops cache mirrors arms_client_store.maintenance_requests after hydrate.
+  // Never fall back to classic CRM `service_requests` (often empty / unused).
+  if (canUseOpsLocalCache()) {
+    return listOpsServiceRequests();
   }
 
-  try {
-    const supabase = createClient();
-    const { data, error } = await supabase.from("service_requests").select(
-      "id, request_number, reported_problem, priority, status, requested_at, customers(name), branches(name), devices(device_code, serial_number)",
-    );
-    if (error) throw error;
-
-    return (data ?? []).map((row) => ({
-      id: row.id,
-      requestNumber: row.request_number,
-      customerName: (row.customers as { name?: string } | null)?.name ?? "",
-      branchName: (row.branches as { name?: string } | null)?.name ?? "",
-      deviceCode: (row.devices as { device_code?: string } | null)?.device_code ?? "",
-      serialNumber: (row.devices as { serial_number?: string } | null)?.serial_number ?? "",
-      reportedProblem: row.reported_problem ?? "",
-      priority: row.priority as RequestPriority,
-      status: row.status as ServiceRequestStatus,
-      assignedTechnician: null,
-      requestedAt: row.requested_at,
-    }));
-  } catch (error) {
-    console.error(error);
-    return [];
-  }
+  // Broken/missing cloud keys or auth failure: empty list + sync banner.
+  return [];
 }
 
 export async function getSpareParts(): Promise<SparePart[]> {

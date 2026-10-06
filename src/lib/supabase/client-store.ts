@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isAuthLikeSupabaseError, setArmsSyncStatus } from "@/lib/supabase/sync-status";
 
 export type ArmsClientStoreKey =
   | "ops_branches"
@@ -12,6 +13,13 @@ export type ArmsClientStoreKey =
   | "spare_inventory"
   | "waybills";
 
+function reportStoreError(storeKey: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isAuthLikeSupabaseError(error) || /invalid api key/i.test(message)) {
+    setArmsSyncStatus({ state: "auth_error", message: `${storeKey}: ${message}` });
+  }
+}
+
 export async function pullClientStore<T>(
   storeKey: ArmsClientStoreKey,
   fallback: T,
@@ -22,6 +30,7 @@ export async function pullClientStore<T>(
     return await pullClientStoreStrict(storeKey, fallback);
   } catch (error) {
     console.error(`[arms] pullClientStore(${storeKey})`, error);
+    reportStoreError(storeKey, error);
     return fallback;
   }
 }
@@ -40,7 +49,10 @@ export async function pullClientStoreStrict<T>(
     .eq("store_key", storeKey)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    reportStoreError(storeKey, error);
+    throw error;
+  }
   if (data?.payload === undefined || data?.payload === null) return fallback;
   return data.payload as T;
 }
@@ -68,6 +80,7 @@ export async function pushClientStore<T>(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[arms] pushClientStore(${storeKey})`, error);
+    reportStoreError(storeKey, error);
     return { ok: false, error: message };
   }
 }
