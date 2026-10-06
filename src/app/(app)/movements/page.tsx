@@ -41,15 +41,17 @@ export default function MovementsPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Paint from local cache immediately; refresh in background (non-blocking).
+    setRows(auditToRows(listAuditEventsLocal()));
+    setReady(true);
+
     let cancelled = false;
-    (async () => {
-      if (isSupabaseConfigured() && !isDemoMode()) {
-        await hydrateOpsFromSupabase();
-      }
-      if (cancelled) return;
-      setRows(auditToRows(listAuditEventsLocal()));
-      setReady(true);
-    })();
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      void hydrateOpsFromSupabase().then(() => {
+        if (cancelled) return;
+        setRows(auditToRows(listAuditEventsLocal()));
+      });
+    }
     return () => {
       cancelled = true;
     };

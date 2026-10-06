@@ -42,6 +42,7 @@ async function ensureOpsHydrated() {
     return;
   }
   if (!isSupabaseConfigured() || isDemoMode()) return;
+  // Session cache: hydrateOpsFromSupabase returns immediately when already hydrated.
   await hydrateOpsFromSupabase();
 }
 
@@ -236,11 +237,13 @@ export async function getSpareParts(): Promise<SparePart[]> {
 export async function getDashboardStats(): Promise<DashboardStats> {
   const requests = await getServiceRequests();
   const devices = await getDevices();
-  const parts = await getSpareParts();
   const inventory =
     typeof window !== "undefined"
       ? listInventoryBalances()
       : [];
+
+  // Prefer local spare inventory; skip classic spare_parts network round-trip when possible.
+  const parts = inventory.length > 0 ? [] : await getSpareParts();
 
   const openStatuses = new Set([
     "new",

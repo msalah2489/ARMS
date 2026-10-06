@@ -142,17 +142,17 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const session = readSession();
-      if (!cancelled) setUser(session);
-      if (isSupabaseConfigured() && !isDemoMode()) {
-        await hydrateOpsFromSupabase();
-      }
-      if (!cancelled) {
+    const session = readSession();
+    setUser(session);
+    // Show reports from local cache immediately; hydrate refreshes in background.
+    setReady(true);
+
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      void hydrateOpsFromSupabase().then(() => {
+        if (cancelled) return;
         setTick((value) => value + 1);
-        setReady(true);
-      }
-    })();
+      });
+    }
     return () => {
       cancelled = true;
     };

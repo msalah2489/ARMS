@@ -137,6 +137,12 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   clearSession();
+  try {
+    const { clearOpsHydrateSession } = await import("@/lib/supabase/hydrate");
+    clearOpsHydrateSession();
+  } catch {
+    // ignore
+  }
   if (!isDemoMode()) {
     const supabase = createClient();
     await supabase.auth.signOut();

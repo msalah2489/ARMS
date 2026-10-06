@@ -17,8 +17,8 @@ export default function ServiceRequestsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => {
-      setLoading(true);
+    const load = (opts?: { quiet?: boolean }) => {
+      if (!opts?.quiet) setLoading(true);
       void getServiceRequests(locale).then((rows) => {
         if (cancelled) return;
         setRequests(rows);
@@ -26,12 +26,13 @@ export default function ServiceRequestsPage() {
       });
     };
     load();
-    window.addEventListener("arms-ops-hydrated", load);
-    window.addEventListener("arms-sync-status", load);
+    const onHydrated = () => load({ quiet: true });
+    window.addEventListener("arms-ops-hydrated", onHydrated);
+    window.addEventListener("arms-sync-status", onHydrated);
     return () => {
       cancelled = true;
-      window.removeEventListener("arms-ops-hydrated", load);
-      window.removeEventListener("arms-sync-status", load);
+      window.removeEventListener("arms-ops-hydrated", onHydrated);
+      window.removeEventListener("arms-sync-status", onHydrated);
     };
   }, [locale]);
 

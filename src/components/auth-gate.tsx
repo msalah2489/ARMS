@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { readSession } from "@/lib/session";
 import type { Profile } from "@/types/domain";
+
+function readSessionSafe(): Profile | null {
+  if (typeof window === "undefined") return null;
+  return readSession();
+}
 
 export function AuthGate({
   children,
@@ -13,19 +18,21 @@ export function AuthGate({
   render: (user: Profile) => React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const [user, setUser] = useState<Profile | null>(null);
-  const [ready, setReady] = useState(false);
+  // Sync init avoids "Loading workspace…" flash on every soft navigation remount.
+  const [user, setUser] = useState<Profile | null>(readSessionSafe);
+  const [ready, setReady] = useState(() => Boolean(readSessionSafe()));
 
   useEffect(() => {
     const session = readSession();
     if (!session) {
+      setUser(null);
+      setReady(false);
       router.replace("/login");
       return;
     }
     setUser(session);
     setReady(true);
-  }, [pathname, router]);
+  }, [router]);
 
   if (!ready || !user) {
     return (

@@ -15,6 +15,9 @@ const REQUESTS_KEY = "arms_maintenance_requests_v1";
 const WAYBILLS_KEY = "arms_waybills_v1";
 const REQUESTS_SEED_FLAG = "arms_maintenance_requests_seeded_v1";
 
+/** In-memory cache — avoids re-parsing large JSON on every tab switch. */
+let requestsMemoryCache: MaintenanceRequestRecord[] | null = null;
+
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -26,7 +29,17 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function writeJson<T>(key: string, value: T) {
+  if (key === REQUESTS_KEY) {
+    requestsMemoryCache = value as MaintenanceRequestRecord[];
+  }
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readRequestsCached(): MaintenanceRequestRecord[] {
+  if (requestsMemoryCache) return requestsMemoryCache;
+  const rows = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  requestsMemoryCache = rows;
+  return rows;
 }
 
 function schedulePersistRequests(requests: MaintenanceRequestRecord[]) {
@@ -39,7 +52,7 @@ export function listMaintenanceRequestsLocal(options?: { skipSeed?: boolean }) {
   if (!options?.skipSeed) {
     ensureSeededMaintenanceRequests();
   }
-  return readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  return readRequestsCached();
 }
 
 export function replaceMaintenanceRequests(requests: MaintenanceRequestRecord[]) {
@@ -116,7 +129,7 @@ function ensureSeededMaintenanceRequests() {
     return;
   }
 
-  const existing = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  const existing = readRequestsCached();
   if (existing.length > 0) {
     window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
     return;
@@ -230,7 +243,7 @@ function ensureSeededMaintenanceRequests() {
 export function listMaintenanceRequests(opsBranchId?: string | null) {
   ensureSeededMaintenanceRequests();
   repairLegacyDeviceStatuses();
-  const all = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  const all = readRequestsCached();
   if (!opsBranchId) return all;
   return all.filter((item) => item.opsBranchId === opsBranchId);
 }
@@ -655,7 +668,7 @@ export function deviceLocationLabel(location: string | null | undefined) {
 /** Rewrite legacy statuses/locations on stored devices so demo data keeps working. */
 export function repairLegacyDeviceStatuses() {
   if (typeof window === "undefined") return;
-  const all = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  const all = readRequestsCached();
   let changed = false;
   for (const request of all) {
     for (const device of request.devices) {

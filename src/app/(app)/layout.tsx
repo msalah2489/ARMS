@@ -17,6 +17,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    // Non-blocking: session cache makes this a no-op after first successful hydrate.
     void hydrateOpsFromSupabase().finally(() => {
       migrateExistingShippingToReceived();
     });
