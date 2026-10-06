@@ -1,8 +1,10 @@
 import {
-  deviceStatusLabel,
+  deviceLocationLabel,
   getMaintenanceRequestById,
   listAllRequestDevices,
   listMaintenanceRequests,
+  locationForLifecycleStatus,
+  normalizeLifecycleStatus,
 } from "@/lib/branch-store";
 import type {
   Device,
@@ -18,30 +20,22 @@ function mapPriority(priority: MaintenanceRequestRecord["priority"]): RequestPri
 }
 
 function mapLifecycleToRequestStatus(status: string | undefined): ServiceRequestStatus {
-  switch (status) {
+  switch (normalizeLifecycleStatus(status)) {
     case "received_at_branch":
     case "excluded_from_shipment":
       return "new";
-    case "awaiting_branch_handover":
     case "in_transit_to_service":
-    case "handed_to_carrier":
     case "in_return_transit":
-    case "returning_from_service":
       return "dispatched";
     case "awaiting_maintenance":
-    case "at_service_center":
-    case "received_at_warehouse":
       return "at_service_center";
     case "in_maintenance":
-    case "under_maintenance":
       return "in_progress";
     case "awaiting_manager_decision":
       return "in_review";
     case "ready_to_return":
-    case "ready_to_send":
       return "testing";
-    case "received_at_destination":
-    case "received_damaged":
+    case "awaiting_customer":
       return "completed";
     case "delivered_to_customer":
     case "closed":
@@ -52,25 +46,19 @@ function mapLifecycleToRequestStatus(status: string | undefined): ServiceRequest
 }
 
 function mapLifecycleToDeviceStatus(status: string | undefined): DeviceStatus {
-  switch (status) {
+  switch (normalizeLifecycleStatus(status)) {
     case "in_maintenance":
-    case "under_maintenance":
     case "awaiting_maintenance":
-    case "at_service_center":
     case "awaiting_manager_decision":
       return "under_maintenance";
     case "in_transit_to_service":
-    case "awaiting_branch_handover":
-    case "handed_to_carrier":
       return "sent_to_service_center";
     case "ready_to_return":
     case "in_return_transit":
       return "under_service_center_maintenance";
-    case "received_damaged":
-      return "damaged";
     case "delivered_to_customer":
     case "closed":
-    case "received_at_destination":
+    case "awaiting_customer":
       return "active";
     default:
       return "active";
@@ -78,23 +66,29 @@ function mapLifecycleToDeviceStatus(status: string | undefined): DeviceStatus {
 }
 
 function summarizeRequestStatus(request: MaintenanceRequestRecord): ServiceRequestStatus {
-  const statuses = request.devices.map((device) => device.lifecycleStatus ?? "received_at_branch");
+  const statuses = request.devices.map((device) =>
+    normalizeLifecycleStatus(device.lifecycleStatus),
+  );
   if (statuses.every((status) => ["delivered_to_customer", "closed"].includes(status))) {
     return "closed";
   }
-  if (statuses.every((status) => ["received_at_destination", "received_damaged", "delivered_to_customer", "closed"].includes(status))) {
+  if (
+    statuses.every((status) =>
+      ["awaiting_customer", "delivered_to_customer", "closed"].includes(status),
+    )
+  ) {
     return "completed";
   }
-  if (statuses.some((status) => ["in_maintenance", "under_maintenance"].includes(status))) {
+  if (statuses.some((status) => status === "in_maintenance")) {
     return "in_progress";
   }
   if (statuses.some((status) => status === "awaiting_manager_decision")) {
     return "in_review";
   }
-  if (statuses.some((status) => ["awaiting_maintenance", "at_service_center"].includes(status))) {
+  if (statuses.some((status) => status === "awaiting_maintenance")) {
     return "at_service_center";
   }
-  if (statuses.some((status) => ["in_transit_to_service", "in_return_transit", "awaiting_branch_handover"].includes(status))) {
+  if (statuses.some((status) => ["in_transit_to_service", "in_return_transit"].includes(status))) {
     return "dispatched";
   }
   return mapLifecycleToRequestStatus(statuses[0]);
@@ -146,9 +140,9 @@ export function listOpsDevices(): Device[] {
       customerName: request.contactName,
       branchName: request.opsBranchName,
       status: mapLifecycleToDeviceStatus(device.lifecycleStatus),
-      currentLocation:
-        device.currentLocation ||
-        deviceStatusLabel(device.lifecycleStatus, "technician"),
+      currentLocation: deviceLocationLabel(
+        device.currentLocation || locationForLifecycleStatus(device.lifecycleStatus),
+      ),
       qrCode: device.deviceCode,
     }))
     .sort((a, b) => a.deviceCode.localeCompare(b.deviceCode, "ar"));

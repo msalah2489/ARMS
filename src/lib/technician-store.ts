@@ -1,6 +1,7 @@
 import {
   listAllRequestDevices,
   listMaintenanceRequests,
+  normalizeLifecycleStatus,
   repairStaleTechnicianAssignments,
   updateDeviceLifecycle,
   type TechnicianQueueItem,
@@ -37,8 +38,8 @@ export function listTechnicianWork() {
 function repairOrphanedMaintenanceDevices() {
   const work = listTechnicianWork();
   for (const item of listAllRequestDevices()) {
-    const status = (item.device.lifecycleStatus ?? "").trim();
-    if (!["in_maintenance", "under_maintenance"].includes(status)) continue;
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status !== "in_maintenance") continue;
 
     const hasOpen = work.some(
       (record) =>
@@ -69,12 +70,12 @@ export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
   repairOrphanedMaintenanceDevices();
 
   const awaiting = listAllRequestDevices().filter((item) => {
-    const status = (item.device.lifecycleStatus ?? "").trim();
-    if (!["at_service_center", "awaiting_maintenance"].includes(status)) {
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status !== "awaiting_maintenance") {
       // Recover devices already at the service center with a mismatched status.
       if (
         (item.device.currentLocation ?? "").trim() === "service_center" &&
-        ["in_transit_to_service", "handed_to_carrier", "received_at_warehouse"].includes(status)
+        status === "in_transit_to_service"
       ) {
         updateDeviceLifecycle(item.request.id, item.device.localId, {
           lifecycleStatus: "awaiting_maintenance",
@@ -114,6 +115,7 @@ export function getSortedAwaitingDevices(): TechnicianQueueItem[] {
 export function startDeviceWork(item: TechnicianQueueItem, technician: Profile) {
   updateDeviceLifecycle(item.request.id, item.device.localId, {
     lifecycleStatus: "in_maintenance",
+    currentLocation: "service_center",
     assignedTechnicianId: technician.id,
     assignedTechnicianName: technician.fullName,
   });
@@ -189,6 +191,7 @@ export function completeTechnicianWork(
     record.outcome === "repaired" || record.outcome === "no_repair_needed";
   updateDeviceLifecycle(record.requestId, record.deviceLocalId, {
     lifecycleStatus: success ? "ready_to_return" : "awaiting_manager_decision",
+    currentLocation: "service_center",
     assignedTechnicianId: null,
     assignedTechnicianName: null,
   });
@@ -279,7 +282,7 @@ export function listMyInProgressDevices(technicianId: string): TechnicianQueueIt
   repairOrphanedMaintenanceDevices();
   return listAllRequestDevices().filter(
     (item) =>
-      ["in_maintenance", "under_maintenance"].includes(item.device.lifecycleStatus ?? "") &&
+      normalizeLifecycleStatus(item.device.lifecycleStatus) === "in_maintenance" &&
       item.device.assignedTechnicianId === technicianId,
   );
 }
@@ -336,7 +339,7 @@ export function resolveManagerDecision(input: {
   );
   if (!match) return { ok: false, error: "الجهاز غير موجود." };
   if (match.device.lifecycleStatus !== "awaiting_manager_decision") {
-    return { ok: false, error: "هذا الجهاز ليس بانتظار قرار المشرف." };
+    return { ok: false, error: "هذا الجهاز ليس في حالة معلق." };
   }
 
   if (input.decision === "requeue_technician") {
@@ -391,7 +394,9 @@ export function markDeliveredToCustomer(input: {
   );
   if (!match) return { ok: false, error: "الجهاز غير موجود." };
   if (
-    !["received_at_destination", "received_damaged"].includes(match.device.lifecycleStatus ?? "")
+    !["awaiting_customer", "received_at_destination", "received_damaged"].includes(
+      match.device.lifecycleStatus ?? "",
+    )
   ) {
     return { ok: false, error: "يجب استلام الجهاز في الفرع أولًا قبل التسليم للعميل." };
   }

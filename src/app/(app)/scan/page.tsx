@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { EXTERNAL_CONDITION_LABELS } from "@/lib/branch-catalog";
-import { DEVICE_STATUS_LABELS, findDeviceHistory } from "@/lib/branch-store";
+import { deviceStatusLabel, findDeviceHistory } from "@/lib/branch-store";
 import { OUTCOME_LABELS } from "@/lib/technician-catalog";
 import { getDeviceWorkHistory } from "@/lib/technician-store";
 import { formatDate } from "@/lib/utils";
@@ -69,7 +69,7 @@ export default function ScanPage() {
                   </div>
                   <div>
                     <dt className="text-ink-700/60">الحالة الحالية</dt>
-                    <dd>{DEVICE_STATUS_LABELS[device.lifecycleStatus ?? "received_at_branch"]}</dd>
+                    <dd>{deviceStatusLabel(device.lifecycleStatus)}</dd>
                   </div>
                   <div>
                     <dt className="text-ink-700/60">الموديل</dt>

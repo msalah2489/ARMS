@@ -21,23 +21,32 @@ export type ExternalCondition =
   | "other";
 
 export type DeviceLifecycleStatus =
+  /** مستلم بالفرع — location: branch */
   | "received_at_branch"
-  | "awaiting_branch_handover"
-  | "handed_to_carrier"
+  /** جاري الشحن — location: in_transit_to_service */
   | "in_transit_to_service"
-  | "received_at_warehouse"
-  | "at_service_center"
+  /** بانتظار الصيانة — location: service_center */
   | "awaiting_maintenance"
+  /** جاري الصيانة — location: service_center */
   | "in_maintenance"
-  | "ready_to_return"
-  | "awaiting_manager_decision"
+  /** فى الطريق الى الفرع — location: in_return_transit */
   | "in_return_transit"
-  | "received_at_destination"
-  | "received_damaged"
+  /** بانتظار العميل — location: branch */
+  | "awaiting_customer"
+  /** معلق — location: service_center */
+  | "awaiting_manager_decision"
+  /** Internal: repaired / approved, waiting for return waybill */
+  | "ready_to_return"
   | "excluded_from_shipment"
   | "ready_to_send"
   | "excluded"
-  // legacy aliases kept for older local data
+  // legacy aliases kept for older local data / migration
+  | "awaiting_branch_handover"
+  | "handed_to_carrier"
+  | "received_at_warehouse"
+  | "at_service_center"
+  | "received_at_destination"
+  | "received_damaged"
   | "ready_to_ship"
   | "in_shipping"
   | "under_maintenance"

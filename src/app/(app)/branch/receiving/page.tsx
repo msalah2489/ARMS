@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
-import { deviceStatusLabel, listMaintenanceRequests } from "@/lib/branch-store";
+import { deviceStatusLabel, listMaintenanceRequests, normalizeLifecycleStatus } from "@/lib/branch-store";
 import { markDeliveredToCustomer } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -62,13 +62,11 @@ function BranchReceivingContent() {
           status: deviceStatusLabel(device.lifecycleStatus, "branch"),
           lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
         };
-        const status = row.lifecycleStatus;
+        const status = normalizeLifecycleStatus(row.lifecycleStatus);
         if (
           [
             "received_at_branch",
-            "awaiting_branch_handover",
             "excluded_from_shipment",
-            "ready_to_ship",
           ].includes(status)
         ) {
           atBranch.push(row);
@@ -77,17 +75,15 @@ function BranchReceivingContent() {
             "in_transit_to_service",
             "awaiting_maintenance",
             "in_maintenance",
-            "under_maintenance",
             "ready_to_return",
             "awaiting_manager_decision",
-            "at_service_center",
             "closed",
           ].includes(status)
         ) {
           inService.push(row);
         } else if (status === "in_return_transit") {
           returning.push(row);
-        } else if (["received_at_destination", "received_damaged"].includes(status)) {
+        } else if (status === "awaiting_customer") {
           readyForCustomer.push(row);
         } else if (status === "delivered_to_customer") {
           delivered.push(row);
@@ -189,12 +185,12 @@ function BranchReceivingContent() {
         {renderTable(sections.inService)}
       </section>
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">أجهزة في الطريق إلى الفرع</h2>
+        <h2 className="font-display text-xl">أجهزة فى الطريق الى الفرع</h2>
         <p className="mt-1 text-xs text-ink-700/60">{sections.returning.length} جهاز</p>
         {renderTable(sections.returning)}
       </section>
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">جاهزة للتسليم للعميل</h2>
+        <h2 className="font-display text-xl">بانتظار العميل</h2>
         <p className="mt-1 text-xs text-ink-700/60">{sections.readyForCustomer.length} جهاز</p>
         {renderTable(sections.readyForCustomer, true)}
       </section>

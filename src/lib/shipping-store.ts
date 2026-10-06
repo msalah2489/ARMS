@@ -92,7 +92,6 @@ export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQ
     const status = device.lifecycleStatus ?? "received_at_branch";
     return [
       "received_at_branch",
-      "awaiting_branch_handover",
       "excluded_from_shipment",
       "ready_to_ship",
     ].includes(status);
@@ -168,8 +167,9 @@ export function createShippingBatch(input: {
 
   for (const item of selected) {
     updateDeviceLifecycle(item.request.id, item.device.localId, {
-      lifecycleStatus: "awaiting_branch_handover",
-      currentLocation: "branch",
+      lifecycleStatus: "in_transit_to_service",
+      currentLocation: "in_transit_to_service",
+      lockedAfterShip: true,
     });
   }
 
@@ -525,18 +525,24 @@ export function receiveReturnBatchDevices(input: {
     if (match) {
       if (decision.outcome === "intact") {
         updateDeviceLifecycle(match.request.id, match.device.localId, {
-          lifecycleStatus: "received_at_destination",
+          lifecycleStatus: "awaiting_customer",
           currentLocation: "branch",
           lockedAfterShip: false,
         });
       } else if (decision.outcome === "damaged") {
         updateDeviceLifecycle(match.request.id, match.device.localId, {
-          lifecycleStatus: "received_damaged",
+          lifecycleStatus: "awaiting_customer",
           currentLocation: "branch",
           lockedAfterShip: false,
+          extraDetails: [
+            match.device.extraDetails,
+            `مستلم تالفًا: ${decision.reason?.trim() || "بدون تفاصيل"}`,
+          ]
+            .filter(Boolean)
+            .join(" | "),
         });
       } else if (decision.outcome === "not_received") {
-        // Device never arrived — send back to manager decision for re-return or close.
+        // Device never arrived — mark معلق at service center for re-return or close.
         updateDeviceLifecycle(match.request.id, match.device.localId, {
           lifecycleStatus: "awaiting_manager_decision",
           currentLocation: "service_center",

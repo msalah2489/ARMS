@@ -191,7 +191,7 @@ function BranchShippingContent() {
                           return;
                         }
                         setMessage(
-                          "تم التسليم لشركة الشحن. الحالة: في الطريق إلى الصيانة.",
+                          "تم التسليم لشركة الشحن. الحالة: جاري الشحن.",
                         );
                         refresh(user);
                       }}
@@ -203,7 +203,7 @@ function BranchShippingContent() {
                   <p className="mt-4 text-sm text-ink-700/70">
                     {batch.status === "received"
                       ? "تم استلام البوليصة في مركز الصيانة."
-                      : "الأجهزة في الطريق إلى الصيانة — لا يمكن التعديل."}
+                      : "الأجهزة جاري الشحن — لا يمكن التعديل."}
                   </p>
                 ) : null}
               </section>

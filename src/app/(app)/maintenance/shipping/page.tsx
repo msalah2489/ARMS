@@ -177,7 +177,7 @@ function MaintenanceShippingContent() {
               setError(result.error);
               return;
             }
-            setMessage(`تم إنشاء بوليصة الإرسال ${result.batch.batchNumber}.`);
+            setMessage(`تم إنشاء بوليصة الإرسال ${result.batch.batchNumber}. الحالة: جاري الشحن.`);
             setShipmentNumber("");
             setSelected([]);
             refresh();
@@ -287,7 +287,7 @@ function MaintenanceShippingContent() {
               return;
             }
             setMessage(
-              `تم إنشاء بوليصة الإرجاع ${result.batch.batchNumber}. الحالة: في الطريق إلى الفرع.`,
+              `تم إنشاء بوليصة الإرجاع ${result.batch.batchNumber}. الحالة: فى الطريق الى الفرع.`,
             );
             setReturnShipmentNumber("");
             setReturnSelected([]);
@@ -300,14 +300,14 @@ function MaintenanceShippingContent() {
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
         <h2 className="font-display text-xl dark:text-sand-50">
-          أجهزة مُرجعة للمشرف ({pendingManager.length})
+          أجهزة معلقة ({pendingManager.length})
         </h2>
         <p className="mt-1 text-sm text-ink-700/70 dark:text-sand-100/70">
-          أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«جاهز للصيانة».
+          أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«بانتظار الصيانة».
         </p>
         <div className="mt-4 space-y-3">
           {pendingManager.length === 0 ? (
-            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد أجهزة بانتظار قرارك.</p>
+            <p className="text-sm text-ink-700/60 dark:text-sand-100/60">لا توجد أجهزة معلقة.</p>
           ) : (
             pendingManager.map((item) => {
               const key = `${item.request.id}:${item.device.localId}`;
@@ -495,7 +495,7 @@ function MaintenanceShippingContent() {
                           return;
                         }
                         setMessage(
-                          `تم استلام ${batch.batchNumber}. الأجهزة جاهزة للصيانة لدى الفنيين.`,
+                          `تم استلام ${batch.batchNumber}. الأجهزة بانتظار الصيانة لدى الفنيين.`,
                         );
                         refresh();
                       }}

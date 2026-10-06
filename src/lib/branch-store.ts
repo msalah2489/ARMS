@@ -170,6 +170,7 @@ function ensureSeededMaintenanceRequests() {
 
 export function listMaintenanceRequests(opsBranchId?: string | null) {
   ensureSeededMaintenanceRequests();
+  repairLegacyDeviceStatuses();
   const all = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
   if (!opsBranchId) return all;
   return all.filter((item) => item.opsBranchId === opsBranchId);
@@ -347,18 +348,16 @@ export function listAllRequestDevices(): TechnicianQueueItem[] {
 
 /** Devices already at the service center awaiting technician work. */
 export function ensureTechnicianQueue(): TechnicianQueueItem[] {
-  return listAllRequestDevices().filter(
-    (item) =>
-      ["at_service_center", "awaiting_maintenance", "in_maintenance", "under_maintenance"].includes(
-        item.device.lifecycleStatus ?? "",
-      ),
-  );
+  return listAllRequestDevices().filter((item) => {
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    return ["awaiting_maintenance", "in_maintenance"].includes(status);
+  });
 }
 
 export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
   return listAllRequestDevices().filter((item) => {
-    const status = (item.device.lifecycleStatus ?? "").trim();
-    if (!["at_service_center", "awaiting_maintenance"].includes(status)) return false;
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status !== "awaiting_maintenance") return false;
     const assigned = String(item.device.assignedTechnicianId ?? "").trim();
     return !assigned;
   });
@@ -367,8 +366,8 @@ export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
 /** Clear stale technician assignment when device is still marked ready for maintenance. */
 export function repairStaleTechnicianAssignments() {
   for (const item of listAllRequestDevices()) {
-    const status = (item.device.lifecycleStatus ?? "").trim();
-    if (!["at_service_center", "awaiting_maintenance"].includes(status)) continue;
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status !== "awaiting_maintenance") continue;
     const assigned = String(item.device.assignedTechnicianId ?? "").trim();
     if (!assigned) continue;
     updateDeviceLifecycle(item.request.id, item.device.localId, {
@@ -378,52 +377,160 @@ export function repairStaleTechnicianAssignments() {
   }
 }
 
-/** Default / technician-facing lifecycle labels. */
+/** Canonical English keys → Arabic labels (7 primary + internal/legacy). */
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
   received_at_branch: "مستلم بالفرع",
-  awaiting_branch_handover: "بانتظار تسليم الفرع للشحن",
-  handed_to_carrier: "تم التسليم لشركة الشحن",
-  in_transit_to_service: "في الطريق إلى الصيانة",
-  received_at_warehouse: "مستلم بالمستودع",
-  at_service_center: "جاهز للصيانة",
-  awaiting_maintenance: "جاهز للصيانة",
+  in_transit_to_service: "جاري الشحن",
+  awaiting_maintenance: "بانتظار الصيانة",
   in_maintenance: "جاري الصيانة",
-  under_maintenance: "جاري الصيانة",
+  in_return_transit: "فى الطريق الى الفرع",
+  awaiting_customer: "بانتظار العميل",
+  awaiting_manager_decision: "معلق",
+  // Internal ops (between maintenance complete and return waybill)
   ready_to_return: "جاهز للإرجاع للفرع",
-  awaiting_manager_decision: "مُرجع للمشرف — بانتظار القرار",
-  in_return_transit: "في الطريق إلى الفرع",
-  received_at_destination: "مستلم بالفرع (سليم)",
-  received_damaged: "مستلم بالفرع (تالف)",
+  ready_to_send: "جاهز للإرجاع للفرع",
   excluded_from_shipment: "مستبعد من البوليصة",
-  ready_to_ship: "جاهز للشحن",
-  in_shipping: "قيد الشحن",
-  returning_from_service: "قادم من الصيانة",
   delivered_to_customer: "تم التسليم للعميل",
   closed: "تم إغلاق الحالة",
-  ready_to_send: "جاهز للإرجاع للفرع",
-  excluded: "مُرجع للمشرف — بانتظار القرار",
+  // Legacy → same wording as the 7 statuses
+  awaiting_branch_handover: "جاري الشحن",
+  handed_to_carrier: "جاري الشحن",
+  in_shipping: "جاري الشحن",
+  ready_to_ship: "مستلم بالفرع",
+  received_at_warehouse: "بانتظار الصيانة",
+  at_service_center: "بانتظار الصيانة",
+  under_maintenance: "جاري الصيانة",
+  returning_from_service: "فى الطريق الى الفرع",
+  received_at_destination: "بانتظار العميل",
+  received_damaged: "بانتظار العميل",
+  excluded: "معلق",
 };
 
-/** Branch-facing labels: once at service center, show "في الصيانة". */
-const BRANCH_IN_SERVICE_STATUSES = new Set([
-  "received_at_warehouse",
-  "at_service_center",
-  "awaiting_maintenance",
-  "in_maintenance",
-  "under_maintenance",
-  "ready_to_return",
-  "awaiting_manager_decision",
-]);
+/** English display labels for the primary lifecycle set. */
+export const DEVICE_STATUS_LABELS_EN: Record<string, string> = {
+  received_at_branch: "Received at branch",
+  in_transit_to_service: "Shipping in progress",
+  awaiting_maintenance: "Awaiting maintenance",
+  in_maintenance: "In maintenance",
+  in_return_transit: "On the way to branch",
+  awaiting_customer: "Awaiting customer",
+  awaiting_manager_decision: "On hold",
+  ready_to_return: "Ready to return",
+  ready_to_send: "Ready to return",
+  excluded_from_shipment: "Excluded from shipment",
+  delivered_to_customer: "Delivered to customer",
+  closed: "Closed",
+  awaiting_branch_handover: "Shipping in progress",
+  handed_to_carrier: "Shipping in progress",
+  in_shipping: "Shipping in progress",
+  ready_to_ship: "Received at branch",
+  received_at_warehouse: "Awaiting maintenance",
+  at_service_center: "Awaiting maintenance",
+  under_maintenance: "In maintenance",
+  returning_from_service: "On the way to branch",
+  received_at_destination: "Awaiting customer",
+  received_damaged: "Awaiting customer",
+  excluded: "On hold",
+};
+
+/** Machine location keys → Arabic. */
+export const DEVICE_LOCATION_LABELS: Record<string, string> = {
+  branch: "الفرع",
+  in_transit_to_service: "في الطريق إلى الصيانة",
+  service_center: "مركز الصيانة",
+  in_return_transit: "في الطريق إلى الفرع",
+  customer: "العميل",
+};
+
+/** Map legacy lifecycle keys to the canonical 7 (+ ready_to_return). */
+export function normalizeLifecycleStatus(
+  status: string | null | undefined,
+): DeviceLifecycleStatus {
+  const key = (status ?? "received_at_branch").trim();
+  const map: Record<string, DeviceLifecycleStatus> = {
+    received_at_branch: "received_at_branch",
+    ready_to_ship: "received_at_branch",
+    awaiting_branch_handover: "in_transit_to_service",
+    handed_to_carrier: "in_transit_to_service",
+    in_transit_to_service: "in_transit_to_service",
+    in_shipping: "in_transit_to_service",
+    received_at_warehouse: "awaiting_maintenance",
+    at_service_center: "awaiting_maintenance",
+    awaiting_maintenance: "awaiting_maintenance",
+    in_maintenance: "in_maintenance",
+    under_maintenance: "in_maintenance",
+    ready_to_return: "ready_to_return",
+    ready_to_send: "ready_to_return",
+    awaiting_manager_decision: "awaiting_manager_decision",
+    excluded: "awaiting_manager_decision",
+    in_return_transit: "in_return_transit",
+    returning_from_service: "in_return_transit",
+    awaiting_customer: "awaiting_customer",
+    received_at_destination: "awaiting_customer",
+    received_damaged: "awaiting_customer",
+    excluded_from_shipment: "excluded_from_shipment",
+    delivered_to_customer: "delivered_to_customer",
+    closed: "closed",
+  };
+  return map[key] ?? (key as DeviceLifecycleStatus);
+}
+
+/** Expected location for a canonical lifecycle status. */
+export function locationForLifecycleStatus(
+  status: string | null | undefined,
+): string {
+  switch (normalizeLifecycleStatus(status)) {
+    case "received_at_branch":
+    case "awaiting_customer":
+    case "excluded_from_shipment":
+      return "branch";
+    case "in_transit_to_service":
+      return "in_transit_to_service";
+    case "awaiting_maintenance":
+    case "in_maintenance":
+    case "awaiting_manager_decision":
+    case "ready_to_return":
+    case "closed":
+      return "service_center";
+    case "in_return_transit":
+      return "in_return_transit";
+    case "delivered_to_customer":
+      return "customer";
+    default:
+      return "branch";
+  }
+}
+
+export function deviceLocationLabel(location: string | null | undefined) {
+  const key = (location ?? "").trim();
+  return DEVICE_LOCATION_LABELS[key] ?? key;
+}
+
+/** Rewrite legacy statuses/locations on stored devices so demo data keeps working. */
+export function repairLegacyDeviceStatuses() {
+  if (typeof window === "undefined") return;
+  const all = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  let changed = false;
+  for (const request of all) {
+    for (const device of request.devices) {
+      const raw = (device.lifecycleStatus ?? "").trim();
+      if (!raw) continue;
+      const next = normalizeLifecycleStatus(raw);
+      const nextLoc = locationForLifecycleStatus(next);
+      if (device.lifecycleStatus !== next || (device.currentLocation ?? "") !== nextLoc) {
+        device.lifecycleStatus = next;
+        device.currentLocation = nextLoc;
+        changed = true;
+      }
+    }
+  }
+  if (changed) writeJson(REQUESTS_KEY, all);
+}
 
 export function deviceStatusLabel(
   status: string | null | undefined,
-  audience: "technician" | "branch" | "default" = "default",
+  _audience: "technician" | "branch" | "default" = "default",
 ) {
   const key = status ?? "received_at_branch";
-  if (audience === "branch") {
-    if (BRANCH_IN_SERVICE_STATUSES.has(key)) return "في الصيانة";
-    if (key === "in_transit_to_service") return "في الطريق إلى الصيانة";
-    if (key === "in_return_transit") return "في الطريق إلى الفرع";
-  }
-  return DEVICE_STATUS_LABELS[key] ?? key;
+  return DEVICE_STATUS_LABELS[key] ?? DEVICE_STATUS_LABELS[normalizeLifecycleStatus(key)] ?? key;
 }
