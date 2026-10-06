@@ -21,21 +21,22 @@ import {
 } from "@/lib/spare-inventory-store";
 import { applyRemoteTechnicianWork } from "@/lib/technician-store";
 import { applyRemoteManagedUsers } from "@/lib/users-store";
+import {
+  pullAppAuditEvents,
+  pullAppBranches,
+  pullAppCatalog,
+  pullAppMaintenanceRequests,
+  pullAppShippingBatches,
+  pullAppSpareInventory,
+  pullAppTechnicianWork,
+  pullAppUsers,
+  pullAppWaybills,
+} from "@/lib/supabase/app-sync";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
-import { pullClientStoreStrict } from "@/lib/supabase/client-store";
-import { expandAllClientStoreToRelational } from "@/lib/supabase/expand-relational";
 import {
   isAuthLikeSupabaseError,
   setArmsSyncStatus,
 } from "@/lib/supabase/sync-status";
-import type {
-  ManagedUser,
-  MaintenanceRequestRecord,
-  OpsBranchRecord,
-  ShippingBatch,
-  TechnicianWorkRecord,
-  WaybillRecord,
-} from "@/types/domain";
 
 const HYDRATED_FLAG = "arms_supabase_hydrated_v1";
 /** Legacy flags kept so older browsers stop retrying obsolete local→remote bootstrap. */
@@ -61,23 +62,21 @@ export function wasOpsHydratedThisSession() {
   return window.sessionStorage.getItem(HYDRATED_FLAG) === "1";
 }
 
-function catalogHasRows(catalog: DeviceCatalogState | Record<string, never> | null | undefined) {
+function catalogHasRows(catalog: DeviceCatalogState | null | undefined) {
   if (!catalog || typeof catalog !== "object") return false;
-  const state = catalog as DeviceCatalogState;
   return (
-    (Array.isArray(state.deviceTypes) && state.deviceTypes.length > 0) ||
-    (Array.isArray(state.brands) && state.brands.length > 0) ||
-    (Array.isArray(state.models) && state.models.length > 0)
+    (Array.isArray(catalog.deviceTypes) && catalog.deviceTypes.length > 0) ||
+    (Array.isArray(catalog.brands) && catalog.brands.length > 0) ||
+    (Array.isArray(catalog.models) && catalog.models.length > 0)
   );
 }
 
-function spareHasRows(spare: SpareInventoryState | Record<string, never> | null | undefined) {
+function spareHasRows(spare: SpareInventoryState | null | undefined) {
   if (!spare || typeof spare !== "object") return false;
-  const state = spare as SpareInventoryState;
   return (
-    (state.balances?.length ?? 0) > 0 ||
-    (state.receipts?.length ?? 0) > 0 ||
-    (state.movements?.length ?? 0) > 0
+    (spare.balances?.length ?? 0) > 0 ||
+    (spare.receipts?.length ?? 0) > 0 ||
+    (spare.movements?.length ?? 0) > 0
   );
 }
 
@@ -94,10 +93,9 @@ const EMPTY_SPARE: SpareInventoryState = {
 };
 
 /**
- * Reconcile one store key:
+ * Reconcile one store:
  * - remote has data → overwrite local (remote is source of truth)
  * - remote empty → clear local (never upload leftover demo/seed; never re-seed)
- * New writes already push via schedulePersist; hydrate must not inject code seeds.
  */
 function reconcilePayload<T>(options: {
   remoteHas: boolean;
@@ -113,9 +111,8 @@ function reconcilePayload<T>(options: {
 }
 
 /**
- * Pull shared ops data from Supabase into localStorage cache.
+ * Pull shared ops data from normalized app_* tables into localStorage cache.
  * Remote is source of truth after hydrate. Demo seed is never injected here.
- * Language/theme preferences are not synced.
  */
 export async function hydrateOpsFromSupabase(): Promise<boolean> {
   if (typeof window === "undefined") return false;
@@ -142,24 +139,17 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           remoteSpare,
           remoteWaybills,
         ] = await Promise.all([
-          pullClientStoreStrict<OpsBranchRecord[]>("ops_branches", []),
-          pullClientStoreStrict<MaintenanceRequestRecord[]>("maintenance_requests", []),
-          pullClientStoreStrict<DeviceCatalogState | Record<string, never>>(
-            "device_catalog",
-            {},
-          ),
-          pullClientStoreStrict<ManagedUser[]>("managed_users", []),
-          pullClientStoreStrict<ShippingBatch[]>("shipping_batches", []),
-          pullClientStoreStrict<Array<Record<string, unknown>>>("audit_events", []),
-          pullClientStoreStrict<TechnicianWorkRecord[]>("technician_work", []),
-          pullClientStoreStrict<SpareInventoryState | Record<string, never>>(
-            "spare_inventory",
-            {},
-          ),
-          pullClientStoreStrict<WaybillRecord[]>("waybills", []),
+          pullAppBranches(),
+          pullAppMaintenanceRequests(),
+          pullAppCatalog(),
+          pullAppUsers(),
+          pullAppShippingBatches(),
+          pullAppAuditEvents(),
+          pullAppTechnicianWork(),
+          pullAppSpareInventory(),
+          pullAppWaybills(),
         ]);
 
-        // Ensure seed path is never taken during hydrate (skipSeed: true).
         void listMaintenanceRequestsLocal({ skipSeed: true });
 
         reconcilePayload({
@@ -178,11 +168,7 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
 
         reconcilePayload({
           remoteHas: catalogHasRows(remoteCatalog),
-          remoteValue: {
-            deviceTypes: (remoteCatalog as DeviceCatalogState).deviceTypes ?? [],
-            brands: (remoteCatalog as DeviceCatalogState).brands ?? [],
-            models: (remoteCatalog as DeviceCatalogState).models ?? [],
-          },
+          remoteValue: remoteCatalog,
           emptyValue: EMPTY_CATALOG,
           apply: (value) => {
             if (catalogHasRows(value)) applyRemoteCatalog(value);
@@ -216,11 +202,7 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
 
         reconcilePayload({
           remoteHas: spareHasRows(remoteSpare),
-          remoteValue: {
-            balances: (remoteSpare as SpareInventoryState).balances ?? [],
-            receipts: (remoteSpare as SpareInventoryState).receipts ?? [],
-            movements: (remoteSpare as SpareInventoryState).movements ?? [],
-          },
+          remoteValue: remoteSpare,
           emptyValue: EMPTY_SPARE,
           apply: (value) => {
             if (spareHasRows(value)) applyRemoteSpareInventory(value);
@@ -238,7 +220,6 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
         markBootstrapConfirmed();
         markHydrated();
         setArmsSyncStatus({ state: "ok" });
-        void expandAllClientStoreToRelational();
         return true;
       } catch (error) {
         console.error("[arms] hydrateOpsFromSupabase", error);

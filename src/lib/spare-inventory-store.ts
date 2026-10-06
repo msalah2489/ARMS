@@ -1,6 +1,6 @@
 import { getModelById, getModels, getSparePartsForModel } from "@/lib/catalog-store";
 import { isDemoMode } from "@/lib/auth";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppSpareInventory } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   Profile,
@@ -36,7 +36,7 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersist() {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("spare_inventory", getSpareInventoryLocal());
+  void pushAppSpareInventory(getSpareInventoryLocal());
 }
 
 export function getSpareInventoryLocal(): SpareInventoryState {

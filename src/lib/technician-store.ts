@@ -8,7 +8,7 @@ import {
 } from "@/lib/branch-store";
 import { isDemoMode } from "@/lib/auth";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppTechnicianWork } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { HOLD_REASON_LABELS } from "@/lib/technician-catalog";
 import type {
@@ -35,7 +35,7 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersist(work: TechnicianWorkRecord[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("technician_work", work);
+  void pushAppTechnicianWork(work);
 }
 
 export function listTechnicianWorkLocal(): TechnicianWorkRecord[] {

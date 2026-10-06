@@ -196,7 +196,7 @@ export async function getServiceRequests(locale?: AppLocale): Promise<ServiceReq
 
   if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
 
-  // Ops cache mirrors arms_client_store.maintenance_requests after hydrate.
+  // Ops cache mirrors app_maintenance_requests after hydrate.
   // Never fall back to classic CRM `service_requests` (often empty / unused).
   if (canUseOpsLocalCache()) {
     return listOpsServiceRequests();

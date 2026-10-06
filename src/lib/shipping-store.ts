@@ -6,7 +6,7 @@ import {
 } from "@/lib/branch-store";
 import { listBranchOptions } from "@/lib/branches-store";
 import { isDemoMode } from "@/lib/auth";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppAuditEvents, pushAppShippingBatches } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   BranchReturnReceiveOutcome,
@@ -34,12 +34,12 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersistBatches(batches: ShippingBatch[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("shipping_batches", batches);
+  void pushAppShippingBatches(batches);
 }
 
 function schedulePersistAudit(audit: Array<Record<string, unknown>>) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("audit_events", audit);
+  void pushAppAuditEvents(audit);
 }
 
 export function listShippingBatchesLocal(): ShippingBatch[] {

@@ -1,5 +1,5 @@
 import { isDemoMode } from "@/lib/auth";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppBranches } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { OpsBranchRecord } from "@/types/domain";
 
@@ -54,7 +54,7 @@ function seedBranches(): OpsBranchRecord[] {
 
 function schedulePersist(branches: OpsBranchRecord[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("ops_branches", branches);
+  void pushAppBranches(branches);
 }
 
 /** Raw localStorage read (no seed write). Used by Supabase hydrate. */

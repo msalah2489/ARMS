@@ -4,7 +4,7 @@ import {
   MODELS_SEED,
 } from "@/lib/branch-catalog";
 import { isDemoMode } from "@/lib/auth";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppCatalog } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AccessoryItem, CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
 
@@ -139,7 +139,7 @@ export function getCatalog(): DeviceCatalogState {
 function saveCatalog(next: DeviceCatalogState) {
   writeJson(CATALOG_KEY, next);
   if (isSupabaseConfigured() && !isDemoMode()) {
-    void pushClientStore("device_catalog", next);
+    void pushAppCatalog(next);
   }
   return next;
 }

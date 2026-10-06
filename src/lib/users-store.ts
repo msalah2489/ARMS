@@ -1,7 +1,7 @@
 import { isDemoMode } from "@/lib/auth";
 import { isValidSaudiMobile } from "@/lib/branch-catalog";
 import { listBranchOptions } from "@/lib/branches-store";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppUsers } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
 
@@ -109,7 +109,7 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersist(users: ManagedUser[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("managed_users", users);
+  void pushAppUsers(users);
 }
 
 /** Raw localStorage read (no seed). Used by Supabase hydrate. */

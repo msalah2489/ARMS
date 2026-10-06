@@ -1,6 +1,6 @@
 import { generateRequestNumber } from "@/lib/branch-catalog";
 import { isDemoMode } from "@/lib/auth";
-import { pushClientStore } from "@/lib/supabase/client-store";
+import { pushAppMaintenanceRequests, pushAppWaybills } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   DeviceLifecycleStatus,
@@ -30,7 +30,7 @@ function writeJson<T>(key: string, value: T) {
 
 function schedulePersistRequests(requests: MaintenanceRequestRecord[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("maintenance_requests", requests);
+  void pushAppMaintenanceRequests(requests);
 }
 
 /** Raw localStorage read. skipSeed avoids writing demo samples. */
@@ -53,7 +53,7 @@ export function applyRemoteMaintenanceRequests(requests: MaintenanceRequestRecor
 
 function schedulePersistWaybills(waybills: WaybillRecord[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushClientStore("waybills", waybills);
+  void pushAppWaybills(waybills);
 }
 
 /** Raw localStorage waybills (no demo seed). */
