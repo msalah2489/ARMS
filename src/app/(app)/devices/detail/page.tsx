@@ -6,7 +6,7 @@ import { DeviceDetailClient } from "../[id]/device-detail-client";
 
 function DetailInner() {
   const params = useSearchParams();
-  const id = params.get("id") ?? "";
+  const id = params?.get("id") ?? "";
   if (!id) return <p className="text-sm text-rose-700">معرّف الجهاز مفقود.</p>;
   return <DeviceDetailClient id={id} />;
 }

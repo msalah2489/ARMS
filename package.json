@@ -5,6 +5,7 @@
   "description": "ARMS — Aromatic Maintenance Service",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/patch-next-export-rename.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

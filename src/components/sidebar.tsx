@@ -70,7 +70,8 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
         {items.map((item) => {
           const Icon = item.icon;
           const label = t(item.labelKey);
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const path = pathname ?? "";
+          const active = path === item.href || path.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}

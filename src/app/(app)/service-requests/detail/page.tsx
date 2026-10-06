@@ -6,7 +6,7 @@ import { RequestDetailClient } from "../[id]/request-detail-client";
 
 function DetailInner() {
   const params = useSearchParams();
-  const id = params.get("id") ?? "";
+  const id = params?.get("id") ?? "";
   if (!id) return <p className="text-sm text-rose-700">معرّف الطلب مفقود.</p>;
   return <RequestDetailClient id={id} />;
 }
