@@ -24,12 +24,37 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Resolve Supabase build env
+        id: supabase_env
+        env:
+          URL_SECRET: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          URL_VAR: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          KEY_SECRET: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          KEY_VAR: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          USE_DEMO_VAR: ${{ vars.NEXT_PUBLIC_USE_DEMO }}
+        run: |
+          URL="${URL_SECRET:-$URL_VAR}"
+          KEY="${KEY_SECRET:-$KEY_VAR}"
+          USE_DEMO="${USE_DEMO_VAR:-false}"
+          if [ -z "$URL" ]; then
+            URL="https://khjjfqqaeaeynnaizycq.supabase.co"
+          fi
+          # Prefer Actions secret/variable. Fallback is the project's public anon key
+          # (safe for NEXT_PUBLIC client use; override via secret when rotating).
+          if [ -z "$KEY" ]; then
+            KEY="sb_publishable_JBRwZuqY4b37FqOrJ0tv7g_oLUnyLvU"
+            echo "::notice::Using built-in anon key fallback. Prefer setting secret NEXT_PUBLIC_SUPABASE_ANON_KEY."
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "use_demo=$USE_DEMO" >> "$GITHUB_OUTPUT"
+      - name: Build static export
+        run: npm run build
         env:
           GITHUB_PAGES: "true"
-          NEXT_PUBLIC_USE_DEMO: "true"
-          NEXT_PUBLIC_SUPABASE_URL: https://khjjfqqaeaeynnaizycq.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_JBRwZuqY4b37FqOrJ0tv7g_oLUnyLvU
+          NEXT_PUBLIC_USE_DEMO: ${{ steps.supabase_env.outputs.use_demo }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ steps.supabase_env.outputs.url }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.supabase_env.outputs.key }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out

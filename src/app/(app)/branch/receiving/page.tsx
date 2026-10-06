@@ -38,6 +38,9 @@ function BranchReceivingContent() {
     const session = readSession();
     setUser(session);
     refresh(session);
+    const onHydrated = () => refresh(session);
+    window.addEventListener("arms-ops-hydrated", onHydrated);
+    return () => window.removeEventListener("arms-ops-hydrated", onHydrated);
   }, []);
 
   const sections = useMemo(() => {

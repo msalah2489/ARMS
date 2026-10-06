@@ -1,4 +1,7 @@
 import { generateRequestNumber } from "@/lib/branch-catalog";
+import { isDemoMode } from "@/lib/auth";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   DeviceLifecycleStatus,
   DraftRequestDevice,
@@ -23,6 +26,29 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function schedulePersistRequests(requests: MaintenanceRequestRecord[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("maintenance_requests", requests);
+}
+
+/** Raw localStorage read. skipSeed avoids writing demo samples. */
+export function listMaintenanceRequestsLocal(options?: { skipSeed?: boolean }) {
+  if (!options?.skipSeed) {
+    ensureSeededMaintenanceRequests();
+  }
+  return readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+}
+
+export function replaceMaintenanceRequests(requests: MaintenanceRequestRecord[]) {
+  if (typeof window === "undefined") return;
+  writeJson(REQUESTS_KEY, requests);
+  window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
+}
+
+export function applyRemoteMaintenanceRequests(requests: MaintenanceRequestRecord[]) {
+  replaceMaintenanceRequests(requests);
 }
 
 function sampleDevice(
@@ -58,6 +84,12 @@ function sampleDevice(
 function ensureSeededMaintenanceRequests() {
   if (typeof window === "undefined") return;
   if (window.localStorage.getItem(REQUESTS_SEED_FLAG) === "1") return;
+
+  // Production / Supabase mode: never inject demo maintenance requests.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
+    return;
+  }
 
   const existing = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
   if (existing.length > 0) {
@@ -232,7 +264,9 @@ export function saveMaintenanceRequest(input: {
   };
 
   const all = listMaintenanceRequests();
-  writeJson(REQUESTS_KEY, [record, ...all]);
+  const next = [record, ...all];
+  writeJson(REQUESTS_KEY, next);
+  schedulePersistRequests(next);
   return record;
 }
 
@@ -334,6 +368,7 @@ export function updateDeviceLifecycle(
     };
   });
   writeJson(REQUESTS_KEY, next);
+  schedulePersistRequests(next);
   return next;
 }
 
@@ -526,7 +561,10 @@ export function repairLegacyDeviceStatuses() {
       }
     }
   }
-  if (changed) writeJson(REQUESTS_KEY, all);
+  if (changed) {
+    writeJson(REQUESTS_KEY, all);
+    schedulePersistRequests(all);
+  }
 }
 
 export function deviceStatusLabel(

@@ -17,6 +17,8 @@ import {
 import { getStoredLocale, type AppLocale } from "@/lib/preferences";
 import { listInventoryBalances } from "@/lib/spare-inventory-store";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type {
   Branch,
   Customer,
@@ -33,32 +35,48 @@ function resolveLocale(locale?: AppLocale): AppLocale {
   return locale ?? getStoredLocale();
 }
 
-/** Prefer the same local maintenance data created by the branch account. */
+async function ensureOpsHydrated() {
+  if (typeof window === "undefined") return;
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  await hydrateOpsFromSupabase();
+}
+
+/** Prefer ops (branch workflow) data after Supabase hydrate; else CRM tables. */
 function clientOpsRequests(): ServiceRequest[] | null {
   if (typeof window === "undefined") return null;
-  return listOpsServiceRequests();
+  const rows = listOpsServiceRequests();
+  return rows.length > 0 ? rows : null;
 }
 
 function clientOpsDevices(): Device[] | null {
   if (typeof window === "undefined") return null;
-  return listOpsDevices();
+  const rows = listOpsDevices();
+  return rows.length > 0 ? rows : null;
 }
 
 function clientOpsCustomers(): Customer[] | null {
   if (typeof window === "undefined") return null;
-  return listOpsCustomers();
+  const rows = listOpsCustomers();
+  return rows.length > 0 ? rows : null;
 }
 
 function clientOpsBranches(locale?: AppLocale): Branch[] | null {
   if (typeof window === "undefined") return null;
-  return listOpsBranches(resolveLocale(locale));
+  const rows = listOpsBranches(resolveLocale(locale));
+  return rows.length > 0 ? rows : null;
 }
 
 export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
+  await ensureOpsHydrated();
+
+  if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
+
   const ops = clientOpsCustomers();
   if (ops) return ops;
 
-  if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
+  if (!isSupabaseConfigured()) {
+    return localizedDemoCustomers(resolveLocale(locale));
+  }
 
   try {
     const supabase = createClient();
@@ -77,15 +95,21 @@ export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
     }));
   } catch (error) {
     console.error(error);
-    return localizedDemoCustomers(resolveLocale(locale));
+    return [];
   }
 }
 
 export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
+  await ensureOpsHydrated();
+
+  if (isDemoMode()) return localizedDemoBranches(resolveLocale(locale));
+
   const ops = clientOpsBranches(locale);
   if (ops) return ops;
 
-  if (isDemoMode()) return localizedDemoBranches(resolveLocale(locale));
+  if (!isSupabaseConfigured()) {
+    return localizedDemoBranches(resolveLocale(locale));
+  }
 
   try {
     const supabase = createClient();
@@ -105,15 +129,21 @@ export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
     }));
   } catch (error) {
     console.error(error);
-    return localizedDemoBranches(resolveLocale(locale));
+    return [];
   }
 }
 
 export async function getDevices(locale?: AppLocale): Promise<Device[]> {
+  await ensureOpsHydrated();
+
+  if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
+
   const ops = clientOpsDevices();
   if (ops) return ops;
 
-  if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
+  if (!isSupabaseConfigured()) {
+    return localizedDemoDevices(resolveLocale(locale));
+  }
 
   try {
     const supabase = createClient();
@@ -137,15 +167,21 @@ export async function getDevices(locale?: AppLocale): Promise<Device[]> {
     }));
   } catch (error) {
     console.error(error);
-    return localizedDemoDevices(resolveLocale(locale));
+    return [];
   }
 }
 
 export async function getServiceRequests(locale?: AppLocale): Promise<ServiceRequest[]> {
+  await ensureOpsHydrated();
+
+  if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
+
   const ops = clientOpsRequests();
   if (ops) return ops;
 
-  if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
+  if (!isSupabaseConfigured()) {
+    return localizedDemoRequests(resolveLocale(locale));
+  }
 
   try {
     const supabase = createClient();
@@ -169,12 +205,14 @@ export async function getServiceRequests(locale?: AppLocale): Promise<ServiceReq
     }));
   } catch (error) {
     console.error(error);
-    return localizedDemoRequests(resolveLocale(locale));
+    return [];
   }
 }
 
 export async function getSpareParts(): Promise<SparePart[]> {
   if (isDemoMode()) return demoSpareParts;
+
+  if (!isSupabaseConfigured()) return demoSpareParts;
 
   try {
     const supabase = createClient();
@@ -194,7 +232,7 @@ export async function getSpareParts(): Promise<SparePart[]> {
     }));
   } catch (error) {
     console.error(error);
-    return demoSpareParts;
+    return [];
   }
 }
 

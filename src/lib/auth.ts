@@ -1,3 +1,4 @@
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AppRole } from "@/types/domain";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -61,8 +62,16 @@ export const DEMO_USERS: Array<{
   },
 ];
 
+/**
+ * Demo mode (sample data + local-only demo logins).
+ * - USE_DEMO=true → always demo
+ * - USE_DEMO=false → never demo
+ * - unset → demo only when Supabase env is missing
+ */
 export function isDemoMode() {
-  return process.env.NEXT_PUBLIC_USE_DEMO !== "false";
+  if (process.env.NEXT_PUBLIC_USE_DEMO === "true") return true;
+  if (process.env.NEXT_PUBLIC_USE_DEMO === "false") return false;
+  return !isSupabaseConfigured();
 }
 
 export function normalizeRole(role: string): AppRole {

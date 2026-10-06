@@ -1,3 +1,6 @@
+import { isDemoMode } from "@/lib/auth";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { OpsBranchRecord } from "@/types/domain";
 
 const BRANCHES_KEY = "arms_ops_branches_v1";
@@ -49,6 +52,27 @@ function seedBranches(): OpsBranchRecord[] {
   ];
 }
 
+function schedulePersist(branches: OpsBranchRecord[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushClientStore("ops_branches", branches);
+}
+
+/** Raw localStorage read (no seed write). Used by Supabase hydrate. */
+export function listOpsBranchRecordsLocal(): OpsBranchRecord[] {
+  return readJson<OpsBranchRecord[]>(BRANCHES_KEY, []);
+}
+
+export function replaceOpsBranchRecords(branches: OpsBranchRecord[]) {
+  if (typeof window === "undefined") return;
+  writeJson(BRANCHES_KEY, branches);
+}
+
+export function applyRemoteBranches(branches: OpsBranchRecord[]) {
+  replaceOpsBranchRecords(
+    [...branches].sort((a, b) => a.name.localeCompare(b.name, "ar")),
+  );
+}
+
 function nextCode(isServiceCenter: boolean) {
   const prefix = isServiceCenter ? "SC" : "BR";
   const existing = listOpsBranchRecords()
@@ -74,7 +98,13 @@ export function listOpsBranchRecords(): OpsBranchRecord[] {
   const stored = readJson<OpsBranchRecord[] | null>(BRANCHES_KEY, null);
   if (!stored || stored.length === 0) {
     const seeded = seedBranches();
-    if (typeof window !== "undefined") writeJson(BRANCHES_KEY, seeded);
+    if (typeof window !== "undefined") {
+      writeJson(BRANCHES_KEY, seeded);
+      // In Supabase mode, hydrate may replace this; still persist seed if remote empty.
+      if (isSupabaseConfigured() && !isDemoMode()) {
+        schedulePersist(seeded);
+      }
+    }
     return seeded;
   }
   return [...stored].sort((a, b) => a.name.localeCompare(b.name, "ar"));
@@ -125,7 +155,9 @@ export function createOpsBranch(input: {
     updatedAt: now,
   };
 
-  writeJson(BRANCHES_KEY, [branch, ...all]);
+  const next = [branch, ...all];
+  writeJson(BRANCHES_KEY, next);
+  schedulePersist(next);
   return { ok: true, branch };
 }
 
@@ -145,28 +177,25 @@ export function updateOpsBranch(
     return { ok: false, error: "يوجد فرع بنفس الاسم والمدينة." };
   }
 
-  const next: OpsBranchRecord = {
+  const nextBranch: OpsBranchRecord = {
     ...existing,
     name,
     city,
     isServiceCenter: Boolean(input.isServiceCenter),
-    // code stays unique and never changes after creation
     updatedAt: new Date().toISOString(),
   };
 
-  writeJson(
-    BRANCHES_KEY,
-    all.map((item) => (item.id === id ? next : item)),
-  );
-  return { ok: true, branch: next };
+  const next = all.map((item) => (item.id === id ? nextBranch : item));
+  writeJson(BRANCHES_KEY, next);
+  schedulePersist(next);
+  return { ok: true, branch: nextBranch };
 }
 
 export function deleteOpsBranch(id: string): { ok: true } | { ok: false; error: string } {
   const all = listOpsBranchRecords();
   if (!all.some((item) => item.id === id)) return { ok: false, error: "الفرع غير موجود." };
-  writeJson(
-    BRANCHES_KEY,
-    all.filter((item) => item.id !== id),
-  );
+  const next = all.filter((item) => item.id !== id);
+  writeJson(BRANCHES_KEY, next);
+  schedulePersist(next);
   return { ok: true };
 }

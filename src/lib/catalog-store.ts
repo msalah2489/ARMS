@@ -3,6 +3,9 @@ import {
   DEVICE_TYPES_SEED,
   MODELS_SEED,
 } from "@/lib/branch-catalog";
+import { isDemoMode } from "@/lib/auth";
+import { pushClientStore } from "@/lib/supabase/client-store";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AccessoryItem, CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
 
 const CATALOG_KEY = "arms_device_catalog_v1";
@@ -65,12 +68,40 @@ function seedCatalog(): DeviceCatalogState {
   };
 }
 
+export function getCatalogLocal(): DeviceCatalogState {
+  const fallback = seedCatalog();
+  if (typeof window === "undefined") return fallback;
+  const stored = readJson<DeviceCatalogState | null>(CATALOG_KEY, null);
+  if (!stored) return fallback;
+  return {
+    deviceTypes: stored.deviceTypes?.length ? stored.deviceTypes : fallback.deviceTypes,
+    brands: stored.brands?.length ? stored.brands : fallback.brands,
+    models: (stored.models?.length ? stored.models : fallback.models).map(normalizeModel),
+  };
+}
+
+export function replaceCatalog(catalog: DeviceCatalogState) {
+  if (typeof window === "undefined") return;
+  writeJson(CATALOG_KEY, catalog);
+}
+
+export function applyRemoteCatalog(catalog: DeviceCatalogState) {
+  replaceCatalog({
+    deviceTypes: catalog.deviceTypes ?? [],
+    brands: catalog.brands ?? [],
+    models: (catalog.models ?? []).map(normalizeModel),
+  });
+}
+
 export function getCatalog(): DeviceCatalogState {
   const fallback = seedCatalog();
   if (typeof window === "undefined") return fallback;
   const stored = readJson<DeviceCatalogState | null>(CATALOG_KEY, null);
   if (!stored) {
     writeJson(CATALOG_KEY, fallback);
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      void pushClientStore("device_catalog", fallback);
+    }
     return fallback;
   }
   return {
@@ -82,6 +113,9 @@ export function getCatalog(): DeviceCatalogState {
 
 function saveCatalog(next: DeviceCatalogState) {
   writeJson(CATALOG_KEY, next);
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    void pushClientStore("device_catalog", next);
+  }
   return next;
 }
 

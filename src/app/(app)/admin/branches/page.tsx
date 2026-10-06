@@ -28,6 +28,9 @@ function AdminBranchesContent() {
 
   useEffect(() => {
     refresh();
+    const onHydrated = () => refresh();
+    window.addEventListener("arms-ops-hydrated", onHydrated);
+    return () => window.removeEventListener("arms-ops-hydrated", onHydrated);
   }, []);
 
   function resetForm() {

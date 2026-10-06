@@ -35,11 +35,14 @@ The sidebar changes with the role.
 
 ## Connect Supabase
 
+Full GitHub Pages steps: [`docs/SUPABASE_GITHUB_PAGES.md`](docs/SUPABASE_GITHUB_PAGES.md).
+
 1. Create a project at [supabase.com](https://supabase.com).
 2. Put the project URL and anon key in `.env.local`.
-3. Run `supabase/migrations/001_init.sql` in the SQL editor.
+3. Run SQL migrations in the SQL editor (`setup_all.sql` / `001`…`006`, then **`007_static_export_sync.sql`**).
 4. Set `NEXT_PUBLIC_USE_DEMO=false`.
-5. Create Auth users whose `user_metadata.role` is one of: `manager`, `supervisor`, `technician`, `branch_employee`, `service_center_employee`.
+5. For GitHub Pages: set Actions secret/variable `NEXT_PUBLIC_SUPABASE_ANON_KEY` (and optionally `NEXT_PUBLIC_SUPABASE_URL`), then re-run **Deploy GitHub Pages**.
+6. Optional: create Supabase Auth users for non-local logins.
 
 ## First slice vs later work
 

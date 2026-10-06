@@ -13,6 +13,7 @@ import {
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
 import { getTechnicianDashboardStats } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
+import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { formatDate } from "@/lib/utils";
 import type { DashboardStats, MaintenanceRequestRecord, Profile, ServiceRequest } from "@/types/domain";
 
@@ -27,22 +28,29 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    const session = readSession();
-    setUser(session);
-    if (!session) return;
+    function load() {
+      const session = readSession();
+      setUser(session);
+      if (!session) return;
 
-    if (isBranchRole(session.role)) {
-      setBranchRequests(listMaintenanceRequests(session.opsBranchId));
+      if (isBranchRole(session.role)) {
+        setBranchRequests(listMaintenanceRequests(session.opsBranchId));
+      }
+
+      if (isTechnicianRole(session.role)) {
+        setTechStats(getTechnicianDashboardStats(session.id));
+      }
+
+      void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
+        setStats(nextStats);
+        setRequests(nextRequests);
+      });
     }
 
-    if (isTechnicianRole(session.role)) {
-      setTechStats(getTechnicianDashboardStats(session.id));
-    }
-
-    void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
-      setStats(nextStats);
-      setRequests(nextRequests);
-    });
+    load();
+    void hydrateOpsFromSupabase().then(() => load());
+    window.addEventListener("arms-ops-hydrated", load);
+    return () => window.removeEventListener("arms-ops-hydrated", load);
   }, []);
 
   if (!user) {
