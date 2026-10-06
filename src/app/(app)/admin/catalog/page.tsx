@@ -419,7 +419,7 @@ function CatalogAdminContent() {
 
           <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
             <h2 className="font-display text-xl">الموديلات</h2>
-            <div className="mt-4 overflow-x-auto">
+            <div className="arms-scroll-x mt-4">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-ink-900/10 text-right text-ink-700/70 dark:border-white/10 dark:text-sand-100/70">

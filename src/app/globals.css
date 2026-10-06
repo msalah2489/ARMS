@@ -144,3 +144,83 @@ aside.bg-ink-950 {
 aside.bg-ink-950 button {
   color: #fbf7f0;
 }
+
+/* Rail: soft edge when expanded over main content */
+.arms-sidebar-rail {
+  box-shadow: none;
+}
+
+.arms-sidebar-rail:hover,
+.arms-sidebar-rail:focus-within {
+  box-shadow: 12px 0 28px -18px rgba(15, 22, 18, 0.55);
+}
+
+[dir="rtl"] .arms-sidebar-rail:hover,
+[dir="rtl"] .arms-sidebar-rail:focus-within {
+  box-shadow: -12px 0 28px -18px rgba(15, 22, 18, 0.55);
+}
+
+/* Horizontal tables: touch-friendly momentum scroll on small screens */
+.arms-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Metallic silver ARMS wordmark — calm recurring light sweep */
+@keyframes arms-logo-shimmer {
+  0%,
+  22% {
+    background-position: 120% 50%;
+  }
+  50% {
+    background-position: -20% 50%;
+  }
+  78%,
+  100% {
+    background-position: -120% 50%;
+  }
+}
+
+.arms-logo {
+  display: inline-block;
+  letter-spacing: -0.02em;
+  /* Cool silver with a faint green-ink hint to match ARMS, not purple */
+  background-image: linear-gradient(
+    100deg,
+    #5c656c 0%,
+    #8b949c 14%,
+    #c5ccd3 28%,
+    #f0f3f5 40%,
+    #aeb8b4 48%,
+    #d7dde2 58%,
+    #7f8890 72%,
+    #b8c0c6 86%,
+    #6a737a 100%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
+  animation: arms-logo-shimmer 8.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arms-logo {
+    animation: none;
+    background-position: 35% 50%;
+  }
+}
+
+/* Comfortable tap targets on coarse pointers (controls only) */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 2.75rem;
+  }
+}

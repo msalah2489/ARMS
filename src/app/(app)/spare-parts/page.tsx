@@ -178,7 +178,7 @@ function SpareInventoryContent() {
           </button>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
+        <div className="arms-scroll-x mt-4">
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-ink-900/10 text-right text-ink-700/60 dark:border-white/10 dark:text-sand-100/60">
@@ -317,7 +317,7 @@ function SpareInventoryContent() {
 
       <section className={panelClass}>
         <h2 className="font-display text-xl">رصيد المخزون ({balances.length})</h2>
-        <div className="mt-4 overflow-x-auto">
+        <div className="arms-scroll-x mt-4">
           {balances.length === 0 ? (
             <p className="text-sm text-ink-700/60 dark:text-sand-100/60">
               لا يوجد رصيد بعد. سجّل أول استلام أعلاه.
