@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CatalogSuggestInput } from "@/components/catalog-suggest-input";
+import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
+import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
@@ -40,11 +42,13 @@ function CatalogAdminContent() {
   const [modelName, setModelName] = useState("");
   const [modelTypeId, setModelTypeId] = useState("");
   const [modelBrandId, setModelBrandId] = useState("");
+  const [modelImage, setModelImage] = useState<ImageValue | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [accessoryName, setAccessoryName] = useState("");
   const [accessoryColor, setAccessoryColor] = useState("");
   const [spareName, setSpareName] = useState("");
   const [spareColor, setSpareColor] = useState("");
+  const [spareImage, setSpareImage] = useState<ImageValue | null>(null);
 
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [editingTypeName, setEditingTypeName] = useState("");
@@ -54,12 +58,14 @@ function CatalogAdminContent() {
   const [editModelName, setEditModelName] = useState("");
   const [editModelTypeId, setEditModelTypeId] = useState("");
   const [editModelBrandId, setEditModelBrandId] = useState("");
+  const [editModelImage, setEditModelImage] = useState<ImageValue | null>(null);
   const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(null);
   const [editingAccessoryName, setEditingAccessoryName] = useState("");
   const [editingAccessoryColor, setEditingAccessoryColor] = useState("");
   const [editingSpareId, setEditingSpareId] = useState<string | null>(null);
   const [editingSpareName, setEditingSpareName] = useState("");
   const [editingSpareColor, setEditingSpareColor] = useState("");
+  const [editingSpareImage, setEditingSpareImage] = useState<ImageValue | null>(null);
 
   function refresh() {
     setCatalog(getCatalog());
@@ -332,13 +338,13 @@ function CatalogAdminContent() {
 
       {tab === "models" ? (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+          <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
             <h2 className="font-display text-xl">إضافة موديل</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <select
                 value={modelTypeId}
                 onChange={(e) => setModelTypeId(e.target.value)}
-                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
               >
                 <option value="">التصنيف *</option>
                 {catalog.deviceTypes.map((item) => (
@@ -350,7 +356,7 @@ function CatalogAdminContent() {
               <select
                 value={modelBrandId}
                 onChange={(e) => setModelBrandId(e.target.value)}
-                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
               >
                 <option value="">البراند *</option>
                 {catalog.brands.map((item) => (
@@ -363,13 +369,27 @@ function CatalogAdminContent() {
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
                 placeholder="اسم الموديل *"
-                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
+              />
+            </div>
+            <div className="mt-4">
+              <ImagePickerField
+                label="صورة الموديل"
+                required
+                hint="صورة تمثّل الموديل — إلزامية"
+                value={modelImage}
+                onChange={setModelImage}
               />
             </div>
             <button
               type="button"
-              className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
+              className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
               onClick={() => {
+                if (!modelImage?.dataUrl) {
+                  setError("صورة الموديل إلزامية.");
+                  setMessage(null);
+                  return;
+                }
                 if (
                   run(
                     () =>
@@ -377,11 +397,13 @@ function CatalogAdminContent() {
                         name: modelName,
                         deviceTypeId: modelTypeId,
                         brandId: modelBrandId,
+                        imageDataUrl: modelImage.dataUrl,
                       }),
                     "تمت إضافة الموديل.",
                   )
                 ) {
                   setModelName("");
+                  setModelImage(null);
                 }
               }}
             >
@@ -389,132 +411,192 @@ function CatalogAdminContent() {
             </button>
           </section>
 
-          <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+          <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
             <h2 className="font-display text-xl">الموديلات</h2>
-            <div className="mt-4 space-y-2">
-              {catalog.models.map((model) => {
-                const typeName =
-                  catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ?? "—";
-                const brandLabel =
-                  catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
-                const isEditing = editingModelId === model.id;
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-ink-900/10 text-right text-ink-700/70 dark:border-white/10 dark:text-sand-100/70">
+                    <th className="px-2 py-2 font-medium">الصورة</th>
+                    <th className="px-2 py-2 font-medium">الموديل</th>
+                    <th className="px-2 py-2 font-medium">التصنيف</th>
+                    <th className="px-2 py-2 font-medium">البراند</th>
+                    <th className="px-2 py-2 font-medium">ملحقات</th>
+                    <th className="px-2 py-2 font-medium">قطع غيار</th>
+                    <th className="px-2 py-2 font-medium">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalog.models.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
+                        لا توجد موديلات بعد.
+                      </td>
+                    </tr>
+                  ) : (
+                    catalog.models.map((model) => {
+                      const typeName =
+                        catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ??
+                        "—";
+                      const brandLabel =
+                        catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
+                      const isEditing = editingModelId === model.id;
 
-                return (
-                  <div
-                    key={model.id}
-                    className={`rounded-xl border px-3 py-3 text-sm ${
-                      selectedModelId === model.id
-                        ? "border-aroma-500 bg-aroma-50/40"
-                        : "border-ink-900/10"
-                    }`}
-                  >
-                    {isEditing ? (
-                      <div className="space-y-3">
-                        <div className="grid gap-2 md:grid-cols-3">
-                          <select
-                            value={editModelTypeId}
-                            onChange={(e) => setEditModelTypeId(e.target.value)}
-                            className="rounded-xl border border-ink-900/15 px-3 py-2"
-                          >
-                            {catalog.deviceTypes.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={editModelBrandId}
-                            onChange={(e) => setEditModelBrandId(e.target.value)}
-                            className="rounded-xl border border-ink-900/15 px-3 py-2"
-                          >
-                            {catalog.brands.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            value={editModelName}
-                            onChange={(e) => setEditModelName(e.target.value)}
-                            className="rounded-xl border border-ink-900/15 px-3 py-2"
-                          />
-                        </div>
-                        <div className="flex gap-3">
-                          <button
-                            type="button"
-                            className="text-aroma-700"
-                            onClick={() => {
-                              if (
-                                run(
-                                  () =>
-                                    updateModel({
-                                      id: model.id,
-                                      name: editModelName,
-                                      deviceTypeId: editModelTypeId,
-                                      brandId: editModelBrandId,
-                                    }),
-                                  "تم تعديل الموديل.",
-                                )
-                              ) {
-                                setEditingModelId(null);
-                              }
-                            }}
-                          >
-                            حفظ التعديل
-                          </button>
-                          <button
-                            type="button"
-                            className="text-ink-700/60"
-                            onClick={() => setEditingModelId(null)}
-                          >
-                            إلغاء
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          className="text-right"
-                          onClick={() => setSelectedModelId(model.id)}
+                      return (
+                        <tr
+                          key={model.id}
+                          className={`border-b border-ink-900/5 dark:border-white/5 ${
+                            selectedModelId === model.id ? "bg-aroma-50/40 dark:bg-aroma-900/20" : ""
+                          }`}
                         >
-                          <p className="font-medium">{model.name}</p>
-                          <p className="text-xs text-ink-700/60">
-                            {typeName} · {brandLabel} · {model.accessories.length} ملحق ·{" "}
-                            {model.spareParts.length} قطعة غيار
-                          </p>
-                        </button>
-                        <div className="flex gap-3">
-                          <button
-                            type="button"
-                            className="text-ink-900"
-                            onClick={() => {
-                              setEditingModelId(model.id);
-                              setEditModelName(model.name);
-                              setEditModelTypeId(model.deviceTypeId);
-                              setEditModelBrandId(model.brandId);
-                              setSelectedModelId(model.id);
-                            }}
-                          >
-                            تعديل
-                          </button>
-                          <button
-                            type="button"
-                            className="text-rose-700"
-                            onClick={() => {
-                              run(() => deleteModel(model.id), "تم حذف الموديل.");
-                              if (selectedModelId === model.id) setSelectedModelId("");
-                              if (editingModelId === model.id) setEditingModelId(null);
-                            }}
-                          >
-                            حذف
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          {isEditing ? (
+                            <td colSpan={7} className="px-2 py-3">
+                              <div className="space-y-3">
+                                <div className="grid gap-2 md:grid-cols-3">
+                                  <select
+                                    value={editModelTypeId}
+                                    onChange={(e) => setEditModelTypeId(e.target.value)}
+                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+                                  >
+                                    {catalog.deviceTypes.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={editModelBrandId}
+                                    onChange={(e) => setEditModelBrandId(e.target.value)}
+                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+                                  >
+                                    {catalog.brands.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    value={editModelName}
+                                    onChange={(e) => setEditModelName(e.target.value)}
+                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+                                  />
+                                </div>
+                                <ImagePickerField
+                                  label="صورة الموديل"
+                                  required
+                                  value={editModelImage}
+                                  onChange={setEditModelImage}
+                                />
+                                <div className="flex gap-3">
+                                  <button
+                                    type="button"
+                                    className="text-aroma-700 dark:text-aroma-200"
+                                    onClick={() => {
+                                      if (!editModelImage?.dataUrl) {
+                                        setError("صورة الموديل إلزامية.");
+                                        setMessage(null);
+                                        return;
+                                      }
+                                      if (
+                                        run(
+                                          () =>
+                                            updateModel({
+                                              id: model.id,
+                                              name: editModelName,
+                                              deviceTypeId: editModelTypeId,
+                                              brandId: editModelBrandId,
+                                              imageDataUrl: editModelImage.dataUrl,
+                                            }),
+                                          "تم تعديل الموديل.",
+                                        )
+                                      ) {
+                                        setEditingModelId(null);
+                                        setEditModelImage(null);
+                                      }
+                                    }}
+                                  >
+                                    حفظ التعديل
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-ink-700/60 dark:text-sand-100/60"
+                                    onClick={() => {
+                                      setEditingModelId(null);
+                                      setEditModelImage(null);
+                                    }}
+                                  >
+                                    إلغاء
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          ) : (
+                            <>
+                              <td className="px-2 py-3">
+                                {model.imageDataUrl ? (
+                                  <ClickableImage
+                                    src={model.imageDataUrl}
+                                    alt={model.name}
+                                    size="sm"
+                                  />
+                                ) : (
+                                  <ImagePlaceholder size="sm" />
+                                )}
+                              </td>
+                              <td className="px-2 py-3">
+                                <button
+                                  type="button"
+                                  className="text-right font-medium text-aroma-700 dark:text-aroma-200"
+                                  onClick={() => setSelectedModelId(model.id)}
+                                >
+                                  {model.name}
+                                </button>
+                              </td>
+                              <td className="px-2 py-3">{typeName}</td>
+                              <td className="px-2 py-3">{brandLabel}</td>
+                              <td className="px-2 py-3">{model.accessories.length}</td>
+                              <td className="px-2 py-3">{model.spareParts.length}</td>
+                              <td className="px-2 py-3">
+                                <div className="flex flex-wrap gap-3">
+                                  <button
+                                    type="button"
+                                    className="text-ink-900 dark:text-sand-50"
+                                    onClick={() => {
+                                      setEditingModelId(model.id);
+                                      setEditModelName(model.name);
+                                      setEditModelTypeId(model.deviceTypeId);
+                                      setEditModelBrandId(model.brandId);
+                                      setEditModelImage(
+                                        model.imageDataUrl
+                                          ? { name: model.name, dataUrl: model.imageDataUrl }
+                                          : null,
+                                      );
+                                      setSelectedModelId(model.id);
+                                    }}
+                                  >
+                                    تعديل
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-rose-700 dark:text-rose-300"
+                                    onClick={() => {
+                                      run(() => deleteModel(model.id), "تم حذف الموديل.");
+                                      if (selectedModelId === model.id) setSelectedModelId("");
+                                      if (editingModelId === model.id) setEditingModelId(null);
+                                    }}
+                                  >
+                                    حذف
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -680,57 +762,79 @@ function CatalogAdminContent() {
                       value={spareColor}
                       onChange={(e) => setSpareColor(e.target.value)}
                       placeholder="اللون (اختياري)"
-                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
+                      className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
                     />
                     <button
                       type="button"
-                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
+                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
                       onClick={() => {
                         if (
                           run(
-                            () => addModelSparePart(selectedModel.id, spareName, spareColor),
+                            () =>
+                              addModelSparePart(
+                                selectedModel.id,
+                                spareName,
+                                spareColor,
+                                spareImage?.dataUrl,
+                              ),
                             "تمت إضافة قطعة الغيار.",
                           )
                         ) {
                           setSpareName("");
                           setSpareColor("");
+                          setSpareImage(null);
                         }
                       }}
                     >
                       إضافة
                     </button>
                   </div>
+                  <div className="mt-3">
+                    <ImagePickerField
+                      label="صورة قطعة الغيار"
+                      value={spareImage}
+                      onChange={setSpareImage}
+                      hint="اختيارية"
+                    />
+                  </div>
                   <ul className="mt-3 space-y-2">
                     {selectedModel.spareParts.length === 0 ? (
-                      <li className="text-xs text-ink-700/60">لا توجد قطع غيار بعد.</li>
+                      <li className="text-xs text-ink-700/60 dark:text-sand-100/60">لا توجد قطع غيار بعد.</li>
                     ) : (
                       selectedModel.spareParts.map((item) => (
                         <li
                           key={item.id}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm dark:border-white/10"
                         >
                           {editingSpareId === item.id ? (
-                            <div className="flex w-full flex-wrap items-start gap-2">
-                              <CatalogSuggestInput
-                                value={editingSpareName}
-                                onChange={setEditingSpareName}
-                                suggestions={editingSpareSuggestions}
-                                onPick={(suggestion) => {
-                                  setEditingSpareName(suggestion.name);
-                                  setEditingSpareColor(suggestion.color ?? "");
-                                }}
-                                placeholder="الاسم *"
+                            <div className="flex w-full flex-col gap-2">
+                              <div className="flex w-full flex-wrap items-start gap-2">
+                                <CatalogSuggestInput
+                                  value={editingSpareName}
+                                  onChange={setEditingSpareName}
+                                  suggestions={editingSpareSuggestions}
+                                  onPick={(suggestion) => {
+                                    setEditingSpareName(suggestion.name);
+                                    setEditingSpareColor(suggestion.color ?? "");
+                                  }}
+                                  placeholder="الاسم *"
+                                />
+                                <input
+                                  value={editingSpareColor}
+                                  onChange={(e) => setEditingSpareColor(e.target.value)}
+                                  placeholder="اللون (اختياري)"
+                                  className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5 dark:border-white/15 dark:bg-ink-950"
+                                />
+                              </div>
+                              <ImagePickerField
+                                label="صورة قطعة الغيار"
+                                value={editingSpareImage}
+                                onChange={setEditingSpareImage}
                               />
-                              <input
-                                value={editingSpareColor}
-                                onChange={(e) => setEditingSpareColor(e.target.value)}
-                                placeholder="اللون (اختياري)"
-                                className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
-                              />
-                              <div className="flex gap-2 pt-2">
+                              <div className="flex gap-2">
                                 <button
                                   type="button"
-                                  className="text-aroma-700"
+                                  className="text-aroma-700 dark:text-aroma-200"
                                   onClick={() => {
                                     if (
                                       run(
@@ -740,11 +844,13 @@ function CatalogAdminContent() {
                                             item.id,
                                             editingSpareName,
                                             editingSpareColor,
+                                            editingSpareImage?.dataUrl,
                                           ),
                                         "تم تعديل قطعة الغيار.",
                                       )
                                     ) {
                                       setEditingSpareId(null);
+                                      setEditingSpareImage(null);
                                     }
                                   }}
                                 >
@@ -752,8 +858,11 @@ function CatalogAdminContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="text-ink-700/60"
-                                  onClick={() => setEditingSpareId(null)}
+                                  className="text-ink-700/60 dark:text-sand-100/60"
+                                  onClick={() => {
+                                    setEditingSpareId(null);
+                                    setEditingSpareImage(null);
+                                  }}
                                 >
                                   إلغاء
                                 </button>
@@ -761,27 +870,46 @@ function CatalogAdminContent() {
                             </div>
                           ) : (
                             <>
-                              <span>
-                                {item.name}
-                                {item.color ? (
-                                  <span className="text-ink-700/60"> · لون: {item.color}</span>
-                                ) : null}
-                              </span>
+                              <div className="flex items-center gap-3">
+                                {item.imageDataUrl ? (
+                                  <ClickableImage
+                                    src={item.imageDataUrl}
+                                    alt={item.name}
+                                    size="sm"
+                                  />
+                                ) : (
+                                  <ImagePlaceholder size="sm" />
+                                )}
+                                <span>
+                                  {item.name}
+                                  {item.color ? (
+                                    <span className="text-ink-700/60 dark:text-sand-100/60">
+                                      {" "}
+                                      · لون: {item.color}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </div>
                               <div className="flex gap-3">
                                 <button
                                   type="button"
-                                  className="text-ink-900"
+                                  className="text-ink-900 dark:text-sand-50"
                                   onClick={() => {
                                     setEditingSpareId(item.id);
                                     setEditingSpareName(item.name);
                                     setEditingSpareColor(item.color ?? "");
+                                    setEditingSpareImage(
+                                      item.imageDataUrl
+                                        ? { name: item.name, dataUrl: item.imageDataUrl }
+                                        : null,
+                                    );
                                   }}
                                 >
                                   تعديل
                                 </button>
                                 <button
                                   type="button"
-                                  className="text-rose-700"
+                                  className="text-rose-700 dark:text-rose-300"
                                   onClick={() =>
                                     run(
                                       () => deleteModelSparePart(selectedModel.id, item.id),

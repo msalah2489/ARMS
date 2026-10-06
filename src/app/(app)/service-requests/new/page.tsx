@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { DeviceFormModal } from "@/components/device-form-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
@@ -157,13 +158,13 @@ function NewServiceRequestContent() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
+                  <th className="px-2 py-2 font-medium">الصورة</th>
                   <th className="px-2 py-2 font-medium">كود الجهاز</th>
                   <th className="px-2 py-2 font-medium">الموديل</th>
                   <th className="px-2 py-2 font-medium">السيريال</th>
                   <th className="px-2 py-2 font-medium">شكوى العميل</th>
                   <th className="px-2 py-2 font-medium">الحالة الخارجية</th>
                   <th className="px-2 py-2 font-medium">الملحقات</th>
-                  <th className="px-2 py-2 font-medium">صور</th>
                   <th className="px-2 py-2 font-medium">الإجراء</th>
                 </tr>
               </thead>
@@ -177,6 +178,17 @@ function NewServiceRequestContent() {
                 ) : (
                   devices.map((device) => (
                     <tr key={device.localId} className="border-b border-ink-900/5">
+                      <td className="px-2 py-3">
+                        {device.deviceImageDataUrl ? (
+                          <ClickableImage
+                            src={device.deviceImageDataUrl}
+                            alt={device.deviceCode}
+                            size="sm"
+                          />
+                        ) : (
+                          <ImagePlaceholder size="sm" />
+                        )}
+                      </td>
                       <td className="px-2 py-3 font-medium">{device.deviceCode}</td>
                       <td className="px-2 py-3">{device.modelName}</td>
                       <td className="px-2 py-3">{device.serialNumber || "—"}</td>
@@ -185,9 +197,6 @@ function NewServiceRequestContent() {
                         {EXTERNAL_CONDITION_LABELS[device.externalCondition]}
                       </td>
                       <td className="px-2 py-3">{device.accessoryNames.join("، ") || "—"}</td>
-                      <td className="px-2 py-3">
-                        {device.devicePhotoNames.length + (device.receiptPhotoName ? 1 : 0)}
-                      </td>
                       <td className="px-2 py-3">
                         <button
                           type="button"

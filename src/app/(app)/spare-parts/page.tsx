@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ClickableImage } from "@/components/clickable-image";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { getSparePartsForModel } from "@/lib/catalog-store";
@@ -20,6 +21,10 @@ import type {
 } from "@/types/domain";
 
 const MAX_PHOTO_BYTES = 700_000;
+
+function partImageFor(modelId: string, partId: string) {
+  return getSparePartsForModel(modelId).find((part) => part.id === partId)?.imageDataUrl;
+}
 
 type LineDraft = {
   id: string;
@@ -321,6 +326,7 @@ function SpareInventoryContent() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-ink-900/10 text-right text-ink-700/60 dark:border-white/10 dark:text-sand-100/60">
+                  <th className="px-3 py-2 font-medium">الصورة</th>
                   <th className="px-3 py-2 font-medium">الموديل</th>
                   <th className="px-3 py-2 font-medium">القطعة</th>
                   <th className="px-3 py-2 font-medium">اللون</th>
@@ -328,18 +334,28 @@ function SpareInventoryContent() {
                 </tr>
               </thead>
               <tbody>
-                {balances.map((row) => (
-                  <tr key={row.id} className="border-b border-ink-900/5 dark:border-white/5">
-                    <td className="px-3 py-2">{row.modelName}</td>
-                    <td className="px-3 py-2">{row.partName}</td>
-                    <td className="px-3 py-2">{row.color || "—"}</td>
-                    <td
-                      className={`px-3 py-2 font-medium ${row.quantity <= 0 ? "text-rose-700" : ""}`}
-                    >
-                      {row.quantity}
-                    </td>
-                  </tr>
-                ))}
+                {balances.map((row) => {
+                  const image = partImageFor(row.modelId, row.partId);
+                  return (
+                    <tr key={row.id} className="border-b border-ink-900/5 dark:border-white/5">
+                      <td className="px-3 py-2">
+                        {image ? (
+                          <ClickableImage src={image} alt={row.partName} size="sm" />
+                        ) : (
+                          <span className="text-xs text-ink-700/40">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{row.modelName}</td>
+                      <td className="px-3 py-2">{row.partName}</td>
+                      <td className="px-3 py-2">{row.color || "—"}</td>
+                      <td
+                        className={`px-3 py-2 font-medium ${row.quantity <= 0 ? "text-rose-700" : ""}`}
+                      >
+                        {row.quantity}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -377,11 +393,10 @@ function SpareInventoryContent() {
                   </p>
                 </div>
                 {receipt.receiptPhotoDataUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <ClickableImage
                     src={receipt.receiptPhotoDataUrl}
                     alt={receipt.receiptPhotoName}
-                    className="h-16 w-16 rounded-lg border border-ink-900/10 object-cover dark:border-white/10"
+                    size="md"
                   />
                 ) : null}
               </div>

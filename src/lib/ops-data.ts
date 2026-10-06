@@ -148,6 +148,7 @@ export function listOpsDevices(): Device[] {
         device.currentLocation || locationForLifecycleStatus(device.lifecycleStatus),
       ),
       qrCode: device.deviceCode,
+      imageDataUrl: device.deviceImageDataUrl,
     }))
     .sort((a, b) => a.deviceCode.localeCompare(b.deviceCode, "ar"));
 }

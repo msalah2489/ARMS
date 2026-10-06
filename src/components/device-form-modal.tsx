@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { EXTERNAL_CONDITION_LABELS, generateDeviceCode } from "@/lib/branch-catalog";
 import { getBrands, getDeviceTypes, getModels } from "@/lib/catalog-store";
 import type { CatalogItem, DraftRequestDevice, ExternalCondition, ModelItem } from "@/types/domain";
@@ -26,9 +27,9 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   const [externalCondition, setExternalCondition] = useState<ExternalCondition | "">("");
   const [accessoryIds, setAccessoryIds] = useState<string[]>([]);
   const [extraDetails, setExtraDetails] = useState("");
-  const [devicePhotoNames, setDevicePhotoNames] = useState<string[]>([]);
+  const [deviceImage, setDeviceImage] = useState<ImageValue | null>(null);
   const [receiptNumber, setReceiptNumber] = useState("");
-  const [receiptPhotoName, setReceiptPhotoName] = useState("");
+  const [receiptImage, setReceiptImage] = useState<ImageValue | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,17 +63,25 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
     setExternalCondition("");
     setAccessoryIds([]);
     setExtraDetails("");
-    setDevicePhotoNames([]);
+    setDeviceImage(null);
     setReceiptNumber("");
-    setReceiptPhotoName("");
+    setReceiptImage(null);
     setError(null);
     if (!keepOpen) onClose();
   }
 
   function buildDevice(): DraftRequestDevice | null {
-    if (!deviceTypeId || !brandId || !modelId || !externalCondition || !receiptNumber || !receiptPhotoName) {
+    if (
+      !deviceTypeId ||
+      !brandId ||
+      !modelId ||
+      !externalCondition ||
+      !receiptNumber ||
+      !deviceImage?.dataUrl ||
+      !receiptImage?.dataUrl
+    ) {
       setError(
-        "يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، الحالة الخارجية، رقم وصورة سند الاستلام.",
+        "يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، الحالة الخارجية، صورة الجهاز، رقم وصورة سند الاستلام.",
       );
       return null;
     }
@@ -96,18 +105,21 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
         .filter((item) => accessoryIds.includes(item.id))
         .map((item) => (item.color ? `${item.name} · ${item.color}` : item.name)),
       extraDetails: extraDetails.trim(),
-      devicePhotoNames,
+      devicePhotoNames: deviceImage.name ? [deviceImage.name] : [],
+      deviceImageDataUrl: deviceImage.dataUrl,
+      deviceImageName: deviceImage.name,
       receiptNumber: receiptNumber.trim(),
-      receiptPhotoName,
+      receiptPhotoName: receiptImage.name,
+      receiptPhotoDataUrl: receiptImage.dataUrl,
     };
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-panel">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-panel dark:bg-ink-900">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-2xl">إضافة جهاز</h2>
-          <button type="button" onClick={onClose} className="text-sm text-ink-700/70">
+          <button type="button" onClick={onClose} className="text-sm text-ink-700/70 dark:text-sand-100/70">
             إغلاق
           </button>
         </div>
@@ -118,7 +130,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <input
               value={deviceCode}
               onChange={(e) => setDeviceCode(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             />
           </label>
           <label className="block text-sm">
@@ -129,7 +141,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                 setDeviceTypeId(e.target.value);
                 setModelId("");
               }}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >
               <option value="">اختر النوع</option>
               {deviceTypes.map((item) => (
@@ -147,7 +159,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                 setBrandId(e.target.value);
                 setModelId("");
               }}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >
               <option value="">اختر البراند</option>
               {brands.map((item) => (
@@ -165,7 +177,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                 setModelId(e.target.value);
                 setAccessoryIds([]);
               }}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >
               <option value="">اختر الموديل</option>
               {filteredModels.map((item) => (
@@ -180,7 +192,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <input
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             />
           </label>
           <label className="block text-sm">
@@ -188,7 +200,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <input
               value={fault}
               onChange={(e) => setFault(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             />
           </label>
           <label className="block text-sm md:col-span-2">
@@ -196,7 +208,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <select
               value={externalCondition}
               onChange={(e) => setExternalCondition(e.target.value as ExternalCondition)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >
               <option value="">اختر الحالة</option>
               {CONDITIONS.map((item) => (
@@ -212,7 +224,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
           <p className="text-sm font-medium">الملحقات</p>
           <div className="mt-2 flex flex-wrap gap-3">
             {(selectedModel?.accessories ?? []).length === 0 ? (
-              <p className="text-xs text-ink-700/60">اختر الموديل لعرض الملحقات.</p>
+              <p className="text-xs text-ink-700/60 dark:text-sand-100/60">اختر الموديل لعرض الملحقات.</p>
             ) : (
               selectedModel?.accessories.map((item) => (
                 <label key={item.id} className="flex items-center gap-2 text-sm">
@@ -226,7 +238,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                     }}
                   />
                   {item.name}
-                  {item.color ? <span className="text-ink-700/60">· لون: {item.color}</span> : null}
+                  {item.color ? <span className="text-ink-700/60 dark:text-sand-100/60">· لون: {item.color}</span> : null}
                 </label>
               ))
             )}
@@ -238,47 +250,37 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
           <textarea
             value={extraDetails}
             onChange={(e) => setExtraDetails(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             rows={3}
           />
         </label>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block text-sm">
-            صورة الجهاز
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) =>
-                setDevicePhotoNames(Array.from(e.target.files ?? []).map((file) => file.name))
-              }
-              className="mt-1 w-full text-sm"
-            />
-          </label>
+          <ImagePickerField
+            label="صورة الجهاز"
+            required
+            hint="صورة واضحة للجهاز — إلزامية"
+            value={deviceImage}
+            onChange={setDeviceImage}
+          />
           <label className="block text-sm">
             رقم سند الاستلام *
             <input
               value={receiptNumber}
               onChange={(e) => setReceiptNumber(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             />
           </label>
-          <label className="block text-sm md:col-span-2">
-            صورة سند الاستلام *
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setReceiptPhotoName(e.target.files?.[0]?.name ?? "")}
-              className="mt-1 w-full text-sm"
-            />
-            {receiptPhotoName ? (
-              <span className="mt-1 block text-xs text-ink-700/60">{receiptPhotoName}</span>
-            ) : null}
-          </label>
+          <ImagePickerField
+            className="md:col-span-2"
+            label="صورة سند الاستلام"
+            required
+            value={receiptImage}
+            onChange={setReceiptImage}
+          />
         </div>
 
-        {error ? <p className="mt-4 text-sm text-rose-700">{error}</p> : null}
+        {error ? <p className="mt-4 text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
 
         <div className="mt-6 flex flex-wrap gap-3">
           <button
@@ -289,7 +291,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
               onSave(device, false);
               resetForm(false);
             }}
-            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
           >
             حفظ الجهاز
           </button>
@@ -301,14 +303,14 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
               onSave(device, true);
               resetForm(true);
             }}
-            className="rounded-full border border-ink-900/20 px-5 py-2.5 text-sm"
+            className="rounded-full border border-ink-900/20 px-5 py-2.5 text-sm dark:border-white/20"
           >
             حفظ وإضافة جهاز آخر
           </button>
           <button
             type="button"
             onClick={() => resetForm(false)}
-            className="rounded-full px-5 py-2.5 text-sm text-ink-700/70"
+            className="rounded-full px-5 py-2.5 text-sm text-ink-700/70 dark:text-sand-100/70"
           >
             إلغاء
           </button>

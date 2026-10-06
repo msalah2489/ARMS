@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -30,6 +31,7 @@ export default function DevicesPage() {
       ) : (
         <DataTable
           columns={[
+            t("devices.col.image"),
             t("devices.col.code"),
             t("devices.col.serial"),
             t("devices.col.model"),
@@ -38,6 +40,16 @@ export default function DevicesPage() {
             t("devices.col.location"),
           ]}
           rows={devices.map((device) => [
+            device.imageDataUrl ? (
+              <ClickableImage
+                key="img"
+                src={device.imageDataUrl}
+                alt={device.deviceCode}
+                size="sm"
+              />
+            ) : (
+              <ImagePlaceholder key="img" size="sm" />
+            ),
             <Link
               key="c"
               href={`/devices/detail/?id=${encodeURIComponent(device.id)}`}

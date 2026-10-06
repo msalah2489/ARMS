@@ -36,7 +36,11 @@ function normalizeColoredItem<T extends { id: string; name: string; color?: stri
 }
 
 function normalizeSparePart(part: SparePartItem): SparePartItem {
-  return normalizeColoredItem(part);
+  const next = normalizeColoredItem(part);
+  const image = part.imageDataUrl?.trim();
+  if (image) next.imageDataUrl = image;
+  else delete next.imageDataUrl;
+  return next;
 }
 
 function normalizeAccessory(accessory: AccessoryItem): AccessoryItem {
@@ -44,8 +48,10 @@ function normalizeAccessory(accessory: AccessoryItem): AccessoryItem {
 }
 
 function normalizeModel(model: ModelItem): ModelItem {
+  const image = model.imageDataUrl?.trim();
   return {
     ...model,
+    imageDataUrl: image || undefined,
     accessories: (model.accessories ?? []).map(normalizeAccessory),
     spareParts: (model.spareParts ?? []).map(normalizeSparePart),
   };
@@ -181,9 +187,12 @@ export function addModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
+  imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
+  const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
+  if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
   }
@@ -199,6 +208,7 @@ export function addModel(input: {
     name,
     deviceTypeId: input.deviceTypeId,
     brandId: input.brandId,
+    imageDataUrl,
     accessories: [],
     spareParts: [],
   });
@@ -218,9 +228,12 @@ export function updateModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
+  imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
+  const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
+  if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
   }
@@ -239,6 +252,7 @@ export function updateModel(input: {
   model.name = name;
   model.deviceTypeId = input.deviceTypeId;
   model.brandId = input.brandId;
+  model.imageDataUrl = imageDataUrl;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -319,10 +333,12 @@ export function addModelSparePart(
   modelId: string,
   name: string,
   color?: string,
+  imageDataUrl?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
   const colorTrimmed = color?.trim() || undefined;
+  const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
@@ -334,6 +350,7 @@ export function addModelSparePart(
       id: crypto.randomUUID(),
       name: trimmed,
       color: colorTrimmed,
+      imageDataUrl: image,
     }),
   );
   saveCatalog(catalog);
@@ -345,10 +362,12 @@ export function updateModelSparePart(
   partId: string,
   name: string,
   color?: string,
+  imageDataUrl?: string,
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
   const colorTrimmed = color?.trim() || undefined;
+  const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
@@ -367,6 +386,8 @@ export function updateModelSparePart(
   part.name = trimmed;
   if (colorTrimmed) part.color = colorTrimmed;
   else delete part.color;
+  if (image) part.imageDataUrl = image;
+  else delete part.imageDataUrl;
   saveCatalog(catalog);
   return { ok: true };
 }

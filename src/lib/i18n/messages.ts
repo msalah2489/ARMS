@@ -94,6 +94,7 @@ const messagesAr = {
   "devices.col.customerBranch": "العميل / الفرع",
   "devices.col.status": "الحالة",
   "devices.col.location": "الموقع",
+  "devices.col.image": "الصورة",
 
   "serviceRequests.title": "طلبات الصيانة",
   "serviceRequests.description": "متابعة الأعطال من المراجعة حتى الإصلاح المحلي أو الإرسال لمركز الصيانة.",
@@ -256,6 +257,7 @@ const messagesEn: Record<MessageKey, string> = {
   "devices.col.customerBranch": "Customer / branch",
   "devices.col.status": "Status",
   "devices.col.location": "Location",
+  "devices.col.image": "Image",
 
   "serviceRequests.title": "Service requests",
   "serviceRequests.description": "Track reported problems from review through local repair or service-center dispatch.",

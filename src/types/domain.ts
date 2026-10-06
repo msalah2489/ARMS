@@ -213,6 +213,8 @@ export type Device = {
   status: DeviceStatus;
   currentLocation: string;
   qrCode: string;
+  /** Compressed device photo (data URL) when available */
+  imageDataUrl?: string;
 };
 
 export type ServiceRequest = {
@@ -309,6 +311,8 @@ export type CatalogItem = { id: string; name: string };
 export type SparePartItem = CatalogItem & {
   /** Optional color for the spare part */
   color?: string;
+  /** Optional compressed image (data URL) */
+  imageDataUrl?: string;
 };
 export type AccessoryItem = CatalogItem & {
   /** Optional color for the accessory */
@@ -317,6 +321,8 @@ export type AccessoryItem = CatalogItem & {
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
+  /** Required catalog/model photo (compressed data URL) */
+  imageDataUrl?: string;
   accessories: AccessoryItem[];
   spareParts: SparePartItem[];
 };
@@ -336,9 +342,15 @@ export type DraftRequestDevice = {
   accessoryIds: string[];
   accessoryNames: string[];
   extraDetails: string;
+  /** @deprecated prefer deviceImageDataUrl — kept for older local data */
   devicePhotoNames: string[];
+  /** Required compressed device photo (data URL) */
+  deviceImageDataUrl?: string;
+  deviceImageName?: string;
   receiptNumber: string;
   receiptPhotoName: string;
+  /** Compressed receipt photo (data URL) */
+  receiptPhotoDataUrl?: string;
   color?: string;
   currentLocation?: string;
   lockedAfterShip?: boolean;
