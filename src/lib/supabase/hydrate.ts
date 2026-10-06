@@ -24,6 +24,7 @@ import {
   applyRemoteManagedUsers,
   ensureBootstrapAdminIfEmpty,
   listManagedUsersLocal,
+  mergeManagedUserLists,
 } from "@/lib/users-store";
 import {
   pullAppAuditEvents,
@@ -181,27 +182,32 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           },
         });
 
-        // Users: remote is source of truth when present, but keep any local-only accounts
-        // that were created before their push finished (avoids wiping mid-create on refresh).
-        // Never clear local/bootstrap when remote is empty.
-        if (remoteUsers.length > 0) {
+        // Users: NEVER discard local-only accounts when remote is a subset (e.g. only admin).
+        // Merge by id (union). Prefer local when local is larger / has extras so passwords survive.
+        // Upsert catch-up without orphan prune — incomplete remote must not wipe localStorage.
+        {
           const local = listManagedUsersLocal();
           const remoteIds = new Set(remoteUsers.map((user) => user.id));
           const localOnly = local.filter((user) => user.id && !remoteIds.has(user.id));
-          if (localOnly.length > 0) {
-            const merged = [...remoteUsers, ...localOnly];
+          const localIsSuperset =
+            localOnly.length > 0 || (local.length > 0 && local.length > remoteUsers.length);
+
+          if (remoteUsers.length === 0) {
+            // Remote empty: keep/seed local, then upsert so cloud gets local cache / admin.
+            const localUsers = ensureBootstrapAdminIfEmpty();
+            if (localUsers.length > 0) {
+              await pushAppUsers(localUsers, { pruneOrphans: false });
+            }
+          } else if (localIsSuperset) {
+            const merged = mergeManagedUserLists(remoteUsers, local, { preferLocal: true });
             applyRemoteManagedUsers(merged);
-            // Best-effort catch-up so admin-created users survive the next refresh.
-            void pushAppUsers(merged);
+            await pushAppUsers(merged, { pruneOrphans: false });
+          } else if (localOnly.length > 0) {
+            const merged = mergeManagedUserLists(remoteUsers, local, { preferLocal: false });
+            applyRemoteManagedUsers(merged);
+            await pushAppUsers(merged, { pruneOrphans: false });
           } else {
             applyRemoteManagedUsers(remoteUsers);
-          }
-        } else {
-          // Remote empty: keep/seed local, then push so cloud gets at least admin
-          // (or any local cache that survived a prior failed wipe).
-          const localUsers = ensureBootstrapAdminIfEmpty();
-          if (localUsers.length > 0) {
-            void pushAppUsers(localUsers);
           }
         }
 

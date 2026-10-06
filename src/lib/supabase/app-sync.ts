@@ -171,7 +171,10 @@ export async function pullAppUsers(): Promise<ManagedUser[]> {
   return (data ?? []).map((row) => rowToUser(row as Record<string, unknown>));
 }
 
-export async function pushAppUsers(users: ManagedUser[]): Promise<SyncResult> {
+export async function pushAppUsers(
+  users: ManagedUser[],
+  options?: { pruneOrphans?: boolean },
+): Promise<SyncResult> {
   if (!isSupabaseConfigured() || typeof window === "undefined") {
     return { ok: false, error: "Supabase is not configured." };
   }
@@ -190,19 +193,38 @@ export async function pushAppUsers(users: ManagedUser[]): Promise<SyncResult> {
     }
 
     // Upsert first (schema-compat strips is_archived etc. if migration 018 not applied).
-    // Only then remove remote orphans — never delete-all before write.
+    // Never delete-all before write. Prune orphans only when explicitly safe.
     await upsertRows("app_users", users.map(userToRow));
+
+    const pruneOrphans = options?.pruneOrphans === true;
+    if (!pruneOrphans) {
+      return { ok: true };
+    }
 
     const keepIds = new Set(users.map((user) => user.id).filter(Boolean));
     const orphanIds = remote
       .map((user) => user.id)
       .filter((id) => id && !keepIds.has(id));
 
+    if (orphanIds.length === 0) {
+      return { ok: true };
+    }
+
+    // Guard: never shrink remote via orphan delete when payload is smaller/subset.
+    // Incomplete local cache must never erase cloud accounts.
+    if (users.length < remote.length) {
+      console.warn(
+        "[arms] pushAppUsers: refusing orphan prune — payload smaller than remote",
+        { local: users.length, remote: remote.length, orphans: orphanIds.length },
+      );
+      return { ok: true };
+    }
+
     // Guard: bootstrap-only payload must never prune a multi-user remote
     // (login shortcut used to push [admin] before hydrate finished).
     const bootstrapOnly =
       keepIds.size === 1 && (keepIds.has("admin-local") || users[0]?.username === "admin");
-    if (orphanIds.length > 0 && bootstrapOnly && remote.length > 1) {
+    if (bootstrapOnly && remote.length > 1) {
       console.warn(
         "[arms] pushAppUsers: refusing to delete remote users via bootstrap-only payload",
         { keep: [...keepIds], orphans: orphanIds.length, remote: remote.length },

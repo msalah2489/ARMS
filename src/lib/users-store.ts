@@ -131,12 +131,84 @@ async function persistUsersNow(
   if (!Array.isArray(users) || users.length === 0) {
     return { ok: false, error: "رفض مزامنة قائمة مستخدمين فارغة." };
   }
-  const result = await pushAppUsers(users);
+  // Upsert only — orphan prune disabled by default (incomplete cache must never wipe cloud).
+  const result = await pushAppUsers(users, { pruneOrphans: false });
   if (!result.ok) {
     console.error("[arms] persist users failed:", result.error);
     return { ok: false, error: result.error };
   }
   return { ok: true };
+}
+
+/**
+ * Union merge by id. Local-only users are always kept.
+ * When preferLocal=true, local overwrites remote for shared ids (recovery / passwords).
+ */
+export function mergeManagedUserLists(
+  remote: ManagedUser[],
+  local: ManagedUser[],
+  options?: { preferLocal?: boolean },
+): ManagedUser[] {
+  const byId = new Map<string, ManagedUser>();
+  const preferLocal = options?.preferLocal === true;
+  const first = preferLocal ? remote : local;
+  const second = preferLocal ? local : remote;
+  for (const user of first) {
+    if (user?.id) byId.set(user.id, normalizeUser(user));
+  }
+  for (const user of second) {
+    if (user?.id) byId.set(user.id, normalizeUser(user));
+  }
+  return [...byId.values()];
+}
+
+/**
+ * TEMPORARY recovery: push every local managed user to app_users (upsert, no prune).
+ * Use when cloud was accidentally reduced while the browser tab still holds the full list.
+ */
+export async function recoverLocalUsersToSupabase(): Promise<
+  | { ok: true; recovered: number; localCount: number; mergedCount: number }
+  | { ok: false; error: string; localCount: number }
+> {
+  if (typeof window === "undefined") {
+    return { ok: false, error: "الاستعادة تعمل من المتصفح فقط.", localCount: 0 };
+  }
+  if (!isSupabaseConfigured() || isDemoMode()) {
+    return {
+      ok: false,
+      error: "Supabase غير مضبوط أو الوضع تجريبي.",
+      localCount: listManagedUsersLocal().length,
+    };
+  }
+
+  const local = listManagedUsersLocal();
+  if (local.length === 0) {
+    return { ok: false, error: "لا توجد حسابات في التخزين المحلي للاستعادة.", localCount: 0 };
+  }
+
+  let remote: ManagedUser[] = [];
+  try {
+    remote = await pullAppUsers();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `تعذر قراءة الحسابات من السحابة: ${message}`, localCount: local.length };
+  }
+
+  // Prefer local for shared ids so passwords/names from this browser win during recovery.
+  const merged = mergeManagedUserLists(remote, local, { preferLocal: true });
+  replaceManagedUsers(merged);
+
+  const result = await pushAppUsers(merged, { pruneOrphans: false });
+  if (!result.ok) {
+    return { ok: false, error: result.error, localCount: local.length };
+  }
+
+  return {
+    ok: true,
+    recovered: local.length,
+    localCount: local.length,
+    mergedCount: merged.length,
+  };
 }
 
 /**
@@ -150,10 +222,8 @@ async function mergeRemoteUsersIntoLocal(): Promise<void> {
     const remote = await pullAppUsers();
     if (remote.length === 0) return;
     const local = listManagedUsersLocal();
-    const byId = new Map<string, ManagedUser>();
-    for (const user of remote) byId.set(user.id, normalizeUser(user));
-    for (const user of local) byId.set(user.id, normalizeUser(user));
-    replaceManagedUsers([...byId.values()]);
+    // Local wins on shared ids so in-progress edits aren't clobbered before push.
+    replaceManagedUsers(mergeManagedUserLists(remote, local, { preferLocal: true }));
   } catch (error) {
     console.warn("[arms] mergeRemoteUsersIntoLocal", error);
   }
