@@ -8,7 +8,12 @@ import {
   localizedDemoDevices,
   localizedDemoRequests,
 } from "@/lib/i18n/demo-locale";
-import { listOpsDevices, listOpsServiceRequests } from "@/lib/ops-data";
+import {
+  listOpsBranches,
+  listOpsCustomers,
+  listOpsDevices,
+  listOpsServiceRequests,
+} from "@/lib/ops-data";
 import { getStoredLocale, type AppLocale } from "@/lib/preferences";
 import { listInventoryBalances } from "@/lib/spare-inventory-store";
 import { createClient } from "@/lib/supabase/client";
@@ -39,7 +44,20 @@ function clientOpsDevices(): Device[] | null {
   return listOpsDevices();
 }
 
+function clientOpsCustomers(): Customer[] | null {
+  if (typeof window === "undefined") return null;
+  return listOpsCustomers();
+}
+
+function clientOpsBranches(locale?: AppLocale): Branch[] | null {
+  if (typeof window === "undefined") return null;
+  return listOpsBranches(resolveLocale(locale));
+}
+
 export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
+  const ops = clientOpsCustomers();
+  if (ops) return ops;
+
   if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
 
   try {
@@ -64,6 +82,9 @@ export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
 }
 
 export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
+  const ops = clientOpsBranches(locale);
+  if (ops) return ops;
+
   if (isDemoMode()) return localizedDemoBranches(resolveLocale(locale));
 
   try {

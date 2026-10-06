@@ -6,7 +6,11 @@ import {
   locationForLifecycleStatus,
   normalizeLifecycleStatus,
 } from "@/lib/branch-store";
+import { listOpsBranchRecords } from "@/lib/branches-store";
+import type { AppLocale } from "@/lib/preferences";
 import type {
+  Branch,
+  Customer,
   Device,
   DeviceStatus,
   MaintenanceRequestRecord,
@@ -154,6 +158,88 @@ export function getOpsServiceRequest(id: string): ServiceRequest | null {
 
 export function getOpsDevice(id: string): Device | null {
   return listOpsDevices().find((item) => item.id === id) ?? null;
+}
+
+/**
+ * Customers registered via branch receiving / service requests (localStorage).
+ * One row per mobile number, with aggregated branch and device counts.
+ */
+export function listOpsCustomers(): Customer[] {
+  type Acc = {
+    contactName: string;
+    phone: string;
+    branchIds: Set<string>;
+    branchNames: string[];
+    deviceCount: number;
+    lastAt: string;
+  };
+
+  const byMobile = new Map<string, Acc>();
+
+  for (const request of listMaintenanceRequests()) {
+    const phone = request.customerMobile.trim();
+    if (!phone) continue;
+
+    const branchKey = request.opsBranchId || request.opsBranchName || "unknown";
+    const existing = byMobile.get(phone);
+    if (!existing) {
+      byMobile.set(phone, {
+        contactName: request.contactName.trim() || phone,
+        phone,
+        branchIds: new Set([branchKey]),
+        branchNames: request.opsBranchName ? [request.opsBranchName] : [],
+        deviceCount: request.devices.length,
+        lastAt: request.receivedAt,
+      });
+      continue;
+    }
+
+    existing.branchIds.add(branchKey);
+    if (request.opsBranchName && !existing.branchNames.includes(request.opsBranchName)) {
+      existing.branchNames.push(request.opsBranchName);
+    }
+    existing.deviceCount += request.devices.length;
+    if (request.receivedAt > existing.lastAt) {
+      existing.lastAt = request.receivedAt;
+      const name = request.contactName.trim();
+      if (name) existing.contactName = name;
+    }
+  }
+
+  return [...byMobile.values()]
+    .map(
+      (item) =>
+        ({
+          id: `ops-customer-${item.phone}`,
+          name: item.contactName,
+          contactName: item.contactName,
+          phone: item.phone,
+          email: "",
+          address: item.branchNames.join(" · "),
+          branchCount: item.branchIds.size,
+          deviceCount: item.deviceCount,
+        }) satisfies Customer,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+/** Branches from admin CRUD (`arms_ops_branches_v1`), same source as /admin/branches. */
+export function listOpsBranches(locale: AppLocale = "ar"): Branch[] {
+  const serviceCenterLabel = locale === "en" ? "Service center" : "مركز صيانة";
+  const branchLabel = locale === "en" ? "Branch" : "فرع";
+
+  return listOpsBranchRecords().map(
+    (item) =>
+      ({
+        id: item.id,
+        customerId: "",
+        customerName: item.isServiceCenter ? serviceCenterLabel : branchLabel,
+        name: item.name,
+        code: item.code,
+        address: item.city,
+        phone: "",
+      }) satisfies Branch,
+  );
 }
 
 export { getMaintenanceRequestById };
