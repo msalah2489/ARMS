@@ -167,7 +167,7 @@ aside.bg-ink-950 button {
   overscroll-behavior-x: contain;
 }
 
-/* Metallic silver ARMS wordmark — calm recurring light sweep */
+/* Metallic silver ARMS wordmark — static by default; alive motion on login only */
 @keyframes arms-logo-shimmer {
   0%,
   22% {
@@ -179,6 +179,16 @@ aside.bg-ink-950 button {
   78%,
   100% {
     background-position: -120% 50%;
+  }
+}
+
+@keyframes arms-logo-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.035);
   }
 }
 
@@ -199,16 +209,24 @@ aside.bg-ink-950 button {
     #6a737a 100%
   );
   background-size: 260% 100%;
+  background-position: 35% 50%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
-  animation: arms-logo-shimmer 8.5s ease-in-out infinite;
+}
+
+/* Unauthenticated / login only — shimmer + gentle float while waiting to sign in */
+.arms-logo--alive {
+  animation:
+    arms-logo-shimmer 8.5s ease-in-out infinite,
+    arms-logo-breathe 3.2s ease-in-out infinite;
+  will-change: transform, background-position;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .arms-logo {
+  .arms-logo--alive {
     animation: none;
     background-position: 35% 50%;
   }
