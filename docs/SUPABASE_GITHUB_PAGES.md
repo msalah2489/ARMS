@@ -29,11 +29,12 @@ Dashboard CRM lists prefer ops data after hydrate. If empty, they fall back to c
 2. **SQL Editor**:
    - **New project / never ran sync:** paste and run **`supabase/migrations/000_apply_all_for_pages.sql`** once.
    - **Already ran `000` or `007` earlier:** run **`supabase/migrations/008_extend_client_store_keys.sql`** once (adds the new store keys only). Safe to re-run.
+   - **Cleanup old CRM / demo / unused relational workflow** (optional, after sync works): run **`supabase/migrations/009_cleanup_old_database.sql`** once. Empties classic CRM seed and drops obsolete waybill/shipping/maintenance **tables** from older migrations. Does **not** wipe live `arms_client_store` payloads. Safe to re-run.
 3. **Project Settings → API**:
    - copy **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - copy **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-> Optional later: run `002`…`006` if you need full shipping/workflow RPCs beyond Pages sync.
+> Optional later: run `002`…`006` only if you need the **relational** shipping/workflow RPCs (not used by the GitHub Pages client-store path). Prefer `009_cleanup_old_database.sql` instead if you already migrated to `arms_client_store`.
 > The one-shot file adds starter RLS policies allowing `anon` read/write on the sync table and core CRM tables so the static GitHub Pages build can work without server-side Auth. Tighten policies later for production security.
 
 ## Local `.env.local`
