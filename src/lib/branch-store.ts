@@ -264,12 +264,16 @@ export function saveMaintenanceRequest(input: {
     existingReceipts.add(receipt);
   }
 
+  if (!input.user.opsBranchId || !input.user.opsBranchName) {
+    throw new Error("حساب الفرع غير مرتبط بفرع في قاعدة البيانات. راجع مدير النظام.");
+  }
+
   const record: MaintenanceRequestRecord = {
     id: crypto.randomUUID(),
     requestNumber: input.requestNumber || generateRequestNumber(),
     receivedAt: new Date().toISOString(),
-    opsBranchId: input.user.opsBranchId || "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-    opsBranchName: input.user.opsBranchName || "فرع الرياض",
+    opsBranchId: input.user.opsBranchId,
+    opsBranchName: input.user.opsBranchName,
     branchStaffId: input.user.id,
     branchStaffName: input.user.fullName,
     priority: input.priority,

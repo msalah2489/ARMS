@@ -638,6 +638,10 @@ export function listOpsBranches() {
     name: request.opsBranchName,
   }));
   const map = new Map(fromRequests.map((item) => [item.id, item]));
+  // Cloud mode: never invent a demo Riyadh branch when lists are empty.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    return [...map.values()];
+  }
   if (!map.has("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1")) {
     map.set("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1", {
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",

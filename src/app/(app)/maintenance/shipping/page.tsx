@@ -30,8 +30,8 @@ function MaintenanceShippingContent() {
   const [pendingManager, setPendingManager] = useState(
     () => listAwaitingManagerDecisionDevices(),
   );
-  const [branchId, setBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
-  const [returnBranchId, setReturnBranchId] = useState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+  const [branchId, setBranchId] = useState("");
+  const [returnBranchId, setReturnBranchId] = useState("");
   const [shipmentNumber, setShipmentNumber] = useState("");
   const [returnShipmentNumber, setReturnShipmentNumber] = useState("");
   const [carrier, setCarrier] = useState("SMSA");
@@ -62,6 +62,9 @@ function MaintenanceShippingContent() {
     const session = readSession();
     setUser(session);
     refresh();
+    const first = listOpsBranches()[0]?.id ?? "";
+    setBranchId((current) => current || first);
+    setReturnBranchId((current) => current || first);
   }, []);
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;

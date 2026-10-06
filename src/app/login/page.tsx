@@ -3,37 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEMO_USERS, ROLE_LABELS, isDemoMode } from "@/lib/auth";
-import { signIn, writeSession } from "@/lib/session";
+import { signIn } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
-import { getManagedUser, listManagedUsers, managedUserToProfile } from "@/lib/users-store";
 
 export default function LoginPage() {
   const router = useRouter();
   const demo = isDemoMode();
-  const [email, setEmail] = useState(demo ? "admin" : "manager@arms.app");
+  const [email, setEmail] = useState(demo ? "admin" : "");
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateOpsFromSupabase();
   }, []);
-
-  async function enterAs(role: "branch" | "technician" | "maintenance_manager" | "system_admin") {
-    await hydrateOpsFromSupabase();
-    // Ensure seeded users exist, then open the matching managed account.
-    listManagedUsers();
-    const idByRole: Record<typeof role, string> = {
-      branch: "branch-local",
-      technician: "tech-local",
-      maintenance_manager: "maint-manager-local",
-      system_admin: "admin-local",
-    };
-    const managed = getManagedUser(idByRole[role]);
-    if (managed) {
-      writeSession(managedUserToProfile(managed));
-    }
-    router.replace("/dashboard");
-  }
 
   return (
     <main className="grid min-h-screen md:grid-cols-2">
@@ -52,7 +34,7 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-ink-700/70">
             {demo
               ? "اختر دورًا تجريبيًا أو سجّل باسم المستخدم الذي أنشأه مدير النظام + كلمة المرور."
-              : "اختر الحساب المناسب لصلاحياتك."}
+              : "سجّل الدخول بحساب موجود في قاعدة البيانات (أنشأه مدير النظام)."}
           </p>
 
           {demo ? (
@@ -73,43 +55,10 @@ export default function LoginPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => enterAs("branch")}
-                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
-              >
-                <p className="font-medium text-ink-900">حساب الفرع</p>
-                <p className="mt-1 text-xs text-ink-700/70">إنشاء طلب · استلام · تسليم للشحن</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => enterAs("technician")}
-                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
-              >
-                <p className="font-medium text-ink-900">حساب الفني</p>
-                <p className="mt-1 text-xs text-ink-700/70">الرئيسية · سكان · عمل الفني</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => enterAs("maintenance_manager")}
-                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
-              >
-                <p className="font-medium text-ink-900">مدير الصيانة</p>
-                <p className="mt-1 text-xs text-ink-700/70">بوالص الشحن والإرجاع</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => enterAs("system_admin")}
-                className="rounded-2xl border border-ink-900/10 bg-white p-4 text-right hover:border-aroma-400"
-              >
-                <p className="font-medium text-ink-900">مدير النظام</p>
-                <p className="mt-1 text-xs text-ink-700/70">تصنيفات · براندات · موديلات · ملحقات · قطع غيار</p>
-              </button>
-              <p className="sm:col-span-2 text-xs text-ink-700/60">
-                حساب المدير (Supabase): manager@arms.app / ArmsDemo123!
-              </p>
-            </div>
+            <p className="mt-4 rounded-2xl border border-ink-900/10 bg-white p-4 text-sm text-ink-700/70">
+              لا تُعرض حسابات تجريبية مضمّنة في الكود. استخدم اسم المستخدم وكلمة المرور المحفوظين في
+              Supabase فقط.
+            </p>
           )}
 
           <form

@@ -74,7 +74,7 @@ function NewServiceRequestContent() {
           <label className="block text-sm">
             الفرع
             <input
-              value={user.opsBranchName || "فرع الرياض"}
+              value={user.opsBranchName || "—"}
               readOnly
               className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2"
             />

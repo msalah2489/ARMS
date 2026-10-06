@@ -1,4 +1,4 @@
-import { DEMO_USERS, isBranchRole, isDemoMode, isTechnicianRole, normalizeRole } from "@/lib/auth";
+import { DEMO_USERS, isDemoMode, isTechnicianRole, normalizeRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import {
   authenticateManagedUser,
@@ -106,20 +106,27 @@ export async function signIn(email: string, password: string) {
   if (email.toLowerCase() === "tech@arms.app") role = "technician";
   if (email.toLowerCase() === "branch@arms.app") role = "branch";
 
+  // Prefer managed-user branch assignment from cloud cache — never invent demo branch IDs.
+  const managedMatch = listManagedUsers().find(
+    (item) =>
+      item.id === data.user.id ||
+      (item.email && item.email.toLowerCase() === (data.user.email ?? email).toLowerCase()),
+  );
+
   writeSession({
     id: data.user.id,
-    fullName: profile?.full_name ?? data.user.email ?? "مستخدم",
-    username: (data.user.email ?? email).split("@")[0],
-    role,
+    fullName: profile?.full_name ?? managedMatch?.fullName ?? data.user.email ?? "مستخدم",
+    username: managedMatch?.username ?? (data.user.email ?? email).split("@")[0],
+    role: managedMatch ? normalizeRole(managedMatch.role) : role,
     email: data.user.email ?? email,
-    mobile: null,
-    opsBranchId: isBranchRole(role) ? "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1" : null,
-    opsBranchName: isBranchRole(role)
-      ? "فرع الرياض"
-      : isTechnicianRole(role)
+    mobile: managedMatch?.mobile ?? null,
+    opsBranchId: managedMatch?.opsBranchId ?? null,
+    opsBranchName:
+      managedMatch?.opsBranchName ??
+      (isTechnicianRole(managedMatch ? normalizeRole(managedMatch.role) : role)
         ? "مركز الصيانة"
-        : null,
-    isActive: true,
+        : null),
+    isActive: managedMatch?.isActive ?? true,
   });
 
   return { error: null };

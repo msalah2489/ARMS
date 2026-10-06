@@ -28,6 +28,8 @@ import {
   updateModelSparePart,
   type DeviceCatalogState,
 } from "@/lib/catalog-store";
+import { isDemoMode } from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type Tab = "types" | "brands" | "models";
 
@@ -148,12 +150,16 @@ function CatalogAdminContent() {
               setEditingTypeId(null);
               setEditingBrandId(null);
               setEditingModelId(null);
-              setMessage("تمت إعادة الكتالوج إلى القيم الافتراضية.");
+              setMessage(
+                isSupabaseConfigured() && !isDemoMode()
+                  ? "تم تفريغ الكتالوج (بدون بيانات تجريبية)."
+                  : "تمت إعادة الكتالوج إلى القيم الافتراضية.",
+              );
               setError(null);
               refresh();
             }}
           >
-            إعادة الافتراضي
+            {isSupabaseConfigured() && !isDemoMode() ? "تفريغ الكتالوج" : "إعادة الافتراضي"}
           </button>
         }
       />

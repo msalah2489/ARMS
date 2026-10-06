@@ -464,6 +464,10 @@ export function deleteModelSparePart(
 }
 
 export function resetCatalogToSeed() {
+  // Cloud / production: clearing means empty catalog, never re-inject demo seed.
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    return saveCatalog({ deviceTypes: [], brands: [], models: [] });
+  }
   return saveCatalog(seedCatalog());
 }
 

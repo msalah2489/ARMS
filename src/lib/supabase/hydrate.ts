@@ -1,42 +1,28 @@
 import { isDemoMode } from "@/lib/auth";
-import {
-  applyRemoteBranches,
-  listOpsBranchRecordsLocal,
-} from "@/lib/branches-store";
+import { applyRemoteBranches } from "@/lib/branches-store";
 import {
   applyRemoteMaintenanceRequests,
   applyRemoteWaybills,
   listMaintenanceRequestsLocal,
-  listWaybillsLocal,
 } from "@/lib/branch-store";
 import {
   applyRemoteCatalog,
-  getCatalogLocalRaw,
   replaceCatalog,
   type DeviceCatalogState,
 } from "@/lib/catalog-store";
 import {
   applyRemoteShippingState,
-  listAuditEventsLocal,
-  listShippingBatchesLocal,
   replaceShippingState,
 } from "@/lib/shipping-store";
 import {
   applyRemoteSpareInventory,
-  getSpareInventoryLocal,
   replaceSpareInventory,
   type SpareInventoryState,
 } from "@/lib/spare-inventory-store";
-import {
-  applyRemoteTechnicianWork,
-  listTechnicianWorkLocal,
-} from "@/lib/technician-store";
-import {
-  applyRemoteManagedUsers,
-  listManagedUsersLocal,
-} from "@/lib/users-store";
+import { applyRemoteTechnicianWork } from "@/lib/technician-store";
+import { applyRemoteManagedUsers } from "@/lib/users-store";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
-import { pullClientStoreStrict, pushClientStore } from "@/lib/supabase/client-store";
+import { pullClientStoreStrict } from "@/lib/supabase/client-store";
 import { expandAllClientStoreToRelational } from "@/lib/supabase/expand-relational";
 import {
   isAuthLikeSupabaseError,
@@ -52,9 +38,8 @@ import type {
 } from "@/types/domain";
 
 const HYDRATED_FLAG = "arms_supabase_hydrated_v1";
-/** Legacy: set even when push may have failed (pre-fix builds). */
+/** Legacy flags kept so older browsers stop retrying obsolete local→remote bootstrap. */
 const BOOTSTRAP_FLAG = "arms_supabase_ops_bootstrapped_v1";
-/** Only set after every bootstrap push in a hydrate cycle succeeded. */
 const BOOTSTRAP_OK_FLAG = "arms_supabase_ops_bootstrap_ok_v1";
 
 let hydratePromise: Promise<boolean> | null = null;
@@ -63,12 +48,6 @@ function markHydrated() {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(HYDRATED_FLAG, "1");
   window.dispatchEvent(new CustomEvent("arms-ops-hydrated"));
-}
-
-/** True only when a prior hydrate confirmed remote bootstrap uploads succeeded. */
-function isBootstrapConfirmed() {
-  if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(BOOTSTRAP_OK_FLAG) === "1";
 }
 
 function markBootstrapConfirmed() {
@@ -114,42 +93,22 @@ const EMPTY_SPARE: SpareInventoryState = {
   movements: [],
 };
 
-async function pushOrThrow(key: Parameters<typeof pushClientStore>[0], value: unknown) {
-  const result = await pushClientStore(key, value);
-  if (!result.ok) {
-    throw new Error(result.error || `pushClientStore(${key}) failed`);
-  }
-}
-
 /**
  * Reconcile one store key:
  * - remote has data → overwrite local (remote is source of truth)
- * - remote empty + local has data + bootstrap not confirmed → upload local (retry until OK)
- * - otherwise → clear local to match empty remote (never re-seed demo)
+ * - remote empty → clear local (never upload leftover demo/seed; never re-seed)
+ * New writes already push via schedulePersist; hydrate must not inject code seeds.
  */
-async function reconcilePayload<T>(options: {
-  key: Parameters<typeof pushClientStore>[0];
+function reconcilePayload<T>(options: {
   remoteHas: boolean;
-  localHas: boolean;
   remoteValue: T;
-  localValue: T;
   emptyValue: T;
   apply: (value: T) => void;
 }) {
-  const bootstrappedOk = isBootstrapConfirmed();
-
   if (options.remoteHas) {
     options.apply(options.remoteValue);
     return;
   }
-
-  if (options.localHas && !bootstrappedOk) {
-    await pushOrThrow(options.key, options.localValue);
-    options.apply(options.localValue);
-    return;
-  }
-
-  // Remote empty/null is truth — clear local orphans; never re-seed demo.
   options.apply(options.emptyValue);
 }
 
@@ -200,40 +159,30 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           pullClientStoreStrict<WaybillRecord[]>("waybills", []),
         ]);
 
-        const localBranches = listOpsBranchRecordsLocal();
-        await reconcilePayload({
-          key: "ops_branches",
+        // Ensure seed path is never taken during hydrate (skipSeed: true).
+        void listMaintenanceRequestsLocal({ skipSeed: true });
+
+        reconcilePayload({
           remoteHas: remoteBranches.length > 0,
-          localHas: localBranches.length > 0,
           remoteValue: remoteBranches,
-          localValue: localBranches,
           emptyValue: [],
           apply: applyRemoteBranches,
         });
 
-        const localRequests = listMaintenanceRequestsLocal({ skipSeed: true });
-        await reconcilePayload({
-          key: "maintenance_requests",
+        reconcilePayload({
           remoteHas: remoteRequests.length > 0,
-          localHas: localRequests.length > 0,
           remoteValue: remoteRequests,
-          localValue: localRequests,
           emptyValue: [],
           apply: applyRemoteMaintenanceRequests,
         });
 
-        const localCatalogRaw = getCatalogLocalRaw();
-        const localCatalog: DeviceCatalogState = localCatalogRaw ?? EMPTY_CATALOG;
-        await reconcilePayload({
-          key: "device_catalog",
+        reconcilePayload({
           remoteHas: catalogHasRows(remoteCatalog),
-          localHas: catalogHasRows(localCatalog),
           remoteValue: {
             deviceTypes: (remoteCatalog as DeviceCatalogState).deviceTypes ?? [],
             brands: (remoteCatalog as DeviceCatalogState).brands ?? [],
             models: (remoteCatalog as DeviceCatalogState).models ?? [],
           },
-          localValue: localCatalog,
           emptyValue: EMPTY_CATALOG,
           apply: (value) => {
             if (catalogHasRows(value)) applyRemoteCatalog(value);
@@ -241,58 +190,37 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           },
         });
 
-        const localUsers = listManagedUsersLocal();
-        await reconcilePayload({
-          key: "managed_users",
+        reconcilePayload({
           remoteHas: remoteUsers.length > 0,
-          localHas: localUsers.length > 0,
           remoteValue: remoteUsers,
-          localValue: localUsers,
           emptyValue: [],
           apply: applyRemoteManagedUsers,
         });
 
-        const localBatches = listShippingBatchesLocal();
-        const localAudit = listAuditEventsLocal();
         const remoteShippingHas = remoteBatches.length > 0 || remoteAudit.length > 0;
-        const localShippingHas = localBatches.length > 0 || localAudit.length > 0;
-        const bootstrappedOk = isBootstrapConfirmed();
-
         if (remoteShippingHas) {
           applyRemoteShippingState({
             batches: remoteBatches,
             audit: remoteAudit,
           });
-        } else if (localShippingHas && !bootstrappedOk) {
-          await pushOrThrow("shipping_batches", localBatches);
-          await pushOrThrow("audit_events", localAudit);
-          applyRemoteShippingState({ batches: localBatches, audit: localAudit });
         } else {
           replaceShippingState({ batches: [], audit: [] });
         }
 
-        const localWork = listTechnicianWorkLocal();
-        await reconcilePayload({
-          key: "technician_work",
+        reconcilePayload({
           remoteHas: remoteWork.length > 0,
-          localHas: localWork.length > 0,
           remoteValue: remoteWork,
-          localValue: localWork,
           emptyValue: [],
           apply: applyRemoteTechnicianWork,
         });
 
-        const localSpare = getSpareInventoryLocal();
-        await reconcilePayload({
-          key: "spare_inventory",
+        reconcilePayload({
           remoteHas: spareHasRows(remoteSpare),
-          localHas: spareHasRows(localSpare),
           remoteValue: {
             balances: (remoteSpare as SpareInventoryState).balances ?? [],
             receipts: (remoteSpare as SpareInventoryState).receipts ?? [],
             movements: (remoteSpare as SpareInventoryState).movements ?? [],
           },
-          localValue: localSpare,
           emptyValue: EMPTY_SPARE,
           apply: (value) => {
             if (spareHasRows(value)) applyRemoteSpareInventory(value);
@@ -300,13 +228,9 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           },
         });
 
-        const localWaybills = listWaybillsLocal();
-        await reconcilePayload({
-          key: "waybills",
+        reconcilePayload({
           remoteHas: remoteWaybills.length > 0,
-          localHas: localWaybills.length > 0,
           remoteValue: remoteWaybills,
-          localValue: localWaybills,
           emptyValue: [],
           apply: applyRemoteWaybills,
         });
@@ -314,7 +238,6 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
         markBootstrapConfirmed();
         markHydrated();
         setArmsSyncStatus({ state: "ok" });
-        // Refresh relational app_* mirrors for Supabase Table Editor browsing.
         void expandAllClientStoreToRelational();
         return true;
       } catch (error) {
@@ -326,7 +249,6 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
         } else {
           setArmsSyncStatus({ state: "error", message });
         }
-        // Do not mark hydrated/bootstrap-ok — keep local cache, surface banner.
         return false;
       }
     })();

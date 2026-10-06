@@ -126,10 +126,11 @@ export function applyRemoteManagedUsers(users: ManagedUser[]) {
   replaceManagedUsers(users);
 }
 
-/** Seed demo accounts when both remote and local are empty. */
+/** Seed demo accounts when both remote and local are empty (demo mode only). */
 export function seedManagedUsersIfEmpty(): ManagedUser[] {
   const existing = listManagedUsersLocal();
   if (existing.length > 0) return existing;
+  if (isSupabaseConfigured() && !isDemoMode()) return [];
   const now = new Date().toISOString();
   return SEED_USERS.map((seed) =>
     normalizeUser({
