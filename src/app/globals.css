@@ -182,16 +182,6 @@ aside.bg-ink-950 button {
   }
 }
 
-@keyframes arms-logo-breathe {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-6px) scale(1.035);
-  }
-}
-
 .arms-logo {
   display: inline-block;
   letter-spacing: -0.02em;
@@ -217,12 +207,10 @@ aside.bg-ink-950 button {
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
 }
 
-/* Unauthenticated / login only — shimmer + gentle float while waiting to sign in */
+/* Unauthenticated / login only — metallic shimmer sweep (no bob/scale motion) */
 .arms-logo--alive {
-  animation:
-    arms-logo-shimmer 8.5s ease-in-out infinite,
-    arms-logo-breathe 3.2s ease-in-out infinite;
-  will-change: transform, background-position;
+  animation: arms-logo-shimmer 8.5s ease-in-out infinite;
+  will-change: background-position;
 }
 
 @media (prefers-reduced-motion: reduce) {

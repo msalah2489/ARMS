@@ -40,23 +40,41 @@ async function deleteAll(table: string) {
   if (error) throw error;
 }
 
-/** Insert rows; if payload column is not migrated yet (pre-017), retry without it. */
+/** Insert rows; strip unknown columns (e.g. is_archived pre-018) and retry. */
 async function insertRows(table: string, rows: Record<string, unknown>[]) {
   if (rows.length === 0) return;
   const supabase = createClient();
-  const { error } = await supabase.from(table).insert(rows);
-  if (!error) return;
-  if (/payload|PGRST204|42703|schema cache/i.test(error.message ?? "")) {
-    const stripped = rows.map((row) => {
-      const next = { ...row };
-      delete next.payload;
-      return next;
-    });
-    const retry = await supabase.from(table).insert(stripped);
-    if (retry.error) throw retry.error;
-    return;
+  let current = rows.map((row) => ({ ...row }));
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { error } = await supabase.from(table).insert(current);
+    if (!error) return;
+
+    const message = error.message ?? "";
+    const missingCol = /Could not find the '([^']+)' column/i.exec(message)?.[1];
+    if (missingCol && /PGRST204|42703|schema cache/i.test(message)) {
+      current = current.map((row) => {
+        const next = { ...row };
+        delete next[missingCol];
+        return next;
+      });
+      continue;
+    }
+
+    // Legacy: older DBs without a payload column on some tables.
+    if (/payload|PGRST204|42703|schema cache/i.test(message) && current.some((row) => "payload" in row)) {
+      current = current.map((row) => {
+        const next = { ...row };
+        delete next.payload;
+        return next;
+      });
+      continue;
+    }
+
+    throw error;
   }
-  throw error;
+
+  throw new Error(`insertRows(${table}): exceeded schema-compat retries`);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -129,6 +147,8 @@ export async function pushAppUsers(users: ManagedUser[]): Promise<SyncResult> {
     return { ok: false, error: "Supabase is not configured." };
   }
   try {
+    // Schema-compat insertRows strips unknown cols (e.g. is_archived pre-018)
+    // so delete+insert no longer leaves the table empty on PGRST204.
     await deleteAll("app_users");
     await insertRows("app_users", users.map(userToRow));
     return { ok: true };

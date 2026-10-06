@@ -132,6 +132,35 @@ export function applyRemoteManagedUsers(users: ManagedUser[]) {
   replaceManagedUsers(users);
 }
 
+/** Minimal bootstrap admin used when cloud + local users are both empty. */
+export function getBootstrapAdminUser(): ManagedUser {
+  const now = new Date().toISOString();
+  return normalizeUser({
+    ...SEED_USERS[0],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Keep at least one loginable account when remote hydrate returns empty.
+ * Preserves any local cache; otherwise writes bootstrap admin and pushes to cloud.
+ */
+export function ensureBootstrapAdminIfEmpty(): ManagedUser[] {
+  const existing = listManagedUsersLocal();
+  if (existing.length > 0) return existing;
+  const admin = getBootstrapAdminUser();
+  replaceManagedUsers([admin]);
+  schedulePersist([admin]);
+  return [admin];
+}
+
+/** Active, non-archived users for temporary login shortcuts. */
+export function listLoginShortcutUsers(): ManagedUser[] {
+  ensureBootstrapAdminIfEmpty();
+  return listManagedUsers().filter((user) => user.isActive && !user.isArchived);
+}
+
 /** Seed demo accounts when both remote and local are empty (demo mode only). */
 export function seedManagedUsersIfEmpty(): ManagedUser[] {
   const existing = listManagedUsersLocal();

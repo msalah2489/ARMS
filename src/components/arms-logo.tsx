@@ -1,6 +1,6 @@
 type ArmsLogoProps = {
   size?: "sm" | "md" | "lg" | "xl" | "hero";
-  /** Repeating motion — use on login / unauthenticated only. */
+  /** Metallic shimmer only — use on login / unauthenticated only (no bob/scale). */
   animate?: boolean;
   className?: string;
 };
@@ -13,7 +13,7 @@ const SIZE_CLASS = {
   hero: "text-6xl sm:text-7xl",
 } as const;
 
-/** Metallic silver wordmark; optional idle motion for unauthenticated screens. */
+/** Metallic silver wordmark; optional shimmer lighting for unauthenticated screens. */
 export function ArmsLogo({ size = "md", animate = false, className = "" }: ArmsLogoProps) {
   return (
     <span

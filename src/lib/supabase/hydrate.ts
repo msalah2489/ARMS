@@ -20,7 +20,10 @@ import {
   type SpareInventoryState,
 } from "@/lib/spare-inventory-store";
 import { applyRemoteTechnicianWork } from "@/lib/technician-store";
-import { applyRemoteManagedUsers } from "@/lib/users-store";
+import {
+  applyRemoteManagedUsers,
+  ensureBootstrapAdminIfEmpty,
+} from "@/lib/users-store";
 import {
   pullAppAuditEvents,
   pullAppBranches,
@@ -176,12 +179,13 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
           },
         });
 
-        reconcilePayload({
-          remoteHas: remoteUsers.length > 0,
-          remoteValue: remoteUsers,
-          emptyValue: [],
-          apply: applyRemoteManagedUsers,
-        });
+        // Users: remote wins when present. Never wipe local/bootstrap when remote is empty
+        // (otherwise login shortcuts disappear and Pages cannot sign in as admin).
+        if (remoteUsers.length > 0) {
+          applyRemoteManagedUsers(remoteUsers);
+        } else {
+          ensureBootstrapAdminIfEmpty();
+        }
 
         const remoteShippingHas = remoteBatches.length > 0 || remoteAudit.length > 0;
         if (remoteShippingHas) {

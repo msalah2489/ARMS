@@ -6,7 +6,7 @@ import { ArmsLogo } from "@/components/arms-logo";
 import { ROLE_LABELS, isDemoMode } from "@/lib/auth";
 import { signIn } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
-import { listManagedUsers } from "@/lib/users-store";
+import { listLoginShortcutUsers } from "@/lib/users-store";
 import type { ManagedUser } from "@/types/domain";
 
 export default function LoginPage() {
@@ -15,15 +15,32 @@ export default function LoginPage() {
   const [email, setEmail] = useState(demo ? "admin" : "");
   const [password, setPassword] = useState(demo ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
+  const [revealPassword, setRevealPassword] = useState(false);
   // TEMPORARY: visible account shortcuts for easier login during setup — remove later.
   const [accounts, setAccounts] = useState<ManagedUser[]>([]);
 
   useEffect(() => {
+    const refreshAccounts = () => {
+      setAccounts(listLoginShortcutUsers());
+    };
+
+    // Show any local/bootstrap accounts immediately, then refresh after hydrate.
+    refreshAccounts();
+
     void (async () => {
       await hydrateOpsFromSupabase();
-      setAccounts(listManagedUsers().filter((user) => user.isActive && !user.isArchived));
+      refreshAccounts();
     })();
+
+    window.addEventListener("arms-ops-hydrated", refreshAccounts);
+    return () => window.removeEventListener("arms-ops-hydrated", refreshAccounts);
   }, []);
+
+  const hidePassword = () => setRevealPassword(false);
+  const showPasswordWhileHeld = (event: React.MouseEvent | React.TouchEvent) => {
+    event.preventDefault();
+    setRevealPassword(true);
+  };
 
   return (
     <main className="grid min-h-screen md:grid-cols-[minmax(200px,28%)_minmax(0,1fr)]">
@@ -117,13 +134,31 @@ export default function LoginPage() {
             </label>
             <label className="block text-sm dark:text-sand-100">
               كلمة المرور
-              <input
-                name="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-1 min-h-11 w-full rounded-xl border border-ink-900/15 bg-white px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
-              />
+              <div className="relative mt-1">
+                <input
+                  name="password"
+                  type={revealPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  className="min-h-11 w-full rounded-xl border border-ink-900/15 bg-white py-2 pe-24 ps-3 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+                />
+                <button
+                  type="button"
+                  aria-label="إظهار أثناء الضغط"
+                  title="إظهار أثناء الضغط"
+                  onMouseDown={showPasswordWhileHeld}
+                  onMouseUp={hidePassword}
+                  onMouseLeave={hidePassword}
+                  onTouchStart={showPasswordWhileHeld}
+                  onTouchEnd={hidePassword}
+                  onTouchCancel={hidePassword}
+                  onBlur={hidePassword}
+                  className="absolute inset-y-1 end-1 rounded-lg border border-ink-900/10 bg-sand-50 px-2.5 text-xs text-ink-700 hover:border-aroma-400 dark:border-white/10 dark:bg-ink-950 dark:text-sand-100 dark:hover:border-aroma-400"
+                >
+                  إظهار
+                </button>
+              </div>
             </label>
             {error ? (
               <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
