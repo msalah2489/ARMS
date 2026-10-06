@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { expandStoreKeyToRelational } from "@/lib/supabase/expand-relational";
 import { isAuthLikeSupabaseError, setArmsSyncStatus } from "@/lib/supabase/sync-status";
 
 export type ArmsClientStoreKey =
@@ -76,6 +77,9 @@ export async function pushClientStore<T>(
       { onConflict: "store_key" },
     );
     if (error) throw error;
+    // Dual-write: keep normalized app_* tables in sync for Table Editor.
+    // Does not fail the primary JSON upsert if expand RPC is missing/unavailable.
+    void expandStoreKeyToRelational(storeKey);
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

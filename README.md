@@ -43,9 +43,10 @@ Full GitHub Pages steps: [`docs/SUPABASE_GITHUB_PAGES.md`](docs/SUPABASE_GITHUB_
    - Fresh: **`supabase/migrations/000_apply_all_for_pages.sql`**
    - Already applied `000`/`007`: **`supabase/migrations/008_extend_client_store_keys.sql`**
    Ignore any earlier failure from running `007` alone.
+   - **Normalized tables (recommended):** **`supabase/migrations/013_normalized_app_tables.sql`** — expands JSON into `app_*` tables for Table Editor.
 4. Set `NEXT_PUBLIC_USE_DEMO=false`.
 5. For GitHub Pages: set Actions secret/variable `NEXT_PUBLIC_SUPABASE_ANON_KEY` to that same JWT (and optionally `NEXT_PUBLIC_SUPABASE_URL`), then re-run **Deploy GitHub Pages**.
-6. Confirm data in **Table Editor → `arms_client_store` → `maintenance_requests`** (not the empty CRM `service_requests` table).
+6. Confirm data in **Table Editor → `app_maintenance_requests` / `v_app_users`** (or still `arms_client_store` JSON). Not the empty CRM `service_requests` table.
 7. Optional: create Supabase Auth users for non-local logins.
 
 ## First slice vs later work

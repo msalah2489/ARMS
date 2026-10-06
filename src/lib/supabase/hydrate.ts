@@ -37,6 +37,7 @@ import {
 } from "@/lib/users-store";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
 import { pullClientStoreStrict, pushClientStore } from "@/lib/supabase/client-store";
+import { expandAllClientStoreToRelational } from "@/lib/supabase/expand-relational";
 import {
   isAuthLikeSupabaseError,
   setArmsSyncStatus,
@@ -313,6 +314,8 @@ export async function hydrateOpsFromSupabase(): Promise<boolean> {
         markBootstrapConfirmed();
         markHydrated();
         setArmsSyncStatus({ state: "ok" });
+        // Refresh relational app_* mirrors for Supabase Table Editor browsing.
+        void expandAllClientStoreToRelational();
         return true;
       } catch (error) {
         console.error("[arms] hydrateOpsFromSupabase", error);

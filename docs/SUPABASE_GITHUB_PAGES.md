@@ -2,15 +2,20 @@
 
 ## What goes to Supabase vs localStorage
 
-### Synced via Supabase (`arms_client_store`)
-- Ops branches (admin branches CRUD)
-- Maintenance / service requests + devices (branch receiving workflow)
-- Device catalog (types / brands / models)
-- Managed users + passwords (`managed_users`) — same plaintext model as before (not hashed)
-- Shipping batches (`shipping_batches`) + ops audit events (`audit_events`)
-- Technician work records (`technician_work`)
-- Spare inventory balances / receipts / movements (`spare_inventory`)
-- Legacy waybills UI state (`waybills`)
+### Synced via Supabase (`arms_client_store` + mirrored `app_*` tables)
+The live app still **reads/writes** shared ops data as JSON rows in **`arms_client_store`** (one row per store key). After each successful push/hydrate, the client also calls SQL RPCs to **mirror** that JSON into normalized **`app_*`** tables so Table Editor shows normal columns/rows.
+
+| Store key | Relational tables / views |
+| --- | --- |
+| `managed_users` | `app_users` + view `v_app_users` (no password) |
+| `ops_branches` | `app_ops_branches` |
+| `maintenance_requests` | `app_maintenance_requests`, `app_request_devices` + views `v_app_maintenance_overview`, `v_app_request_devices` |
+| `device_catalog` | `app_catalog_device_types`, `app_catalog_brands`, `app_catalog_models` |
+| `shipping_batches` | `app_shipping_batches`, `app_shipping_items` |
+| `technician_work` | `app_technician_work` |
+| `spare_inventory` | `app_spare_balances` |
+| `audit_events` | `app_audit_events` |
+| `waybills` | `app_waybills` |
 
 Service Requests (`طلبات الصيانة`) always read the ops cache of `arms_client_store` → key **`maintenance_requests`** after hydrate. They do **not** use the classic CRM table `service_requests` (that table is often empty / unused on Pages).
 
@@ -30,6 +35,7 @@ Service Requests (`طلبات الصيانة`) always read the ops cache of `arm
    - **New project / never ran sync:** paste and run **`supabase/migrations/000_apply_all_for_pages.sql`** once.
    - **Already ran `000` or `007` earlier:** run **`supabase/migrations/008_extend_client_store_keys.sql`** once (adds the new store keys only). Safe to re-run.
    - **Cleanup old CRM / demo / unused relational workflow** (optional, after sync works): run **`supabase/migrations/009_cleanup_old_database.sql`** once. Empties classic CRM seed and drops obsolete waybill/shipping/maintenance **tables** from older migrations. Does **not** wipe live `arms_client_store` payloads. Safe to re-run.
+   - **جداول مرتّبة (موصى به الآن):** شغّل مرة **`supabase/migrations/013_normalized_app_tables.sql`**. ينشئ جداول `app_*` وينسخ بيانات JSON الحالية إليها. Safe to re-run.
 3. **Project Settings → API**:
    - copy **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - copy the long JWT **anon public** / **anon** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -59,53 +65,40 @@ Repo → **Settings → Secrets and variables → Actions**:
 
 After setting secrets, re-run **Deploy GitHub Pages** (push to `main` or **Actions → workflow_dispatch**). Wait 1–3 minutes for Pages to update.
 
-## Where maintenance / service requests live
+## جداول مرتّبة (Table Editor) — بعد تشغيل 013
 
-### السبب الشائع للخلط (Arabic)
+### لماذا كانت البيانات JSON؟
 
-المنصة **لا تكتب** طلبات الصيانة كصفوف في جدول `service_requests` (هذا الجدول غالباً فارغ بعد تنظيف 009).  
-البيانات الحية كلها داخل جدول واحد: **`arms_client_store`** — كل نوع بيانات = صف واحد (`store_key`)، والطلبات نفسها داخل عمود **`payload`** كـ JSON.
+منصة GitHub Pages تحتاج مزامنة بسيطة بدون سيرفر: جدول واحد `arms_client_store` يحفظ كل نوع بيانات كـ JSON. التطبيق ما زال يعتمد عليه كمصدر حي — والجداول الجديدة **مرآة** للتصفح والتفاصيل الواضحة.
 
-### أين تنظر بالضبط (نقرات)
+### أين تنظر الآن (موصى به)
 
-1. Supabase Dashboard → مشروعك  
-2. من القائمة اليسرى: **Table Editor**  
-3. افتح الجدول **`arms_client_store`** (ليس `service_requests` ولا `customers`)  
-4. ابحث عن الصف الذي `store_key` = **`maintenance_requests`**  
-5. افتح عمود **`payload`** — ستجد مصفوفة JSON فيها `SR-2026-…`
+1. Supabase → **Table Editor**
+2. افتح أحد الجداول:
+   - **`v_app_users`** أو **`app_users`** — المستخدمون (الـ VIEW بدون كلمة مرور)
+   - **`app_ops_branches`** — الفروع
+   - **`v_app_maintenance_overview`** أو **`app_maintenance_requests`** — طلبات الصيانة
+   - **`v_app_request_devices`** أو **`app_request_devices`** — أجهزة الطلبات
+   - **`app_catalog_brands` / `app_catalog_models`** — الكتالوج
+   - **`app_shipping_batches` / `app_shipping_items`** — الشحن
+   - **`app_technician_work`** — عمل الفني
+   - **`app_spare_balances`** — مخزون القطع
 
-### عرض أسهل (اختياري)
+### ملف SQL واحد مطلوب
 
-شغّل مرة **`supabase/migrations/010_v_maintenance_requests_list.sql`** في SQL Editor.  
-بعدها من Table Editor (أو Database → Views) افتح **`v_maintenance_requests_list`** — كل رقم طلب يظهر كصف منفصل.
+شغّل مرة: **`supabase/migrations/013_normalized_app_tables.sql`**
 
-Do **not** look at the classic CRM table `service_requests` (often empty after migration 009).
+بعدها أي تعديل من المنصة يحدّث JSON **و** الجداول العلائقية تلقائياً (dual-write).
 
-## Where managed users live
-
-### السبب الشائع للخلط (Arabic)
-
-حسابات المنصة (مثل `rakan12`) **ليست** صفوفًا في جدول `profiles` (تم تنظيفه في 011).  
-تعيش داخل **`arms_client_store`** → الصف `store_key` = **`managed_users`** → عمود **`payload`** (مصفوفة JSON).
-
-### أين تنظر بالضبط (نقرات)
-
-1. Supabase Dashboard → مشروعك  
-2. **Table Editor** → الجدول **`arms_client_store`** (ليس `profiles`)  
-3. الصف الذي `store_key` = **`managed_users`**  
-4. افتح **`payload`** وابحث عن `"username":"rakan12"` (أو البريد/الجوال)
-
-### عرض أسهل (اختياري)
-
-شغّل مرة **`supabase/migrations/012_v_managed_users_list.sql`** في SQL Editor.  
-بعدها افتح الـ VIEW **`v_managed_users_list`** — كل مستخدم يظهر كصف (بدون كلمة المرور).
+Do **not** look at classic CRM `service_requests` / `profiles` (often empty after cleanup).
 
 ## Verify
 
-1. Open https://msalah2489.github.io/ARMS/
-2. Sign in (e.g. `admin` / `demo` or `branch@arms.local` / `demo`)
-3. If a yellow sync banner appears, fix the anon JWT secret and redeploy — local-only rows are not in the database yet
-4. Change shared data: create a maintenance request, user, shipping batch, technician work, or spare receive
-5. In Supabase → **Table Editor** → `arms_client_store` → confirm `maintenance_requests` (and related keys) updated
-6. Open the site in another browser / device → same ops data after load
-7. Change language or theme → stays on that device only (not in Supabase)
+1. Run **`013_normalized_app_tables.sql`** once in SQL Editor
+2. Open https://msalah2489.github.io/ARMS/
+3. Sign in (e.g. `admin` / `demo` or `branch@arms.local` / `demo`)
+4. If a yellow sync banner appears, fix the anon JWT secret and redeploy
+5. Change shared data: create a maintenance request, user, shipping batch, etc.
+6. In Supabase → **Table Editor** → open **`app_maintenance_requests`** / **`v_app_users`** — rows/columns (not giant JSON)
+7. Open the site in another browser / device → same ops data after load
+8. Change language or theme → stays on that device only (not in Supabase)
