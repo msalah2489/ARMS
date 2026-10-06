@@ -23,15 +23,16 @@ Dashboard CRM lists (customers, branches, devices, service requests) prefer this
 ## One-time setup in Supabase
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project.
-2. **SQL Editor** → run (in order if the project is new):
-   - `supabase/setup_all.sql` or `supabase/migrations/001_init.sql`
-   - `supabase/migrations/002_branch_workflow.sql` … `006_*.sql` (if not applied yet)
-   - **`supabase/migrations/007_static_export_sync.sql`** (required for Pages sync)
+2. **SQL Editor** → paste and run **once**:
+   - **`supabase/migrations/000_apply_all_for_pages.sql`**
+   - This creates missing CRM tables + `ops_branches` + `arms_client_store` and anon RLS policies.
+   - Safe to re-run. Ignore any earlier error from running `007` alone (`ops_branches` missing).
 3. **Project Settings → API**:
    - copy **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - copy **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-> Migration `007` adds starter RLS policies allowing `anon` read/write on the sync table and core CRM tables so the static GitHub Pages build can work without server-side Auth. Tighten policies later for production security.
+> Optional later: run `002`…`006` if you need full shipping/workflow RPCs beyond Pages sync.
+> The one-shot file adds starter RLS policies allowing `anon` read/write on the sync table and core CRM tables so the static GitHub Pages build can work without server-side Auth. Tighten policies later for production security.
 
 ## Local `.env.local`
 
