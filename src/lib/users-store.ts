@@ -504,11 +504,12 @@ export async function createManagedUser(input: {
   return { ok: true, user };
 }
 
-/** Admin update — username is immutable; branch/role/active can change. */
+/** Admin update — username, branch/role/active, and password can change (upsert by id). */
 export async function updateManagedUserByAdmin(
   id: string,
   input: {
     fullName: string;
+    username?: string;
     email?: string;
     mobile: string;
     role: AssignableUserRole;
@@ -525,17 +526,24 @@ export async function updateManagedUserByAdmin(
 
   const checked = validateUserInput({
     ...input,
-    username: existing.username,
+    username: input.username ?? existing.username,
     excludeId: id,
-    requireUsername: false,
+    requireUsername: true,
   });
   if (!checked.ok) return checked;
+
+  const nextUsername = checked.username!;
+  const nextEmail =
+    checked.email ||
+    (existing.email.toLowerCase().endsWith("@arms.local")
+      ? `${nextUsername}@arms.local`
+      : existing.email);
 
   const next: ManagedUser = {
     ...existing,
     fullName: checked.fullName,
-    // username never changes
-    email: checked.email || existing.email,
+    username: nextUsername,
+    email: nextEmail,
     mobile: checked.mobile,
     role: input.role,
     opsBranchId: checked.branch?.id ?? null,
@@ -565,6 +573,7 @@ export async function setManagedUserActive(
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
   return updateManagedUserByAdmin(id, {
     fullName: existing.fullName,
+    username: existing.username,
     email: existing.email,
     mobile: existing.mobile,
     role: existing.role,

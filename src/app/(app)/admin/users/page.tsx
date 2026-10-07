@@ -121,7 +121,7 @@ function AdminUsersContent() {
     <div className="space-y-6">
       <PageHeader
         title="إدارة المستخدمين"
-        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول فقط ولا يُعدَّل بعد الإنشاء. الأرشفة تحفظ السجل وتُخفي المستخدم من القوائم النشطة."
+        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول ويمكن تعديله (يجب أن يكون فريدًا). الأرشفة تحفظ السجل وتُخفي المستخدم من القوائم النشطة."
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
@@ -142,15 +142,12 @@ function AdminUsersContent() {
             <input
               value={form.username}
               onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-              disabled={Boolean(editingId)}
               placeholder="مثال: nora.branch"
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 disabled:bg-sand-50 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50 dark:disabled:bg-ink-900"
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
-            {editingId ? (
-              <span className="mt-1 block text-xs text-ink-700/50 dark:text-sand-100/50">
-                لا يمكن تعديل اسم المستخدم.
-              </span>
-            ) : null}
+            <span className="mt-1 block text-xs text-ink-700/50 dark:text-sand-100/50">
+              3–32 حرفًا (إنجليزي/أرقام . _ -). يجب أن يكون فريدًا.
+            </span>
           </label>
           <label className="block text-sm dark:text-sand-100">
             رقم الجوال *
@@ -239,6 +236,7 @@ function AdminUsersContent() {
                 if (editingId) {
                   const result = await updateManagedUserByAdmin(editingId, {
                     fullName: form.fullName,
+                    username: form.username,
                     email: form.email,
                     mobile: form.mobile,
                     role: form.role,
@@ -250,7 +248,9 @@ function AdminUsersContent() {
                     setError(result.error);
                     return;
                   }
-                  setMessage(`تم تحديث بيانات ${result.user.fullName}.`);
+                  setMessage(
+                    `تم تحديث بيانات ${result.user.fullName}. اسم الدخول: ${result.user.username}`,
+                  );
                 } else {
                   const result = await createManagedUser({
                     fullName: form.fullName,
