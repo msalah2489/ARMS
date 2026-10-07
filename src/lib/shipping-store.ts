@@ -2,6 +2,7 @@ import {
   listAllRequestDevices,
   listMaintenanceRequests,
   updateDeviceLifecycle,
+  updateDevicesLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { listBranchOptions } from "@/lib/branches-store";
@@ -10,6 +11,7 @@ import { pushAppAuditEvents, pushAppShippingBatches } from "@/lib/supabase/app-s
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   BranchReturnReceiveOutcome,
+  DraftRequestDevice,
   Profile,
   ShippingBatch,
   ShippingBatchItem,
@@ -240,16 +242,20 @@ export function createShippingBatch(input: {
     items,
   };
 
-  for (const item of selected) {
-    updateDeviceLifecycle(item.request.id, item.device.localId, {
-      lifecycleStatus: "in_transit_to_service",
-      currentLocation: "in_transit_to_service",
-      lockedAfterShip: true,
-      assignmentPath: "service_center",
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-    });
-  }
+  updateDevicesLifecycle(
+    selected.map((item) => ({
+      requestId: item.request.id,
+      deviceLocalId: item.device.localId,
+      patch: {
+        lifecycleStatus: "in_transit_to_service" as const,
+        currentLocation: "in_transit_to_service",
+        lockedAfterShip: true,
+        assignmentPath: "service_center" as const,
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+      },
+    })),
+  );
 
   writeBatches([batch, ...readAllBatches()]);
   writeAudit({
@@ -327,15 +333,19 @@ export function createReturnShippingBatch(input: {
     items,
   };
 
-  for (const item of selected) {
-    updateDeviceLifecycle(item.request.id, item.device.localId, {
-      lifecycleStatus: "in_return_transit",
-      currentLocation: "in_return_transit",
-      lockedAfterShip: true,
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-    });
-  }
+  updateDevicesLifecycle(
+    selected.map((item) => ({
+      requestId: item.request.id,
+      deviceLocalId: item.device.localId,
+      patch: {
+        lifecycleStatus: "in_return_transit" as const,
+        currentLocation: "in_return_transit",
+        lockedAfterShip: true,
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+      },
+    })),
+  );
 
   writeBatches([batch, ...readAllBatches()]);
   writeAudit({
@@ -410,24 +420,64 @@ export function removeAllDevicesFromShippingBatch(input: {
 }): { ok: true; batch: ShippingBatch } | { ok: false; error: string } {
   if (!input.reason.trim()) return { ok: false, error: "سبب الاستبعاد إلزامي." };
 
-  const batch = readAllBatches().find((item) => item.id === input.batchId);
+  const role = input.user.role;
+  if (!["branch", "branch_employee", "maintenance_manager", "system_admin", "manager"].includes(role)) {
+    return { ok: false, error: "غير مصرح بالاستبعاد." };
+  }
+
+  const all = readAllBatches();
+  const batch = all.find((item) => item.id === input.batchId);
   if (!batch) return { ok: false, error: "البوليصة غير موجودة." };
+  if (batch.direction !== "to_service") {
+    return { ok: false, error: "الاستبعاد متاح لبوالص الإرسال إلى الصيانة فقط." };
+  }
+  if (batch.status === "handed_to_carrier" || batch.status === "received") {
+    return { ok: false, error: "لا يمكن الاستبعاد بعد التسليم لشركة الشحن." };
+  }
 
   const activeItems = batch.items.filter((item) => item.status === "active");
   if (!activeItems.length) return { ok: false, error: "لا توجد أجهزة نشطة." };
 
-  let last: ShippingBatch = batch;
+  const now = new Date().toISOString();
+  const reason = input.reason.trim();
+  const lifecycleUpdates: Array<{
+    requestId: string;
+    deviceLocalId: string;
+    patch: Partial<DraftRequestDevice>;
+  }> = [];
+
   for (const item of activeItems) {
-    const result = removeDeviceFromShippingBatch({
-      user: input.user,
-      batchId: input.batchId,
-      itemId: item.id,
-      reason: input.reason,
+    item.status = "removed";
+    item.removedAt = now;
+    item.removedBy = input.user.id;
+    item.removalReason = reason;
+
+    const match = listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId);
+    if (match) {
+      lifecycleUpdates.push({
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
+          lifecycleStatus: "excluded_from_shipment",
+          currentLocation: "branch",
+          lockedAfterShip: false,
+        },
+      });
+    }
+
+    writeAudit({
+      actorId: input.user.id,
+      actorName: input.user.fullName,
+      action: "remove_device_from_batch",
+      entityType: "shipping_batch_item",
+      entityId: item.id,
+      after: { reason },
     });
-    if (!result.ok) return result;
-    last = result.batch;
   }
-  return { ok: true, batch: last };
+
+  updateDevicesLifecycle(lifecycleUpdates);
+  writeBatches(all);
+  return { ok: true, batch };
 }
 
 export function confirmHandedToCarrier(input: {
@@ -461,16 +511,22 @@ export function confirmHandedToCarrier(input: {
   batch.handedToCarrierAt = new Date().toISOString();
   batch.handedToCarrierBy = input.user.id;
 
-  for (const item of activeItems) {
+  const handoffUpdates = activeItems.flatMap((item) => {
     const match = listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId);
-    if (match) {
-      updateDeviceLifecycle(match.request.id, match.device.localId, {
-        lifecycleStatus: "in_transit_to_service",
-        currentLocation: "in_transit_to_service",
-        lockedAfterShip: true,
-      });
-    }
-  }
+    if (!match) return [];
+    return [
+      {
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
+          lifecycleStatus: "in_transit_to_service" as const,
+          currentLocation: "in_transit_to_service",
+          lockedAfterShip: true,
+        },
+      },
+    ];
+  });
+  updateDevicesLifecycle(handoffUpdates);
 
   writeBatches(all);
   writeAudit({
@@ -521,22 +577,28 @@ export function confirmReceivedAtService(input: {
   batch.receivedBy = input.user.id;
   batch.receivedByName = input.user.fullName;
 
-  for (const item of activeItems) {
+  const receiveUpdates = activeItems.flatMap((item) => {
     const match = listAllRequestDevices().find(
       (row) =>
         row.device.localId === item.requestDeviceId ||
         row.device.deviceCode === item.deviceCode,
     );
-    if (match) {
-      updateDeviceLifecycle(match.request.id, match.device.localId, {
-        lifecycleStatus: "awaiting_maintenance",
-        currentLocation: "service_center",
-        lockedAfterShip: false,
-        assignedTechnicianId: null,
-        assignedTechnicianName: null,
-      });
-    }
-  }
+    if (!match) return [];
+    return [
+      {
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
+          lifecycleStatus: "awaiting_maintenance" as const,
+          currentLocation: "service_center",
+          lockedAfterShip: false,
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+        },
+      },
+    ];
+  });
+  updateDevicesLifecycle(receiveUpdates);
 
   writeBatches(all);
   writeAudit({
@@ -582,6 +644,12 @@ export function receiveReturnBatchDevices(input: {
     return { ok: false, error: "هذه البوليصة لا تخص فرعك." };
   }
 
+  const lifecycleUpdates: Array<{
+    requestId: string;
+    deviceLocalId: string;
+    patch: Partial<DraftRequestDevice>;
+  }> = [];
+
   for (const decision of input.decisions) {
     if (
       (decision.outcome === "damaged" || decision.outcome === "not_received") &&
@@ -604,15 +672,23 @@ export function receiveReturnBatchDevices(input: {
     item.branchReceivedBy = input.user.id;
 
     const match = listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId);
-    if (match) {
-      if (decision.outcome === "intact") {
-        updateDeviceLifecycle(match.request.id, match.device.localId, {
+    if (!match) continue;
+
+    if (decision.outcome === "intact") {
+      lifecycleUpdates.push({
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
           lifecycleStatus: "awaiting_customer",
           currentLocation: "branch",
           lockedAfterShip: false,
-        });
-      } else if (decision.outcome === "damaged") {
-        updateDeviceLifecycle(match.request.id, match.device.localId, {
+        },
+      });
+    } else if (decision.outcome === "damaged") {
+      lifecycleUpdates.push({
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
           lifecycleStatus: "awaiting_customer",
           currentLocation: "branch",
           lockedAfterShip: false,
@@ -622,10 +698,14 @@ export function receiveReturnBatchDevices(input: {
           ]
             .filter(Boolean)
             .join(" | "),
-        });
-      } else if (decision.outcome === "not_received") {
-        // Device never arrived — mark معلق at service center for re-return or close.
-        updateDeviceLifecycle(match.request.id, match.device.localId, {
+        },
+      });
+    } else if (decision.outcome === "not_received") {
+      // Device never arrived — mark معلق at service center for re-return or close.
+      lifecycleUpdates.push({
+        requestId: match.request.id,
+        deviceLocalId: match.device.localId,
+        patch: {
           lifecycleStatus: "awaiting_manager_decision",
           currentLocation: "service_center",
           lockedAfterShip: false,
@@ -637,10 +717,12 @@ export function receiveReturnBatchDevices(input: {
           ]
             .filter(Boolean)
             .join(" | "),
-        });
-      }
+        },
+      });
     }
   }
+
+  updateDevicesLifecycle(lifecycleUpdates);
 
   const pending = batch.items.filter(
     (item) => item.status === "active" && !item.branchReceiveOutcome,

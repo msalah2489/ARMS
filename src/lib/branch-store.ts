@@ -72,9 +72,29 @@ function readRequestsCached(): MaintenanceRequestRecord[] {
   return rows;
 }
 
+/** Latest snapshot waiting for a coalesced remote push (avoids stale overwrite). */
+let persistRequestsPending: MaintenanceRequestRecord[] | null = null;
+let persistRequestsFlushing = false;
+
 function schedulePersistRequests(requests: MaintenanceRequestRecord[]) {
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  void pushAppMaintenanceRequests(requests);
+  persistRequestsPending = requests;
+  void flushPersistRequests();
+}
+
+async function flushPersistRequests() {
+  if (persistRequestsFlushing) return;
+  persistRequestsFlushing = true;
+  try {
+    while (persistRequestsPending) {
+      const snapshot = persistRequestsPending;
+      persistRequestsPending = null;
+      await pushAppMaintenanceRequests(snapshot);
+    }
+  } finally {
+    persistRequestsFlushing = false;
+    if (persistRequestsPending) void flushPersistRequests();
+  }
 }
 
 /** Raw localStorage read. skipSeed avoids writing demo samples. */
@@ -454,15 +474,35 @@ export function updateDeviceLifecycle(
   deviceLocalId: string,
   patch: Partial<DraftRequestDevice>,
 ) {
+  return updateDevicesLifecycle([{ requestId, deviceLocalId, patch }]);
+}
+
+/** Apply many device patches in one local write + one coalesced remote push. */
+export function updateDevicesLifecycle(
+  updates: Array<{
+    requestId: string;
+    deviceLocalId: string;
+    patch: Partial<DraftRequestDevice>;
+  }>,
+) {
+  if (!updates.length) return listMaintenanceRequests();
+
+  const patchByDevice = new Map<string, Partial<DraftRequestDevice>>();
+  for (const item of updates) {
+    const key = `${item.requestId}::${item.deviceLocalId}`;
+    patchByDevice.set(key, { ...patchByDevice.get(key), ...item.patch });
+  }
+
   const all = listMaintenanceRequests();
   const next = all.map((request) => {
-    if (request.id !== requestId) return request;
-    return {
-      ...request,
-      devices: request.devices.map((device) =>
-        device.localId === deviceLocalId ? { ...device, ...patch } : device,
-      ),
-    };
+    let touched = false;
+    const devices = request.devices.map((device) => {
+      const patch = patchByDevice.get(`${request.id}::${device.localId}`);
+      if (!patch) return device;
+      touched = true;
+      return { ...device, ...patch };
+    });
+    return touched ? { ...request, devices } : request;
   });
   writeJson(REQUESTS_KEY, next);
   schedulePersistRequests(next);
@@ -499,16 +539,23 @@ export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
 
 /** Clear stale technician assignment when device is still marked ready for maintenance. */
 export function repairStaleTechnicianAssignments() {
-  for (const item of listAllRequestDevices()) {
+  const updates = listAllRequestDevices().flatMap((item) => {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
-    if (status !== "awaiting_maintenance") continue;
+    if (status !== "awaiting_maintenance") return [];
     const assigned = String(item.device.assignedTechnicianId ?? "").trim();
-    if (!assigned) continue;
-    updateDeviceLifecycle(item.request.id, item.device.localId, {
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-    });
-  }
+    if (!assigned) return [];
+    return [
+      {
+        requestId: item.request.id,
+        deviceLocalId: item.device.localId,
+        patch: {
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+        },
+      },
+    ];
+  });
+  updateDevicesLifecycle(updates);
 }
 
 /** Canonical English keys → Arabic labels (primary + internal/legacy). */

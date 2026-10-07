@@ -5,6 +5,7 @@ import {
   normalizeLifecycleStatus,
   repairStaleTechnicianAssignments,
   updateDeviceLifecycle,
+  updateDevicesLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { isDemoMode, normalizeRole } from "@/lib/auth";
@@ -13,6 +14,7 @@ import { pushAppTechnicianWork } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { HOLD_REASON_LABELS } from "@/lib/technician-catalog";
 import type {
+  DraftRequestDevice,
   ManagerDeviceDecision,
   Profile,
   TechnicianWorkRecord,
@@ -79,6 +81,12 @@ function hasOpenWorkForDevice(requestId: string, deviceLocalId: string) {
 /** Free devices stuck in maintenance after a hold/complete that left a stale assignment. */
 function repairOrphanedMaintenanceDevices() {
   const work = listTechnicianWork();
+  const updates: Array<{
+    requestId: string;
+    deviceLocalId: string;
+    patch: Partial<DraftRequestDevice>;
+  }> = [];
+
   for (const item of listAllRequestDevices()) {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
     if (status !== "in_maintenance" && status !== "in_maintenance_at_branch") continue;
@@ -100,25 +108,35 @@ function repairOrphanedMaintenanceDevices() {
 
     const path = getDeviceAssignmentPath(item.request, item.device);
     if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
-      updateDeviceLifecycle(item.request.id, item.device.localId, {
-        lifecycleStatus: held ? "awaiting_manager_decision" : "in_maintenance_at_branch",
-        currentLocation: "branch",
-        assignedTechnicianId: null,
-        assignedTechnicianName: null,
-        maintenanceStartedAt: null,
-        maintenanceFinishedAt: held ? item.device.maintenanceFinishedAt ?? null : null,
+      updates.push({
+        requestId: item.request.id,
+        deviceLocalId: item.device.localId,
+        patch: {
+          lifecycleStatus: held ? "awaiting_manager_decision" : "in_maintenance_at_branch",
+          currentLocation: "branch",
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+          maintenanceStartedAt: null,
+          maintenanceFinishedAt: held ? item.device.maintenanceFinishedAt ?? null : null,
+        },
       });
       continue;
     }
 
-    updateDeviceLifecycle(item.request.id, item.device.localId, {
-      lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
-      currentLocation: "service_center",
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-      maintenanceStartedAt: null,
+    updates.push({
+      requestId: item.request.id,
+      deviceLocalId: item.device.localId,
+      patch: {
+        lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
+        currentLocation: "service_center",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceStartedAt: null,
+      },
     });
   }
+
+  updateDevicesLifecycle(updates);
 }
 
 /** Apply urgent-only rule: if any urgent exists in the set, keep only urgent. */

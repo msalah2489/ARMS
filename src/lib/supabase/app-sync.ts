@@ -465,12 +465,17 @@ export async function pullAppMaintenanceRequests(): Promise<MaintenanceRequestRe
   });
 }
 
-export async function pushAppMaintenanceRequests(
+/**
+ * Full replace of requests+devices. Concurrent callers must not race:
+ * delete-all-then-insert means an older in-flight push can wipe a newer one.
+ * Coalesce to the latest snapshot and serialize execution.
+ */
+let maintenanceRequestsPushTail: Promise<void> = Promise.resolve();
+let maintenanceRequestsPushPending: MaintenanceRequestRecord[] | null = null;
+
+async function writeMaintenanceRequestsSnapshot(
   requests: MaintenanceRequestRecord[],
 ): Promise<SyncResult> {
-  if (!isSupabaseConfigured() || typeof window === "undefined") {
-    return { ok: false, error: "Supabase is not configured." };
-  }
   try {
     await deleteAll("app_request_devices");
     await deleteAll("app_maintenance_requests");
@@ -485,6 +490,35 @@ export async function pushAppMaintenanceRequests(
     console.error("[arms] pushAppMaintenanceRequests", error);
     reportError("app_maintenance_requests", error);
     return { ok: false, error: message };
+  }
+}
+
+export async function pushAppMaintenanceRequests(
+  requests: MaintenanceRequestRecord[],
+): Promise<SyncResult> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  maintenanceRequestsPushPending = requests;
+
+  const previous = maintenanceRequestsPushTail;
+  let release!: () => void;
+  maintenanceRequestsPushTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  try {
+    let last: SyncResult = { ok: true };
+    while (maintenanceRequestsPushPending) {
+      const snapshot = maintenanceRequestsPushPending;
+      maintenanceRequestsPushPending = null;
+      last = await writeMaintenanceRequestsSnapshot(snapshot);
+    }
+    return last;
+  } finally {
+    release();
   }
 }
 
