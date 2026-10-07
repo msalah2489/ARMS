@@ -17,8 +17,10 @@ import type {
   DeviceLifecycleStatus,
   DraftRequestDevice,
   Profile,
+  ShipmentDirection,
   ShippingBatch,
   ShippingBatchItem,
+  ShippingBatchStatus,
 } from "@/types/domain";
 
 const BATCHES_KEY = "arms_shipping_batches_v1";
@@ -933,6 +935,167 @@ export const REPAIRABLE_SHIPPING_STATUSES = [
 
 export type RepairableShippingStatus = (typeof REPAIRABLE_SHIPPING_STATUSES)[number];
 
+/** Statuses that imply the device should be linked to an open waybill. */
+export function repairStatusNeedsBatch(status: RepairableShippingStatus | "" | undefined) {
+  return status === "in_transit_to_service" || status === "in_return_transit";
+}
+
+function expectedStatusForBatch(batch: ShippingBatch): RepairableShippingStatus {
+  return batch.direction === "return" ? "in_return_transit" : "in_transit_to_service";
+}
+
+function batchMatchesRepairStatus(batch: ShippingBatch, status: RepairableShippingStatus) {
+  if (status === "in_return_transit") return batch.direction === "return";
+  if (status === "in_transit_to_service") return batch.direction !== "return";
+  return true;
+}
+
+export type RepairBatchOption = {
+  id: string;
+  shipmentNumber: string;
+  carrier: string;
+  direction: ShipmentDirection;
+  status: ShippingBatchStatus;
+  opsBranchId: string;
+  branchName: string;
+  containsDevice: boolean;
+  activeItemCount: number;
+  label: string;
+};
+
+/**
+ * Open waybills suitable for manual shipping repair on one device.
+ * Prefers batches that already contain the device, then same ops branch.
+ */
+export function listRepairBatchOptions(input: {
+  deviceLocalIdOrCode: string;
+  /** When set to a transit status, only matching-direction batches are returned. */
+  forStatus?: RepairableShippingStatus | "";
+}): RepairBatchOption[] {
+  const match = findDeviceQueueItem(input.deviceLocalIdOrCode);
+  if (!match) return [];
+
+  const codeKey = normalizeDeviceCodeKey(match.device.deviceCode);
+  const branchMap = new Map(listOpsBranches().map((b) => [b.id, b.name]));
+  const forStatus = input.forStatus || undefined;
+  const filterDirection = forStatus && repairStatusNeedsBatch(forStatus) ? forStatus : null;
+
+  const options: RepairBatchOption[] = [];
+  for (const batch of readAllBatches().filter(isOpenShippingBatch)) {
+    if (filterDirection && !batchMatchesRepairStatus(batch, filterDirection)) continue;
+
+    const containsDevice = batch.items.some(
+      (item) =>
+        item.status === "active" &&
+        (item.requestDeviceId === match.device.localId ||
+          normalizeDeviceCodeKey(item.deviceCode) === codeKey),
+    );
+    const sameBranch = batch.opsBranchId === match.request.opsBranchId;
+    // Prefer same-branch batches; still allow others that already contain the device.
+    if (!sameBranch && !containsDevice) continue;
+
+    const branchName =
+      branchMap.get(batch.opsBranchId) ?? match.request.opsBranchName ?? batch.sourceName;
+    const dirLabel = batch.direction === "return" ? "إرجاع" : "إرسال";
+    const statusLabel = SHIPPING_BATCH_STATUS_LABELS[batch.status] ?? batch.status;
+    const activeItemCount = batch.items.filter((item) => item.status === "active").length;
+    const onDevice = containsDevice ? " · تحتوي الجهاز" : "";
+
+    options.push({
+      id: batch.id,
+      shipmentNumber: batch.shipmentNumber,
+      carrier: batch.carrier,
+      direction: batch.direction,
+      status: batch.status,
+      opsBranchId: batch.opsBranchId,
+      branchName,
+      containsDevice,
+      activeItemCount,
+      label: `${batch.shipmentNumber} · ${dirLabel} · ${statusLabel} · ${batch.carrier} · ${branchName}${onDevice}`,
+    });
+  }
+
+  return options.sort((a, b) => {
+    if (a.containsDevice !== b.containsDevice) return a.containsDevice ? -1 : 1;
+    if (a.opsBranchId === match.request.opsBranchId && b.opsBranchId !== match.request.opsBranchId)
+      return -1;
+    if (b.opsBranchId === match.request.opsBranchId && a.opsBranchId !== match.request.opsBranchId)
+      return 1;
+    return a.shipmentNumber.localeCompare(b.shipmentNumber, "ar");
+  });
+}
+
+/**
+ * Link device as an active item on the selected open waybill (repair path only).
+ * Detaches from any other open waybill first. Does not change lifecycle status.
+ */
+function ensureDeviceActiveOnRepairBatch(input: {
+  user: Profile;
+  batchId: string;
+  device: DraftRequestDevice;
+}):
+  | { ok: true; batch: ShippingBatch; added: boolean; reactivated: boolean; detachedShipmentNumbers: string[] }
+  | { ok: false; error: string } {
+  const all = readAllBatches();
+  const batch = all.find((row) => row.id === input.batchId);
+  if (!batch) return { ok: false, error: "البوليصة المختارة غير موجودة." };
+  if (!isOpenShippingBatch(batch)) {
+    return { ok: false, error: "لا يمكن الربط ببوليصة مُستلمة أو ملغاة." };
+  }
+
+  const codeKey = normalizeDeviceCodeKey(input.device.deviceCode);
+  const now = new Date().toISOString();
+  const detachedShipmentNumbers: string[] = [];
+
+  for (const other of all) {
+    if (other.id === batch.id) continue;
+    if (!isOpenShippingBatch(other)) continue;
+    for (const item of other.items) {
+      if (item.status !== "active") continue;
+      const same =
+        item.requestDeviceId === input.device.localId ||
+        normalizeDeviceCodeKey(item.deviceCode) === codeKey;
+      if (!same) continue;
+      item.status = "removed";
+      item.removedAt = now;
+      item.removedBy = input.user.id;
+      item.removalReason = "إصلاح حالة الشحن — نقل إلى بوليصة أخرى";
+      detachedShipmentNumbers.push(other.shipmentNumber);
+    }
+  }
+
+  const existing = batch.items.find(
+    (item) =>
+      item.requestDeviceId === input.device.localId ||
+      normalizeDeviceCodeKey(item.deviceCode) === codeKey,
+  );
+
+  let added = false;
+  let reactivated = false;
+  if (existing) {
+    if (existing.status !== "active") {
+      existing.status = "active";
+      existing.removedAt = null;
+      existing.removedBy = null;
+      existing.removalReason = null;
+      reactivated = true;
+    }
+  } else {
+    batch.items.push({
+      id: crypto.randomUUID(),
+      requestDeviceId: input.device.localId,
+      deviceCode: input.device.deviceCode,
+      modelName: input.device.modelName,
+      color: input.device.color ?? "",
+      status: "active",
+    });
+    added = true;
+  }
+
+  writeBatches(all);
+  return { ok: true, batch, added, reactivated, detachedShipmentNumbers };
+}
+
 export type ShippingStatusInconsistency = {
   requestId: string;
   deviceLocalId: string;
@@ -1127,6 +1290,12 @@ export function repairDeviceShippingStatus(input: {
   deviceLocalIdOrCode: string;
   /** When omitted, auto-sync from open waybill or unlock for eligibility. */
   targetStatus?: RepairableShippingStatus;
+  /**
+   * Optional open waybill for transit targets.
+   * When set: links the device as an active item on that waybill (if missing)
+   * and sets status to match the waybill direction.
+   */
+  batchId?: string;
 }):
   | { ok: true; deviceCode: string; before: string; after: string; note: string }
   | { ok: false; error: string } {
@@ -1141,18 +1310,87 @@ export function repairDeviceShippingStatus(input: {
 
   const before = normalizeLifecycleStatus(match.device.lifecycleStatus);
   const open = findOpenBatchForDevice(match.device);
+  const selectedBatchId = input.batchId?.trim() || undefined;
 
   let target: RepairableShippingStatus;
   let note: string;
+  let linkedBatch: ShippingBatch | null = null;
+  let linkNote = "";
 
-  if (input.targetStatus) {
+  if (selectedBatchId) {
+    const batch = getShippingBatch(selectedBatchId);
+    if (!batch || !isOpenShippingBatch(batch)) {
+      return { ok: false, error: "البوليصة المختارة غير متاحة (مُستلمة أو ملغاة أو غير موجودة)." };
+    }
+
+    const batchStatus = expectedStatusForBatch(batch);
+    if (input.targetStatus) {
+      if (
+        !(REPAIRABLE_SHIPPING_STATUSES as readonly string[]).includes(input.targetStatus)
+      ) {
+        return { ok: false, error: "الحالة المطلوبة غير مسموحة لإصلاح الشحن." };
+      }
+      if (
+        repairStatusNeedsBatch(input.targetStatus) &&
+        !batchMatchesRepairStatus(batch, input.targetStatus)
+      ) {
+        return {
+          ok: false,
+          error:
+            batch.direction === "return"
+              ? "البوليصة المختارة إرجاع — اختر حالة «في الطريق للفرع» أو بوليصة إرسال."
+              : "البوليصة المختارة إرسال — اختر حالة «جاري الشحن» أو بوليصة إرجاع.",
+        };
+      }
+      // Transit + batch → status always follows the waybill direction.
+      target = repairStatusNeedsBatch(input.targetStatus) ? batchStatus : input.targetStatus;
+    } else {
+      target = batchStatus;
+    }
+
+    if (repairStatusNeedsBatch(target)) {
+      const linked = ensureDeviceActiveOnRepairBatch({
+        user: input.user,
+        batchId: batch.id,
+        device: match.device,
+      });
+      if (!linked.ok) return linked;
+      linkedBatch = linked.batch;
+      const parts: string[] = [];
+      if (linked.added) parts.push("أُضيف الجهاز كعنصر نشط على البوليصة");
+      else if (linked.reactivated) parts.push("أُعيد تفعيل الجهاز على البوليصة");
+      else parts.push("الجهاز كان أصلاً على البوليصة");
+      if (linked.detachedShipmentNumbers.length) {
+        parts.push(
+          `وأُزيل من بوليصة/بوالص: ${linked.detachedShipmentNumbers.join("، ")}`,
+        );
+      }
+      linkNote = parts.join("؛ ");
+      note = `مزامنة مع بوليصة ${linked.batch.shipmentNumber} (${SHIPPING_BATCH_STATUS_LABELS[linked.batch.status] ?? linked.batch.status}). ${linkNote}.`;
+    } else {
+      note = "تصحيح يدوي ضمن الحالات المسموحة للشحن.";
+    }
+  } else if (input.targetStatus) {
     if (
       !(REPAIRABLE_SHIPPING_STATUSES as readonly string[]).includes(input.targetStatus)
     ) {
       return { ok: false, error: "الحالة المطلوبة غير مسموحة لإصلاح الشحن." };
     }
-    target = input.targetStatus;
-    note = "تصحيح يدوي ضمن الحالات المسموحة للشحن.";
+    if (repairStatusNeedsBatch(input.targetStatus)) {
+      if (open && batchMatchesRepairStatus(open.batch, input.targetStatus)) {
+        target = input.targetStatus;
+        note = `تصحيح يدوي مع البوليصة الحالية ${open.batch.shipmentNumber}.`;
+      } else {
+        return {
+          ok: false,
+          error:
+            "لتعيين حالة إرسال/إرجاع عبر بوليصة اختر بوليصة مفتوحة من القائمة، أو استخدم الوضع التلقائي إن كان الجهاز على بوليصة نشطة.",
+        };
+      }
+    } else {
+      target = input.targetStatus;
+      note = "تصحيح يدوي ضمن الحالات المسموحة للشحن.";
+    }
   } else if (open) {
     target =
       open.batch.direction === "return" ? "in_return_transit" : "in_transit_to_service";
@@ -1192,7 +1430,12 @@ export function repairDeviceShippingStatus(input: {
       lifecycleStatus: before,
       lockedAfterShip: match.device.lockedAfterShip,
     },
-    after: { ...patch, note },
+    after: {
+      ...patch,
+      note,
+      batchId: linkedBatch?.id ?? selectedBatchId ?? open?.batch.id,
+      shipmentNumber: linkedBatch?.shipmentNumber ?? open?.batch.shipmentNumber,
+    },
   });
 
   return {
