@@ -100,22 +100,24 @@ export async function downloadXlsxTemplate(spec: XlsxTemplateSpec): Promise<void
     });
   });
 
-  if (spec.notes && spec.notes.length > 0) {
+  const notes = spec.notes ?? [];
+  if (notes.length > 0) {
     const noteSheet = wb.addWorksheet("تعليمات", {
       views: [{ rightToLeft: true }],
     });
     noteSheet.getColumn(1).width = 80;
-    spec.notes.forEach((note, i) => {
+    notes.forEach((note, i) => {
       noteSheet.getCell(i + 1, 1).value = note;
     });
 
     // Visible copy of dropdown lists so values can be checked / pasted if needed.
     const branchDd = spec.dropdowns.find((d) => d.header === "ops_branch_name");
     if (branchDd && branchDd.list.length > 0) {
-      noteSheet.getCell(spec.notes.length + 2, 1).value = "أسماء الفروع المتاحة (انسخ الاسم إلى عمود ops_branch_name):";
-      noteSheet.getCell(spec.notes.length + 2, 1).font = { bold: true };
+      noteSheet.getCell(notes.length + 2, 1).value =
+        "أسماء الفروع المتاحة (انسخ الاسم إلى عمود ops_branch_name):";
+      noteSheet.getCell(notes.length + 2, 1).font = { bold: true };
       branchDd.list.forEach((name, i) => {
-        noteSheet.getCell(spec.notes.length + 3 + i, 1).value = name;
+        noteSheet.getCell(notes.length + 3 + i, 1).value = name;
       });
     }
   }
