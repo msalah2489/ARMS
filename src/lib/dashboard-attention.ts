@@ -3,11 +3,24 @@ import {
   listMaintenanceRequests,
   normalizeLifecycleStatus,
 } from "@/lib/branch-store";
+import {
+  listBranchesReadyToShip,
+  listCarriersWithOpenBatches,
+  type BranchReadyToShipSummary,
+  type CarrierOpenBatchesSummary,
+} from "@/lib/shipping-store";
 
 export type DashboardAttentionCounts = {
   urgentToday: number;
   pendingSupervisor: number;
   awaitingCustomer: number;
+};
+
+export type DashboardOpsShippingAttention = {
+  branchesReadyToShip: BranchReadyToShipSummary[];
+  carriersWithOpenBatches: CarrierOpenBatchesSummary[];
+  readyToShipDeviceTotal: number;
+  openBatchTotal: number;
 };
 
 function todayKey() {
@@ -39,5 +52,20 @@ export function getDashboardAttentionCounts(
       (item) =>
         normalizeLifecycleStatus(item.device.lifecycleStatus) === "awaiting_customer",
     ).length,
+  };
+}
+
+/** Shipping attention for maintenance manager / system admin dashboards. */
+export function getDashboardOpsShippingAttention(): DashboardOpsShippingAttention {
+  const branchesReadyToShip = listBranchesReadyToShip();
+  const carriersWithOpenBatches = listCarriersWithOpenBatches();
+  return {
+    branchesReadyToShip,
+    carriersWithOpenBatches,
+    readyToShipDeviceTotal: branchesReadyToShip.reduce(
+      (sum, item) => sum + item.readyCount,
+      0,
+    ),
+    openBatchTotal: carriersWithOpenBatches.reduce((sum, item) => sum + item.total, 0),
   };
 }

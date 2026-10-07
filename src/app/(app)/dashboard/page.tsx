@@ -19,7 +19,9 @@ import {
 } from "@/lib/branch-store";
 import {
   getDashboardAttentionCounts,
+  getDashboardOpsShippingAttention,
   type DashboardAttentionCounts,
+  type DashboardOpsShippingAttention,
 } from "@/lib/dashboard-attention";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -36,6 +38,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [attention, setAttention] = useState<DashboardAttentionCounts | null>(null);
+  const [shippingAttention, setShippingAttention] =
+    useState<DashboardOpsShippingAttention | null>(null);
   const [techStats, setTechStats] = useState<ReturnType<typeof getTechnicianDashboardStats> | null>(
     null,
   );
@@ -49,8 +53,14 @@ export default function DashboardPage() {
       if (isBranchRole(session.role)) {
         setBranchRequests(listMaintenanceRequests(session.opsBranchId));
         setAttention(getDashboardAttentionCounts(session.opsBranchId));
+        setShippingAttention(null);
       } else {
         setAttention(getDashboardAttentionCounts());
+        if (isMaintenanceManagerRole(session.role)) {
+          setShippingAttention(getDashboardOpsShippingAttention());
+        } else {
+          setShippingAttention(null);
+        }
       }
 
       if (isTechnicianRole(session.role)) {
@@ -288,6 +298,9 @@ export default function DashboardPage() {
         pendingHref="/service-requests?focus=on_hold"
         awaitingHref="/devices?focus=awaiting_customer"
       />
+      {isMaintenanceManagerRole(user.role) && shippingAttention ? (
+        <ShippingAttentionWidgets attention={shippingAttention} t={t} />
+      ) : null}
       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardColumn title={t("dashboard.col.requests")}>
           <StatRow label={t("dashboard.openRequests")} value={stats.openRequests} />
@@ -413,6 +426,114 @@ function AttentionWidgets({
             </p>
           </Link>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ShippingAttentionWidgets({
+  attention,
+  t,
+}: {
+  attention: DashboardOpsShippingAttention;
+  t: (key: MessageKey) => string;
+}) {
+  return (
+    <section className="mt-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg dark:text-sand-50">
+          {t("dashboard.shippingAttention")}
+        </h2>
+        <Link
+          href="/maintenance/shipping"
+          className="text-xs text-ink-700/65 underline underline-offset-2 dark:text-sand-100/65"
+        >
+          {t("dashboard.widget.openShipping")}
+        </Link>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-2xl border border-emerald-300/70 bg-emerald-50/80 px-4 py-4 shadow-panel dark:border-emerald-500/30 dark:bg-emerald-950/20">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
+              {t("dashboard.widget.readyToShipBranches")}
+            </p>
+            <p className="font-display text-3xl dark:text-sand-50">
+              {attention.readyToShipDeviceTotal}
+            </p>
+          </div>
+          {attention.branchesReadyToShip.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-700/70 dark:text-sand-100/70">
+              {t("dashboard.widget.noReadyBranches")}
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {attention.branchesReadyToShip.map((branch) => (
+                <li key={branch.branchId}>
+                  <Link
+                    href="/maintenance/shipping"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900/40 dark:hover:border-aroma-400"
+                  >
+                    <span className="font-medium text-ink-900 dark:text-sand-50">
+                      {branch.branchName}
+                    </span>
+                    <span className="text-ink-700/70 dark:text-sand-100/70">
+                      {t("dashboard.widget.deviceCountShort").replace(
+                        "{count}",
+                        String(branch.readyCount),
+                      )}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 px-4 py-4 shadow-panel dark:border-amber-500/30 dark:bg-amber-950/20">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
+              {t("dashboard.widget.openCarriers")}
+            </p>
+            <p className="font-display text-3xl dark:text-sand-50">{attention.openBatchTotal}</p>
+          </div>
+          {attention.carriersWithOpenBatches.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-700/70 dark:text-sand-100/70">
+              {t("dashboard.widget.noOpenCarriers")}
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {attention.carriersWithOpenBatches.map((carrier) => {
+                const parts = [
+                  carrier.toService > 0
+                    ? `${t("dashboard.widget.directionToService")} ${carrier.toService}`
+                    : null,
+                  carrier.returning > 0
+                    ? `${t("dashboard.widget.directionReturn")} ${carrier.returning}`
+                    : null,
+                ].filter(Boolean);
+                return (
+                  <li key={carrier.carrier}>
+                    <Link
+                      href="/maintenance/shipping"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900/40 dark:hover:border-aroma-400"
+                    >
+                      <span className="font-medium text-ink-900 dark:text-sand-50">
+                        {carrier.carrier}
+                      </span>
+                      <span className="text-ink-700/70 dark:text-sand-100/70">
+                        {t("dashboard.widget.batchCountShort").replace(
+                          "{count}",
+                          String(carrier.total),
+                        )}
+                        {parts.length ? ` · ${parts.join(" · ")}` : ""}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
   );

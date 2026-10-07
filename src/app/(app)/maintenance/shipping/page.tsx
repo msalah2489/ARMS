@@ -11,10 +11,12 @@ import {
   confirmReceivedAtService,
   createReturnShippingBatch,
   createShippingBatch,
+  listBranchesReadyToShip,
   listDevicesEligibleForReturn,
   listDevicesEligibleForShipment,
-  listOpsBranches,
+  listOpsBranchesWithReadyCounts,
   listShippingBatches,
+  type BranchReadyToShipSummary,
 } from "@/lib/shipping-store";
 import {
   MANAGER_DECISION_LABELS,
@@ -24,7 +26,12 @@ import {
   resolveManagerDecision,
   returnSuspendedDeviceToMaintenance,
 } from "@/lib/technician-store";
-import { deviceStatusLabel, formatMaintenanceDuration } from "@/lib/branch-store";
+import {
+  deviceStatusLabel,
+  formatMaintenanceDuration,
+  subscribeMaintenanceRequestsChanged,
+} from "@/lib/branch-store";
+import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
 
 function MaintenanceShippingContent() {
@@ -34,6 +41,8 @@ function MaintenanceShippingContent() {
     () => listAwaitingManagerDecisionDevices(),
   );
   const [mobileAtBranch, setMobileAtBranch] = useState(() => listMobilePathDevicesAtBranch());
+  const [readyBranches, setReadyBranches] = useState<BranchReadyToShipSummary[]>([]);
+  const [branches, setBranches] = useState(() => listOpsBranchesWithReadyCounts());
   const [branchId, setBranchId] = useState("");
   const [returnBranchId, setReturnBranchId] = useState("");
   const [shipmentNumber, setShipmentNumber] = useState("");
@@ -50,8 +59,7 @@ function MaintenanceShippingContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const branches = useMemo(() => listOpsBranches(), []);
-  const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches]);
+  const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches, readyBranches]);
   const returnEligible = useMemo(
     () => listDevicesEligibleForReturn(returnBranchId),
     [returnBranchId, batches, pendingManager],
@@ -61,21 +69,33 @@ function MaintenanceShippingContent() {
     setBatches(listShippingBatches());
     setPendingManager(listAwaitingManagerDecisionDevices());
     setMobileAtBranch(listMobilePathDevicesAtBranch());
+    setReadyBranches(listBranchesReadyToShip());
+    setBranches(listOpsBranchesWithReadyCounts());
   }
 
   useEffect(() => {
-    const session = readSession();
-    setUser(session);
-    refresh();
-    const first = listOpsBranches()[0]?.id ?? "";
-    setBranchId((current) => current || first);
-    setReturnBranchId((current) => current || first);
+    function load() {
+      const session = readSession();
+      setUser(session);
+      refresh();
+      const preferred =
+        listBranchesReadyToShip()[0]?.branchId ??
+        listOpsBranchesWithReadyCounts()[0]?.id ??
+        "";
+      setBranchId((current) => current || preferred);
+      setReturnBranchId((current) => current || preferred);
+    }
+
+    load();
+    void hydrateOpsFromSupabase().then(() => load());
+    return subscribeMaintenanceRequestsChanged(load);
   }, []);
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   const branchName = branches.find((item) => item.id === branchId)?.name ?? "فرع";
   const returnBranchName = branches.find((item) => item.id === returnBranchId)?.name ?? "فرع";
+  const readyDeviceTotal = readyBranches.reduce((sum, item) => sum + item.readyCount, 0);
 
   return (
     <div className="space-y-6">
@@ -140,6 +160,46 @@ function MaintenanceShippingContent() {
 
       <ExpandableSection title="1) بوليصة إرسال إلى الصيانة" defaultOpen>
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">أجهزة من فرع واحد فقط. الفرع يؤكد التسليم للشحن قبل الاستلام هنا.</p>
+
+        <div className="mt-4 rounded-2xl border border-emerald-300/70 bg-emerald-50/80 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-950/20">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
+              فروع لديها أجهزة جاهزة للإرسال إلى مركز الصيانة
+            </p>
+            <p className="text-xs text-ink-700/65 dark:text-sand-100/65">
+              {readyBranches.length === 0
+                ? "لا توجد أجهزة جاهزة حاليًا"
+                : `${readyBranches.length} فرع · ${readyDeviceTotal} جهاز`}
+            </p>
+          </div>
+          {readyBranches.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {readyBranches.map((branch) => {
+                const selectedBranch = branch.branchId === branchId;
+                return (
+                  <button
+                    key={branch.branchId}
+                    type="button"
+                    onClick={() => {
+                      setBranchId(branch.branchId);
+                      setSelected([]);
+                    }}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-sm transition",
+                      selectedBranch
+                        ? "border-aroma-500 bg-aroma-600 text-white"
+                        : "border-ink-900/15 bg-white text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400",
+                    ].join(" ")}
+                  >
+                    {branch.branchName}
+                    <span className="ms-2 font-display text-base">{branch.readyCount}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block text-sm">
             الفرع
@@ -153,7 +213,9 @@ function MaintenanceShippingContent() {
             >
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>
-                  {branch.name}
+                  {branch.readyCount > 0
+                    ? `${branch.name} (${branch.readyCount} جاهز)`
+                    : branch.name}
                 </option>
               ))}
             </select>
@@ -260,11 +322,13 @@ function MaintenanceShippingContent() {
               }}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
             >
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
+              {[...branches]
+                .sort((a, b) => a.name.localeCompare(b.name, "ar"))
+                .map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="block text-sm">

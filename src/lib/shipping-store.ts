@@ -771,6 +771,87 @@ export function listOpsBranches() {
   return [...map.values()];
 }
 
+export type BranchReadyToShipSummary = {
+  branchId: string;
+  branchName: string;
+  readyCount: number;
+};
+
+/** Branches that currently have devices eligible for outbound shipment to service. */
+export function listBranchesReadyToShip(): BranchReadyToShipSummary[] {
+  return listOpsBranches()
+    .map((branch) => ({
+      branchId: branch.id,
+      branchName: branch.name,
+      readyCount: listDevicesEligibleForShipment(branch.id).length,
+    }))
+    .filter((item) => item.readyCount > 0)
+    .sort(
+      (a, b) =>
+        b.readyCount - a.readyCount ||
+        a.branchName.localeCompare(b.branchName, "ar"),
+    );
+}
+
+/** All ops branches with ready-to-ship counts, ready branches first. */
+export function listOpsBranchesWithReadyCounts(): Array<{
+  id: string;
+  name: string;
+  readyCount: number;
+}> {
+  const readyMap = new Map(
+    listBranchesReadyToShip().map((item) => [item.branchId, item.readyCount]),
+  );
+  return listOpsBranches()
+    .map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      readyCount: readyMap.get(branch.id) ?? 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.readyCount - a.readyCount || a.name.localeCompare(b.name, "ar"),
+    );
+}
+
+export type CarrierOpenBatchesSummary = {
+  carrier: string;
+  total: number;
+  toService: number;
+  returning: number;
+};
+
+function isOpenShippingBatch(batch: ShippingBatch) {
+  return batch.status !== "cancelled" && batch.status !== "received";
+}
+
+/** Carriers that currently have open (active) waybills in either direction. */
+export function listCarriersWithOpenBatches(): CarrierOpenBatchesSummary[] {
+  const map = new Map<string, CarrierOpenBatchesSummary>();
+
+  for (const batch of listShippingBatches().filter(isOpenShippingBatch)) {
+    const carrier = batch.carrier.trim() || "—";
+    const current = map.get(carrier) ?? {
+      carrier,
+      total: 0,
+      toService: 0,
+      returning: 0,
+    };
+    current.total += 1;
+    if (batch.direction === "return") {
+      current.returning += 1;
+    } else {
+      // to_service and legacy inbound both count as branch → service
+      current.toService += 1;
+    }
+    map.set(carrier, current);
+  }
+
+  return [...map.values()].sort(
+    (a, b) => b.total - a.total || a.carrier.localeCompare(b.carrier, "ar"),
+  );
+}
+
 export const SHIPPING_BATCH_STATUS_LABELS: Record<string, string> = {
   draft: "مسودة",
   ready: "جاهزة للتسليم",
