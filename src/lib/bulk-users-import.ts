@@ -1,11 +1,13 @@
 import {
-  downloadCsvFile,
   formatBulkImportSummaryAr,
-  parseCsvBoolean,
-  parseCsvText,
-  readFileAsText,
   type BulkImportSummary,
 } from "@/lib/csv-excel";
+import {
+  downloadXlsxTemplate,
+  parseSpreadsheetFile,
+  parseYesNoAr,
+  YES_NO_AR,
+} from "@/lib/xlsx-excel";
 import {
   ASSIGNABLE_ROLE_LABELS,
   ASSIGNABLE_ROLES,
@@ -16,7 +18,7 @@ import {
 } from "@/lib/users-store";
 import type { AssignableUserRole } from "@/types/domain";
 
-/** Template columns matching create-user fields (Excel/CSV). */
+/** Admin-fillable columns only (no auto-generated IDs). */
 export const USER_IMPORT_COLUMNS = [
   "username",
   "full_name",
@@ -24,25 +26,49 @@ export const USER_IMPORT_COLUMNS = [
   "role",
   "mobile",
   "email",
-  "ops_branch_id",
   "ops_branch_name",
   "is_active",
 ] as const;
 
-const SAMPLE_USER_ROW = [
-  "nora.branch",
-  "نورة الفرع",
-  "demo",
-  "branch",
-  "0500000099",
-  "nora@example.com",
-  "",
-  "فرع الرياض",
-  "true",
+export type UserImportPreviewRow = {
+  rowNum: number;
+  username: string;
+  fullName: string;
+  password: string;
+  role: AssignableUserRole | null;
+  roleLabel: string;
+  mobile: string;
+  email: string;
+  opsBranchName: string;
+  opsBranchId: string | null;
+  isActive: boolean;
+  plannedAction: "create" | "update" | "error";
+  error?: string;
+};
+
+export type UserImportPreview = {
+  ok: true;
+  columns: { key: string; label: string }[];
+  rows: UserImportPreviewRow[];
+  validCount: number;
+  errorCount: number;
+};
+
+const PREVIEW_COLUMNS: { key: string; label: string }[] = [
+  { key: "rowNum", label: "صف" },
+  { key: "username", label: "اسم المستخدم" },
+  { key: "fullName", label: "الاسم" },
+  { key: "roleLabel", label: "الدور" },
+  { key: "mobile", label: "الجوال" },
+  { key: "email", label: "البريد" },
+  { key: "opsBranchName", label: "الفرع" },
+  { key: "isActive", label: "نشط" },
+  { key: "plannedAction", label: "الإجراء" },
+  { key: "error", label: "ملاحظة" },
 ];
 
-export function downloadUsersImportTemplate() {
-  downloadCsvFile("arms-users-template.csv", [...USER_IMPORT_COLUMNS], [SAMPLE_USER_ROW]);
+function roleDropdownLabels(): string[] {
+  return ASSIGNABLE_ROLES.map((r) => ASSIGNABLE_ROLE_LABELS[r]);
 }
 
 function resolveRole(raw: string): AssignableUserRole | null {
@@ -58,42 +84,73 @@ function resolveRole(raw: string): AssignableUserRole | null {
   return byLabel?.[0] ?? null;
 }
 
-function resolveBranchId(
-  opsBranchId: string,
-  opsBranchName: string,
-): { id: string | null; error?: string } {
-  const branches = listBranchOptionsForUsers();
-  const id = opsBranchId.trim();
+function resolveBranchByName(opsBranchName: string): {
+  id: string | null;
+  error?: string;
+} {
   const name = opsBranchName.trim();
-  if (id) {
-    const byId = branches.find((b) => b.id === id);
-    if (!byId) return { id: null, error: `معرّف الفرع غير موجود: ${id}` };
-    return { id: byId.id };
+  if (!name) return { id: null };
+  const branches = listBranchOptionsForUsers();
+  const matches = branches.filter(
+    (b) =>
+      b.name === name ||
+      b.name.replace(/\s*\(مركز صيانة\)\s*$/, "") === name,
+  );
+  if (matches.length === 0) {
+    return { id: null, error: `اسم الفرع غير موجود: ${name}` };
   }
-  if (name) {
-    const matches = branches.filter(
-      (b) => b.name === name || b.name.replace(/\s*\(مركز صيانة\)\s*$/, "") === name,
-    );
-    if (matches.length === 0) {
-      return { id: null, error: `اسم الفرع غير موجود: ${name}` };
-    }
-    if (matches.length > 1) {
-      return {
-        id: null,
-        error: `يوجد أكثر من فرع بنفس الاسم «${name}». استخدم ops_branch_id.`,
-      };
-    }
-    return { id: matches[0].id };
+  if (matches.length > 1) {
+    return {
+      id: null,
+      error: `يوجد أكثر من فرع بنفس الاسم «${name}». راجع أسماء الفروع.`,
+    };
   }
-  return { id: null };
+  return { id: matches[0].id };
 }
 
-export async function importUsersFromCsvFile(
+export async function downloadUsersImportTemplate() {
+  const branchNames = listBranchOptionsForUsers().map((b) => b.name);
+  const sampleRole = ASSIGNABLE_ROLE_LABELS.branch;
+  const sampleBranch = branchNames[0] ?? "";
+
+  await downloadXlsxTemplate({
+    filename: "arms-users-template.xlsx",
+    sheetName: "مستخدمين",
+    columns: [...USER_IMPORT_COLUMNS],
+    sampleRow: [
+      "nora.branch",
+      "نورة الفرع",
+      "demo",
+      sampleRole,
+      "0500000099",
+      "nora@example.com",
+      sampleBranch,
+      "نعم",
+    ],
+    dropdowns: [
+      { col: 4, header: "role", list: roleDropdownLabels() },
+      {
+        col: 7,
+        header: "ops_branch_name",
+        list: branchNames.length > 0 ? branchNames : ["— لا فروع —"],
+      },
+      { col: 8, header: "is_active", list: [...YES_NO_AR] },
+    ],
+    notes: [
+      "املأ الصفوف فقط — لا تغيّر عناوين الأعمدة في الصف الأول.",
+      "الدور والفرع والحالة (نشط) تُختار من القوائم المنسدلة.",
+      "لا يوجد عمود لمعرّف الفرع؛ النظام يربطه تلقائيًا من اسم الفرع.",
+      "كلمة المرور اختيارية عند التحديث؛ للمستخدم الجديد إن تُركت فارغة تُستخدم demo.",
+      "المطابقة للتحديث تتم عبر اسم المستخدم (username).",
+      `الأدوار: ${usersImportRoleHintAr()}`,
+    ],
+  });
+}
+
+export async function previewUsersImportFile(
   file: File,
-  actor?: { id: string; role: string } | null,
-): Promise<{ ok: true; summary: BulkImportSummary; message: string } | { ok: false; error: string }> {
-  const text = await readFileAsText(file);
-  const { headers, rows } = parseCsvText(text);
+): Promise<UserImportPreview | { ok: false; error: string }> {
+  const { headers, rows } = await parseSpreadsheetFile(file);
   if (headers.length === 0) {
     return { ok: false, error: "الملف فارغ أو غير صالح." };
   }
@@ -109,93 +166,136 @@ export async function importUsersFromCsvFile(
     return { ok: false, error: "لا توجد صفوف بيانات في الملف (بعد صف العناوين)." };
   }
 
-  const summary: BulkImportSummary = {
-    total: rows.length,
-    created: 0,
-    updated: 0,
-    failed: 0,
-    results: [],
-  };
-
-  for (let i = 0; i < rows.length; i += 1) {
-    const row = rows[i];
-    const rowNum = i + 2; // 1-based + header
+  const previewRows: UserImportPreviewRow[] = rows.map((row, i) => {
+    const rowNum = i + 2;
     const username = (row.username ?? "").trim();
     const fullName = (row.full_name ?? "").trim();
     const password = (row.password ?? "").trim();
     const role = resolveRole(row.role ?? "");
     const mobile = (row.mobile ?? "").trim();
     const email = (row.email ?? "").trim();
-    const isActive = parseCsvBoolean(row.is_active, true);
+    const opsBranchName = (row.ops_branch_name ?? "").trim();
+    const isActive = parseYesNoAr(row.is_active, true);
+    const branch = resolveBranchByName(opsBranchName);
 
+    let error: string | undefined;
     if (!username || !fullName || !role || !mobile) {
+      error = "حقول إلزامية ناقصة (username, full_name, role, mobile).";
+    } else if (branch.error) {
+      error = branch.error;
+    }
+
+    const existing = !error
+      ? listManagedUsers({ includeArchived: true }).find(
+          (u) => u.username.toLowerCase() === username.toLowerCase(),
+        )
+      : undefined;
+
+    return {
+      rowNum,
+      username,
+      fullName,
+      password,
+      role,
+      roleLabel: role ? ASSIGNABLE_ROLE_LABELS[role] : (row.role ?? "").trim(),
+      mobile,
+      email,
+      opsBranchName,
+      opsBranchId: branch.id,
+      isActive,
+      plannedAction: error ? "error" : existing ? "update" : "create",
+      error,
+    };
+  });
+
+  return {
+    ok: true,
+    columns: PREVIEW_COLUMNS,
+    rows: previewRows,
+    validCount: previewRows.filter((r) => r.plannedAction !== "error").length,
+    errorCount: previewRows.filter((r) => r.plannedAction === "error").length,
+  };
+}
+
+export async function applyUsersImportPreview(
+  rows: UserImportPreviewRow[],
+  actor?: { id: string; role: string } | null,
+): Promise<{ ok: true; summary: BulkImportSummary; message: string } | { ok: false; error: string }> {
+  const toApply = rows.filter((r) => r.plannedAction !== "error");
+  if (toApply.length === 0) {
+    return { ok: false, error: "لا توجد صفوف صالحة للتسجيل. راجع الأخطاء في المعاينة." };
+  }
+
+  const summary: BulkImportSummary = {
+    total: toApply.length,
+    created: 0,
+    updated: 0,
+    failed: 0,
+    results: [],
+  };
+
+  for (const row of toApply) {
+    if (!row.role) {
       summary.failed += 1;
       summary.results.push({
-        row: rowNum,
+        row: row.rowNum,
         ok: false,
-        error: "حقول إلزامية ناقصة (username, full_name, role, mobile).",
+        error: "دور غير صالح.",
       });
       continue;
     }
 
-    const branch = resolveBranchId(row.ops_branch_id ?? "", row.ops_branch_name ?? "");
-    if (branch.error) {
-      summary.failed += 1;
-      summary.results.push({ row: rowNum, ok: false, error: branch.error });
-      continue;
-    }
-
     const existing = listManagedUsers({ includeArchived: true }).find(
-      (u) => u.username.toLowerCase() === username.toLowerCase(),
+      (u) => u.username.toLowerCase() === row.username.toLowerCase(),
     );
 
     try {
       if (existing) {
         const result = await updateManagedUserByAdmin(existing.id, {
-          fullName,
-          username,
-          email: email || undefined,
-          mobile,
-          role,
-          opsBranchId: branch.id,
-          password: password || undefined,
-          isActive,
+          fullName: row.fullName,
+          username: row.username,
+          email: row.email || undefined,
+          mobile: row.mobile,
+          role: row.role,
+          opsBranchId: row.opsBranchId,
+          password: row.password || undefined,
+          isActive: row.isActive,
           actor: actor ?? null,
         });
         if (!result.ok) {
           summary.failed += 1;
-          summary.results.push({ row: rowNum, ok: false, error: result.error });
+          summary.results.push({ row: row.rowNum, ok: false, error: result.error });
           continue;
         }
         summary.updated += 1;
         summary.results.push({
-          row: rowNum,
+          row: row.rowNum,
           ok: true,
           action: "updated",
           label: result.user.username,
         });
       } else {
         const result = await createManagedUser({
-          fullName,
-          username,
-          email: email || undefined,
-          mobile,
-          role,
-          opsBranchId: branch.id,
-          password: password || "demo",
+          fullName: row.fullName,
+          username: row.username,
+          email: row.email || undefined,
+          mobile: row.mobile,
+          role: row.role,
+          opsBranchId: row.opsBranchId,
+          password: row.password || "demo",
         });
         if (!result.ok) {
           summary.failed += 1;
-          summary.results.push({ row: rowNum, ok: false, error: result.error });
+          summary.results.push({ row: row.rowNum, ok: false, error: result.error });
           continue;
         }
-        if (!isActive) {
+        if (!row.isActive) {
           const { setManagedUserActive } = await import("@/lib/users-store");
           await setManagedUserActive(result.user.id, false);
         }
         summary.created += 1;
         summary.results.push({
-          row: rowNum,
+          row: row.rowNum,
           ok: true,
           action: "created",
           label: result.user.username,
@@ -204,7 +304,7 @@ export async function importUsersFromCsvFile(
     } catch (error) {
       summary.failed += 1;
       summary.results.push({
-        row: rowNum,
+        row: row.rowNum,
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -218,6 +318,22 @@ export async function importUsersFromCsvFile(
   };
 }
 
+/** @deprecated Prefer preview + apply flow. Kept for compatibility. */
+export async function importUsersFromCsvFile(
+  file: File,
+  actor?: { id: string; role: string } | null,
+): Promise<{ ok: true; summary: BulkImportSummary; message: string } | { ok: false; error: string }> {
+  const preview = await previewUsersImportFile(file);
+  if (!preview.ok) return preview;
+  return applyUsersImportPreview(preview.rows, actor);
+}
+
 export function usersImportRoleHintAr(): string {
   return ASSIGNABLE_ROLES.map((r) => `${r} (${ASSIGNABLE_ROLE_LABELS[r]})`).join("، ");
+}
+
+export function formatUserPreviewActionAr(action: UserImportPreviewRow["plannedAction"]): string {
+  if (action === "create") return "إنشاء";
+  if (action === "update") return "تحديث";
+  return "خطأ";
 }

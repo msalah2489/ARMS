@@ -7,8 +7,11 @@ import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { isSystemAdminRole } from "@/lib/auth";
 import {
+  applyBranchesImportPreview,
   downloadBranchesImportTemplate,
-  importBranchesFromCsvFile,
+  formatBranchPreviewActionAr,
+  previewBranchesImportFile,
+  type BranchImportPreviewRow,
 } from "@/lib/bulk-branches-import";
 import {
   createOpsBranch,
@@ -71,6 +74,9 @@ function AdminBranchesContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [canBulkImport, setCanBulkImport] = useState(false);
+  const [pendingBranchImport, setPendingBranchImport] = useState<
+    BranchImportPreviewRow[] | null
+  >(null);
 
   const activeBranches = branches.filter((b) => b.isActive !== false);
   const disabledBranches = branches.filter((b) => b.isActive === false);
@@ -105,17 +111,51 @@ function AdminBranchesContent() {
 
       {canBulkImport ? (
         <BulkCsvImportBar
-          title="استيراد فروع من ملف Excel/CSV"
-          hint="حمّل القالب، عبّئ الاسم والمدينة (والكود اختياري للمطابقة/التحديث)، ثم ارفع الملف. بدون كود يُنشأ تلقائيًا."
+          title="استيراد فروع من ملف Excel"
+          hint="حمّل قالب Excel (قوائم منسدلة لمركز الصيانة والحالة). كود الفرع يُنشأ تلقائيًا ولا يظهر في القالب. راجع المعاينة ثم وافق وأكّد."
           onDownloadTemplate={downloadBranchesImportTemplate}
-          onUpload={async (file) => {
+          onParseFile={async (file) => {
             setError(null);
             setMessage(null);
-            const result = await importBranchesFromCsvFile(file);
+            const result = await previewBranchesImportFile(file);
+            if (!result.ok) {
+              setPendingBranchImport(null);
+              return result;
+            }
+            setPendingBranchImport(result.rows);
+            return {
+              ok: true,
+              columns: result.columns,
+              validCount: result.validCount,
+              errorCount: result.errorCount,
+              rows: result.rows.map((row) => ({
+                id: `b-${row.rowNum}`,
+                hasError: row.plannedAction === "error",
+                cells: {
+                  rowNum: row.rowNum,
+                  name: row.name || "—",
+                  city: row.city || "—",
+                  isServiceCenter: row.isServiceCenter ? "نعم" : "لا",
+                  isActive: row.isActive ? "نعم" : "لا",
+                  plannedAction: formatBranchPreviewActionAr(row.plannedAction),
+                  error: row.error ?? "",
+                },
+              })),
+            };
+          }}
+          onConfirmApply={async () => {
+            if (!pendingBranchImport) {
+              setError("لا توجد معاينة جاهزة للتسجيل.");
+              throw new Error("no preview");
+            }
+            setError(null);
+            setMessage(null);
+            const result = await applyBranchesImportPreview(pendingBranchImport);
             if (!result.ok) {
               setError(result.error);
-              return;
+              throw new Error(result.error);
             }
+            setPendingBranchImport(null);
             if (result.summary.failed > 0 && result.summary.created + result.summary.updated === 0) {
               setError(result.message);
             } else if (result.summary.failed > 0) {

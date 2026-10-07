@@ -7,9 +7,12 @@ import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { isSystemAdminRole } from "@/lib/auth";
 import {
+  applyUsersImportPreview,
   downloadUsersImportTemplate,
-  importUsersFromCsvFile,
+  formatUserPreviewActionAr,
+  previewUsersImportFile,
   usersImportRoleHintAr,
+  type UserImportPreviewRow,
 } from "@/lib/bulk-users-import";
 import {
   CRITICAL_SELF_ADMIN_PERMISSIONS,
@@ -212,6 +215,9 @@ function AdminUsersContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actor, setActor] = useState(() => readSession());
+  const [pendingUserImport, setPendingUserImport] = useState<UserImportPreviewRow[] | null>(
+    null,
+  );
 
   const branches = useMemo(() => listBranchOptionsForUsers(), []);
   const activeUsers = users.filter((u) => !u.isArchived);
@@ -263,21 +269,58 @@ function AdminUsersContent() {
 
       {canBulkImport ? (
         <BulkCsvImportBar
-          title="استيراد مستخدمين من ملف Excel/CSV"
-          hint={`حمّل القالب، عبّئ الصفوف، ثم ارفعه. الأدوار المسموحة: ${usersImportRoleHintAr()}. المطابقة بالتحديث تتم عبر username.`}
+          title="استيراد مستخدمين من ملف Excel"
+          hint={`حمّل قالب Excel (قوائم منسدلة للدور والفرع والحالة)، راجع المعاينة، ثم وافق وأكّد. الأدوار: ${usersImportRoleHintAr()}. المطابقة عبر username.`}
           onDownloadTemplate={downloadUsersImportTemplate}
-          onUpload={async (file) => {
+          onParseFile={async (file) => {
+            setError(null);
+            setMessage(null);
+            const result = await previewUsersImportFile(file);
+            if (!result.ok) {
+              setPendingUserImport(null);
+              return result;
+            }
+            setPendingUserImport(result.rows);
+            return {
+              ok: true,
+              columns: result.columns,
+              validCount: result.validCount,
+              errorCount: result.errorCount,
+              rows: result.rows.map((row) => ({
+                id: `u-${row.rowNum}`,
+                hasError: row.plannedAction === "error",
+                cells: {
+                  rowNum: row.rowNum,
+                  username: row.username || "—",
+                  fullName: row.fullName || "—",
+                  roleLabel: row.roleLabel || "—",
+                  mobile: row.mobile || "—",
+                  email: row.email || "—",
+                  opsBranchName: row.opsBranchName || "—",
+                  isActive: row.isActive ? "نعم" : "لا",
+                  plannedAction: formatUserPreviewActionAr(row.plannedAction),
+                  error: row.error ?? "",
+                },
+              })),
+            };
+          }}
+          onConfirmApply={async () => {
+            if (!pendingUserImport) {
+              setError("لا توجد معاينة جاهزة للتسجيل.");
+              throw new Error("no preview");
+            }
             setError(null);
             setMessage(null);
             const session = readSession();
-            const result = await importUsersFromCsvFile(
-              file,
+            const result = await applyUsersImportPreview(
+              pendingUserImport,
               session ? { id: session.id, role: session.role } : null,
             );
             if (!result.ok) {
               setError(result.error);
-              return;
+              throw new Error(result.error);
             }
+            setPendingUserImport(null);
             if (result.summary.failed > 0 && result.summary.created + result.summary.updated === 0) {
               setError(result.message);
             } else if (result.summary.failed > 0) {
