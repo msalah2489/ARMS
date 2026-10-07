@@ -1,4 +1,11 @@
 -- Per-user permission overrides (role template + toggles)
+-- Also ensure is_archived exists (idempotent if 018 already applied)
+
+alter table if exists public.app_users
+  add column if not exists is_archived boolean not null default false;
+
+comment on column public.app_users.is_archived is
+  'مؤرشف؟ يُخفى من القوائم النشطة مع الإبقاء على السجل';
 
 alter table if exists public.app_users
   add column if not exists permissions jsonb not null default '[]'::jsonb;
