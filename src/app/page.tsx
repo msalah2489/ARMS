@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { homePathForRole } from "@/lib/auth";
 import { readSession } from "@/lib/session";
 
 export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (readSession()) router.replace("/dashboard");
+    const session = readSession();
+    if (session) router.replace(homePathForRole(session.role));
   }, [router]);
 
   return (

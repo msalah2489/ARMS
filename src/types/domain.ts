@@ -151,6 +151,8 @@ export type Profile = {
   opsBranchId?: string | null;
   opsBranchName?: string | null;
   isActive?: boolean;
+  /** Effective permission keys (role template + admin overrides). */
+  permissions?: string[];
 };
 
 /** Roles an admin can assign when creating users */
@@ -169,6 +171,8 @@ export type ManagedUser = {
   email: string;
   mobile: string;
   role: AssignableUserRole;
+  /** Effective permission keys (role defaults + per-user toggles). */
+  permissions?: string[];
   opsBranchId: string | null;
   opsBranchName: string | null;
   password: string;
@@ -240,6 +244,10 @@ export type ServiceRequest = {
   status: ServiceRequestStatus;
   assignedTechnician: string | null;
   requestedAt: string;
+  /** Ops-backed rows only — used by list quick filters */
+  assignmentPath?: MaintenanceAssignmentPath | null;
+  hasAwaitingMaintenance?: boolean;
+  hasOnHold?: boolean;
 };
 
 export type SparePart = {

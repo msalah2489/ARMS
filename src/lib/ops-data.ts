@@ -1,5 +1,6 @@
 import {
   deviceLocationLabel,
+  getDeviceAssignmentPath,
   getMaintenanceRequestById,
   listAllRequestDevices,
   listMaintenanceRequests,
@@ -13,6 +14,7 @@ import type {
   Customer,
   Device,
   DeviceStatus,
+  MaintenanceAssignmentPath,
   MaintenanceRequestRecord,
   RequestPriority,
   ServiceRequest,
@@ -106,6 +108,17 @@ function summarizeRequestStatus(request: MaintenanceRequestRecord): ServiceReque
   return mapLifecycleToRequestStatus(statuses[0]);
 }
 
+function resolveRequestAssignmentPath(
+  request: MaintenanceRequestRecord,
+): MaintenanceAssignmentPath | null {
+  if (request.assignmentPath === "mobile_technician" || request.assignmentPath === "service_center") {
+    return request.assignmentPath;
+  }
+  const first = request.devices[0];
+  if (!first) return null;
+  return getDeviceAssignmentPath(request, first);
+}
+
 /** Convert branch-created maintenance requests into the shared ServiceRequest list shape. */
 export function listOpsServiceRequests(): ServiceRequest[] {
   return listMaintenanceRequests()
@@ -118,6 +131,9 @@ export function listOpsServiceRequests(): ServiceRequest[] {
         first?.fault?.trim() ||
         request.generalNotes?.trim() ||
         (request.devices.length > 1 ? `${request.devices.length} أجهزة` : "—");
+      const lifecycles = request.devices.map((device) =>
+        normalizeLifecycleStatus(device.lifecycleStatus),
+      );
 
       return {
         id: request.id,
@@ -134,6 +150,11 @@ export function listOpsServiceRequests(): ServiceRequest[] {
         status: summarizeRequestStatus(request),
         assignedTechnician: tech,
         requestedAt: request.receivedAt,
+        assignmentPath: resolveRequestAssignmentPath(request),
+        hasAwaitingMaintenance: lifecycles.some((status) => status === "awaiting_maintenance"),
+        hasOnHold: lifecycles.some(
+          (status) => status === "awaiting_manager_decision" || status === "maintenance_failed",
+        ),
       } satisfies ServiceRequest;
     })
     .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));

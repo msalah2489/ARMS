@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
-import { ROLE_LABELS, isDemoMode } from "@/lib/auth";
-import { signIn } from "@/lib/session";
+import { ROLE_LABELS, homePathForRole, isDemoMode } from "@/lib/auth";
+import { readSession, signIn } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import {
   listLoginShortcutUsers,
@@ -136,7 +136,8 @@ export default function LoginPage() {
                 setError(result.error);
                 return;
               }
-              router.replace("/dashboard");
+              const session = readSession();
+              router.replace(session ? homePathForRole(session.role) : "/dashboard");
             }}
           >
             <label className="block text-sm dark:text-sand-100">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
@@ -81,6 +82,22 @@ function MaintenanceShippingContent() {
       <PageHeader
         title="بوليصات الشحن — مدير الصيانة"
         description="إرسال أجهزة فرع واحد إلى الصيانة، استلامها بعد تسليم الفرع للشحن، ثم إرجاعها لنفس الفرع."
+        action={
+          <>
+            <Link
+              href="/service-requests/new"
+              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+            >
+              طلب جديد
+            </Link>
+            <Link
+              href="/spare-parts"
+              className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+            >
+              استلام قطع
+            </Link>
+          </>
+        }
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
@@ -563,6 +580,7 @@ export default function MaintenanceShippingPage() {
         "manager",
         "supervisor",
       ]}
+      permission={["receive_inbound_waybill", "create_return_waybill", "manager_decisions"]}
     >
       <MaintenanceShippingContent />
     </RoleGuard>

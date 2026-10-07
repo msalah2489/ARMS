@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ClickableImage } from "@/components/clickable-image";
 import { PageHeader } from "@/components/page-header";
@@ -79,6 +80,22 @@ function SpareInventoryContent() {
       <PageHeader
         title="قطع الغيار والمخزون"
         description="سجّل بيانات السند أولًا، ثم أضف صفًا أو أكثر لقطع الغيار بكميات مختلفة."
+        action={
+          <>
+            <Link
+              href="/service-requests/new"
+              className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+            >
+              طلب جديد
+            </Link>
+            <Link
+              href="/maintenance/shipping"
+              className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+            >
+              بوليصة شحن
+            </Link>
+          </>
+        }
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
@@ -410,7 +427,10 @@ function SpareInventoryContent() {
 
 export default function SparePartsPage() {
   return (
-    <RoleGuard allow={["system_admin", "manager", "maintenance_manager"]}>
+    <RoleGuard
+      allow={["system_admin", "manager", "maintenance_manager"]}
+      permission="view_inventory"
+    >
       <SpareInventoryContent />
     </RoleGuard>
   );

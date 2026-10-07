@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
@@ -128,7 +129,14 @@ function BranchReceivingContent() {
                 <tr key={row.key} className="border-b border-ink-900/5">
                   <td className="px-2 py-3 font-medium">{row.deviceCode}</td>
                   <td className="px-2 py-3">{row.modelName}</td>
-                  <td className="px-2 py-3">{row.requestNumber}</td>
+                  <td className="px-2 py-3">
+                    <Link
+                      href={`/service-requests/detail/?id=${encodeURIComponent(row.requestId)}`}
+                      className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 hover:text-aroma-800 dark:text-aroma-200"
+                    >
+                      {row.requestNumber}
+                    </Link>
+                  </td>
                   <td className="px-2 py-3">{row.status}</td>
                   <td className="px-2 py-3">
                     {row.contactName}
@@ -175,6 +183,14 @@ function BranchReceivingContent() {
       <PageHeader
         title="استلام الصيانة"
         description={`متابعة أجهزة ${user.opsBranchName || "الفرع"} حسب موقعها، وتسليمها للعميل بعد العودة من الصيانة.`}
+        action={
+          <Link
+            href="/service-requests/new"
+            className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+          >
+            طلب جديد
+          </Link>
+        }
       />
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
@@ -210,7 +226,10 @@ function BranchReceivingContent() {
 
 export default function BranchReceivingPage() {
   return (
-    <RoleGuard allow="branch">
+    <RoleGuard
+      allow="branch"
+      permission={["receive_from_customer", "receive_return_from_service", "deliver_to_customer"]}
+    >
       <BranchReceivingContent />
     </RoleGuard>
   );
