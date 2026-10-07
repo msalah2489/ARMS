@@ -45,14 +45,13 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
     if (isRail) setRailExpanded(false);
   };
 
-  const expanded = isRail && railExpanded;
-  // Tailwind group-data variant when rail is open (replaces hover/focus-within).
-  const open = "group-data-[expanded=true]/sidebar";
+  // Desktop rail open state (drawer always shows full labels).
+  const open = !isRail || railExpanded;
 
   return (
     <aside
       ref={asideRef}
-      data-expanded={expanded ? "true" : "false"}
+      data-expanded={isRail && railExpanded ? "true" : "false"}
       onMouseEnter={expandRail}
       onMouseLeave={collapseRail}
       onFocus={expandRail}
@@ -62,26 +61,31 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
         }
       }}
       className={[
-        "group/sidebar flex h-full flex-col bg-ink-950 text-sand-50",
+        "flex h-full flex-col bg-ink-950 text-sand-50",
         isRail
-          ? "arms-sidebar-rail w-16 overflow-hidden transition-[width] duration-200 ease-out data-[expanded=true]:w-64"
+          ? [
+              "arms-sidebar-rail overflow-hidden transition-[width] duration-200 ease-out",
+              open ? "w-64" : "w-16",
+            ].join(" ")
           : "w-full",
       ].join(" ")}
     >
       <div
         className={[
           "border-b border-white/10",
-          isRail ? `px-3 py-5 ${open}:px-5` : "px-5 py-6",
+          isRail ? (open ? "px-5 py-5" : "px-3 py-5") : "px-5 py-6",
         ].join(" ")}
       >
-        <div className={isRail ? `flex justify-center ${open}:justify-start` : ""}>
+        <div className={isRail ? (open ? "flex justify-start" : "flex justify-center") : ""}>
           <ArmsLogo size={isRail ? "sm" : "md"} />
         </div>
         <p
           className={[
             "mt-1 text-xs text-aroma-200",
             isRail
-              ? `max-h-0 overflow-hidden opacity-0 transition-all duration-200 ${open}:mt-1 ${open}:max-h-8 ${open}:opacity-100`
+              ? open
+                ? "mt-1 max-h-8 overflow-hidden opacity-100 transition-all duration-200"
+                : "max-h-0 overflow-hidden opacity-0 transition-all duration-200"
               : "",
           ].join(" ")}
         >
@@ -92,7 +96,9 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
             className={[
               "mt-3 text-xs text-sand-100/70",
               isRail
-                ? `max-h-0 overflow-hidden opacity-0 transition-all duration-200 ${open}:max-h-10 ${open}:opacity-100`
+                ? open
+                  ? "max-h-10 overflow-hidden opacity-100 transition-all duration-200"
+                  : "max-h-0 overflow-hidden opacity-0 transition-all duration-200"
                 : "",
             ].join(" ")}
           >
@@ -101,7 +107,12 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
         ) : null}
       </div>
 
-      <nav className={`flex flex-1 flex-col space-y-1 overflow-y-auto px-2 py-3 ${isRail ? `${open}:px-3` : ""}`}>
+      <nav
+        className={[
+          "flex flex-1 flex-col space-y-1 overflow-y-auto py-3",
+          isRail ? (open ? "px-3" : "px-2") : "px-2",
+        ].join(" ")}
+      >
         {items.map((item) => {
           const Icon = item.icon;
           const label = t(item.labelKey);
@@ -116,7 +127,9 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
               className={[
                 "flex min-h-11 items-center rounded-lg text-sm transition-colors",
                 isRail
-                  ? `justify-center gap-0 px-0 ${open}:justify-start ${open}:gap-3 ${open}:px-3`
+                  ? open
+                    ? "justify-start gap-3 px-3"
+                    : "justify-center gap-0 px-0"
                   : "gap-3 px-3",
                 active ? "bg-white/15 text-white" : "text-sand-100 hover:bg-white/10",
               ].join(" ")}
@@ -126,7 +139,9 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
                 className={[
                   "truncate",
                   isRail
-                    ? `max-w-0 overflow-hidden opacity-0 transition-all duration-200 ${open}:max-w-[12rem] ${open}:opacity-100`
+                    ? open
+                      ? "max-w-[12rem] overflow-hidden opacity-100 transition-all duration-200"
+                      : "max-w-0 overflow-hidden opacity-0 transition-all duration-200"
                     : "",
                 ].join(" ")}
               >
@@ -140,36 +155,29 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
       <div
         className={[
           "border-t border-white/10",
-          isRail ? `px-2 py-3 ${open}:p-4` : "p-4",
+          isRail ? (open ? "p-4" : "px-2 py-3") : "p-4",
         ].join(" ")}
       >
         <p
           className={[
             "truncate text-sm font-medium text-sand-50",
             isRail
-              ? `text-center text-xs ${open}:text-start ${open}:text-sm`
+              ? open
+                ? "text-start text-sm"
+                : "text-center text-xs"
               : "",
           ].join(" ")}
           title={user.fullName}
         >
-          {isRail ? (
-            <>
-              <span className={`inline ${open}:hidden`}>
-                {user.fullName.trim().charAt(0) || "?"}
-              </span>
-              <span className={`hidden ${open}:inline`}>
-                {user.fullName}
-              </span>
-            </>
-          ) : (
-            user.fullName
-          )}
+          {isRail ? (open ? user.fullName : user.fullName.trim().charAt(0) || "?") : user.fullName}
         </p>
         <p
           className={[
             "text-xs text-aroma-200",
             isRail
-              ? `max-h-0 overflow-hidden text-center opacity-0 transition-all duration-200 ${open}:mt-0.5 ${open}:max-h-6 ${open}:text-start ${open}:opacity-100`
+              ? open
+                ? "mt-0.5 max-h-6 overflow-hidden text-start opacity-100 transition-all duration-200"
+                : "max-h-0 overflow-hidden text-center opacity-0 transition-all duration-200"
               : "",
           ].join(" ")}
         >
@@ -185,14 +193,16 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
           }}
           className={[
             "mt-3 inline-flex min-h-11 appearance-none items-center justify-center gap-2 rounded-lg border border-white/25 bg-white/10 text-xs font-medium text-sand-50 hover:bg-white/20 hover:text-white",
-            isRail ? `w-full px-2 ${open}:px-3` : "px-3 py-1.5",
+            isRail ? (open ? "w-full px-3" : "w-full px-2") : "px-3 py-1.5",
           ].join(" ")}
         >
           <LogOut className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
           <span
             className={
               isRail
-                ? `max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 ${open}:max-w-[10rem] ${open}:opacity-100`
+                ? open
+                  ? "max-w-[10rem] overflow-hidden whitespace-nowrap opacity-100 transition-all duration-200"
+                  : "max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200"
                 : ""
             }
           >
