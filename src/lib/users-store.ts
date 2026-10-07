@@ -302,6 +302,8 @@ function normalizeUser(user: ManagedUser): ManagedUser {
       : user.mobile) ||
     user.id.slice(0, 8);
   const role = user.role;
+  const photoDataUrl = user.photoDataUrl?.trim() || null;
+  const photoName = photoDataUrl ? user.photoName?.trim() || null : null;
   return {
     ...user,
     username: username.toLowerCase(),
@@ -309,6 +311,8 @@ function normalizeUser(user: ManagedUser): ManagedUser {
     permissions: normalizePermissions(user.permissions, role),
     isActive: user.isActive !== false,
     isArchived: Boolean(user.isArchived),
+    photoDataUrl,
+    photoName,
   };
 }
 
@@ -479,6 +483,8 @@ export async function createManagedUser(input: {
   opsBranchId?: string | null;
   password?: string;
   permissions?: string[];
+  photoDataUrl?: string | null;
+  photoName?: string | null;
 }): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
   await mergeRemoteUsersIntoLocal();
   const checked = validateUserInput({ ...input, requireUsername: true });
@@ -490,6 +496,7 @@ export async function createManagedUser(input: {
     input.permissions ?? getDefaultPermissionsForRole(input.role),
     input.role,
   );
+  const photoDataUrl = input.photoDataUrl?.trim() || null;
   const user: ManagedUser = {
     id: crypto.randomUUID(),
     fullName: checked.fullName,
@@ -503,6 +510,8 @@ export async function createManagedUser(input: {
     password,
     isActive: true,
     isArchived: false,
+    photoDataUrl,
+    photoName: photoDataUrl ? input.photoName?.trim() || null : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -532,6 +541,8 @@ export async function updateManagedUserByAdmin(
     password?: string;
     isActive?: boolean;
     permissions?: string[];
+    photoDataUrl?: string | null;
+    photoName?: string | null;
     /** Actor performing the update (used to protect self-admin powers). */
     actor?: { id: string; role: string } | null;
   },
@@ -580,6 +591,10 @@ export async function updateManagedUserByAdmin(
     };
   }
 
+  const photoDataUrl =
+    input.photoDataUrl !== undefined
+      ? input.photoDataUrl?.trim() || null
+      : existing.photoDataUrl ?? null;
   const next: ManagedUser = {
     ...existing,
     fullName: checked.fullName,
@@ -592,6 +607,12 @@ export async function updateManagedUserByAdmin(
     opsBranchName: checked.branch?.name ?? null,
     password: input.password?.trim() ? input.password.trim() : existing.password,
     isActive: input.isActive ?? existing.isActive,
+    photoDataUrl,
+    photoName: photoDataUrl
+      ? input.photoName !== undefined
+        ? input.photoName?.trim() || null
+        : existing.photoName ?? null
+      : null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -624,13 +645,15 @@ export async function setManagedUserActive(
   });
 }
 
-/** Employee self-service: mobile + password only. No branch/role/username. */
+/** Employee self-service: mobile, password, and optional photo. No branch/role/username. */
 export async function updateManagedUserSelf(
   id: string,
   input: {
     mobile: string;
     currentPassword?: string;
     newPassword?: string;
+    photoDataUrl?: string | null;
+    photoName?: string | null;
   },
 ): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
   await mergeRemoteUsersIntoLocal();
@@ -663,10 +686,20 @@ export async function updateManagedUserSelf(
     password = input.newPassword.trim();
   }
 
+  const photoDataUrl =
+    input.photoDataUrl !== undefined
+      ? input.photoDataUrl?.trim() || null
+      : existing.photoDataUrl ?? null;
   const next: ManagedUser = {
     ...existing,
     mobile,
     password,
+    photoDataUrl,
+    photoName: photoDataUrl
+      ? input.photoName !== undefined
+        ? input.photoName?.trim() || null
+        : existing.photoName ?? null
+      : null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -736,6 +769,8 @@ export function managedUserToProfile(user: ManagedUser): Profile {
         : null),
     isActive: normalized.isActive,
     permissions: normalized.permissions,
+    photoDataUrl: normalized.photoDataUrl ?? null,
+    photoName: normalized.photoName ?? null,
   };
 }
 

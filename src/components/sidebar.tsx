@@ -158,31 +158,40 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
           isRail ? (open ? "p-4" : "px-2 py-3") : "p-4",
         ].join(" ")}
       >
-        <p
+        <div
           className={[
-            "truncate text-sm font-medium text-sand-50",
-            isRail
-              ? open
-                ? "text-start text-sm"
-                : "text-center text-xs"
-              : "",
-          ].join(" ")}
-          title={user.fullName}
-        >
-          {isRail ? (open ? user.fullName : user.fullName.trim().charAt(0) || "?") : user.fullName}
-        </p>
-        <p
-          className={[
-            "text-xs text-aroma-200",
-            isRail
-              ? open
-                ? "mt-0.5 max-h-6 overflow-hidden text-start opacity-100 transition-all duration-200"
-                : "max-h-0 overflow-hidden text-center opacity-0 transition-all duration-200"
-              : "",
+            "flex items-center gap-2",
+            isRail && !open ? "flex-col" : "",
           ].join(" ")}
         >
-          {ROLE_LABELS[user.role]}
-        </p>
+          {user.photoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.photoDataUrl}
+              alt=""
+              className={[
+                "shrink-0 rounded-full object-cover ring-1 ring-white/25",
+                isRail && !open ? "h-8 w-8" : "h-9 w-9",
+              ].join(" ")}
+            />
+          ) : (
+            <span
+              className={[
+                "inline-flex shrink-0 items-center justify-center rounded-full bg-white/15 text-xs font-medium text-sand-50 ring-1 ring-white/25",
+                isRail && !open ? "h-8 w-8" : "h-9 w-9",
+              ].join(" ")}
+              aria-hidden
+            >
+              {user.fullName.trim().charAt(0) || "?"}
+            </span>
+          )}
+          <div className={isRail && !open ? "sr-only" : "min-w-0 flex-1"}>
+            <p className="truncate text-sm font-medium text-sand-50" title={user.fullName}>
+              {user.fullName}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-aroma-200">{ROLE_LABELS[user.role]}</p>
+          </div>
+        </div>
         <button
           type="button"
           title={t("common.logout")}

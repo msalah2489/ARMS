@@ -18,6 +18,10 @@ type Props = {
   hint?: string;
   className?: string;
   disabled?: boolean;
+  /** Smaller defaults for profile photos keep sync/storage light. */
+  compressOptions?: { maxEdge?: number; quality?: number };
+  /** Round thumbnail (e.g. profile photo). */
+  roundPreview?: boolean;
 };
 
 /** File picker with compression, thumbnail preview, and click-to-enlarge. */
@@ -29,6 +33,8 @@ export function ImagePickerField({
   hint,
   className,
   disabled = false,
+  compressOptions,
+  roundPreview = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -47,7 +53,7 @@ export function ImagePickerField({
     }
     setBusy(true);
     try {
-      const compressed = await compressImageFile(file);
+      const compressed = await compressImageFile(file, compressOptions);
       onChange(compressed);
     } catch {
       setError("تعذر معالجة الصورة. جرّب صورة أخرى.");
@@ -71,7 +77,12 @@ export function ImagePickerField({
       <div className="mt-2 flex flex-wrap items-start gap-3">
         {value?.dataUrl ? (
           <div className="flex flex-col items-center gap-1">
-            <ClickableImage src={value.dataUrl} alt={value.name || label} size="lg" />
+            <ClickableImage
+              src={value.dataUrl}
+              alt={value.name || label}
+              size="lg"
+              className={roundPreview ? "rounded-full" : undefined}
+            />
             <button
               type="button"
               disabled={disabled || busy}

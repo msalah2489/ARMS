@@ -23,15 +23,25 @@ export function AuthGate({
   const [ready, setReady] = useState(() => Boolean(readSessionSafe()));
 
   useEffect(() => {
-    const session = readSession();
-    if (!session) {
-      setUser(null);
-      setReady(false);
-      router.replace("/login");
-      return;
+    function syncFromSession() {
+      const session = readSession();
+      if (!session) {
+        setUser(null);
+        setReady(false);
+        router.replace("/login");
+        return;
+      }
+      setUser(session);
+      setReady(true);
     }
-    setUser(session);
-    setReady(true);
+
+    syncFromSession();
+    window.addEventListener("arms-session-updated", syncFromSession);
+    window.addEventListener("arms-ops-hydrated", syncFromSession);
+    return () => {
+      window.removeEventListener("arms-session-updated", syncFromSession);
+      window.removeEventListener("arms-ops-hydrated", syncFromSession);
+    };
   }, [router]);
 
   if (!ready || !user) {

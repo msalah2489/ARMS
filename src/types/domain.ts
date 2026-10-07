@@ -153,6 +153,9 @@ export type Profile = {
   isActive?: boolean;
   /** Effective permission keys (role template + admin overrides). */
   permissions?: string[];
+  /** Optional personal photo (compressed data URL). */
+  photoDataUrl?: string | null;
+  photoName?: string | null;
 };
 
 /** Roles an admin can assign when creating users */
@@ -179,6 +182,9 @@ export type ManagedUser = {
   isActive: boolean;
   /** Soft-delete: hidden from active lists, history kept */
   isArchived: boolean;
+  /** Optional personal photo (compressed data URL). */
+  photoDataUrl?: string | null;
+  photoName?: string | null;
   createdAt: string;
   updatedAt: string;
 };

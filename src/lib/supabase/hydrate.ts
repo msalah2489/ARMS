@@ -20,10 +20,13 @@ import {
   type SpareInventoryState,
 } from "@/lib/spare-inventory-store";
 import { applyRemoteTechnicianWork } from "@/lib/technician-store";
+import { readSession, writeSession } from "@/lib/session";
 import {
   applyRemoteManagedUsers,
   ensureBootstrapAdminIfEmpty,
+  findManagedUserForSession,
   listManagedUsersLocal,
+  managedUserToProfile,
   mergeManagedUserLists,
 } from "@/lib/users-store";
 import {
@@ -62,10 +65,19 @@ export type HydrateOptions = {
   force?: boolean;
 };
 
+function refreshSessionProfileFromUsers() {
+  const session = readSession();
+  if (!session) return;
+  const managed = findManagedUserForSession(session);
+  if (!managed) return;
+  writeSession(managedUserToProfile(managed));
+}
+
 function markHydrated() {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(HYDRATED_FLAG, "1");
   lastSuccessAt = Date.now();
+  refreshSessionProfileFromUsers();
   window.dispatchEvent(new CustomEvent("arms-ops-hydrated"));
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExpandableSection } from "@/components/expandable-section";
+import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { ROLE_LABELS, isSystemAdminRole, normalizeRole } from "@/lib/auth";
@@ -25,6 +26,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<Profile | null>(null);
   const [managedId, setManagedId] = useState<string | null>(null);
   const [mobile, setMobile] = useState("");
+  const [photo, setPhoto] = useState<ImageValue | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -42,11 +44,21 @@ export default function SettingsPage() {
       setUser(profile);
       setManagedId(managed.id);
       setMobile(managed.mobile);
+      setPhoto(
+        managed.photoDataUrl
+          ? { name: managed.photoName || "photo.jpg", dataUrl: managed.photoDataUrl }
+          : null,
+      );
       return;
     }
 
     setUser(session);
     setMobile(session.mobile ?? "");
+    setPhoto(
+      session.photoDataUrl
+        ? { name: session.photoName || "photo.jpg", dataUrl: session.photoDataUrl }
+        : null,
+    );
     setManagedId(null);
   }, []);
 
@@ -133,6 +145,16 @@ export default function SettingsPage() {
       {managedId ? (
         <ExpandableSection title={t("account.updateTitle")} defaultOpen={false}>
           <div className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2 dark:text-sand-100">
+              <ImagePickerField
+                label={t("account.photo")}
+                hint={t("account.photoHint")}
+                value={photo}
+                onChange={setPhoto}
+                roundPreview
+                compressOptions={{ maxEdge: 320, quality: 0.7 }}
+              />
+            </div>
             <label className="block text-sm md:col-span-2 dark:text-sand-100">
               {t("account.mobileRequired")}
               <input
@@ -186,6 +208,8 @@ export default function SettingsPage() {
                   mobile,
                   currentPassword: newPassword ? currentPassword : undefined,
                   newPassword: newPassword || undefined,
+                  photoDataUrl: photo?.dataUrl ?? null,
+                  photoName: photo?.name ?? null,
                 });
                 if (!result.ok) {
                   setError(result.error);
@@ -194,6 +218,14 @@ export default function SettingsPage() {
                 const nextSession = managedUserToProfile(result.user);
                 writeSession(nextSession);
                 setUser(nextSession);
+                setPhoto(
+                  result.user.photoDataUrl
+                    ? {
+                        name: result.user.photoName || "photo.jpg",
+                        dataUrl: result.user.photoDataUrl,
+                      }
+                    : null,
+                );
                 setCurrentPassword("");
                 setNewPassword("");
                 setConfirmPassword("");

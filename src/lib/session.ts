@@ -23,10 +23,12 @@ export function readSession(): Profile | null {
 
 export function writeSession(profile: Profile) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  window.dispatchEvent(new CustomEvent("arms-session-updated"));
 }
 
 export function clearSession() {
   window.localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new CustomEvent("arms-session-updated"));
 }
 
 function tryLocalSignIn(login: string, password: string) {
@@ -130,6 +132,8 @@ export async function signIn(email: string, password: string) {
         ? "مركز الصيانة"
         : null),
     isActive: managedMatch?.isActive ?? true,
+    photoDataUrl: managedMatch?.photoDataUrl ?? null,
+    photoName: managedMatch?.photoName ?? null,
   });
 
   return { error: null };

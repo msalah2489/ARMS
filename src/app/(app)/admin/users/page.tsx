@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BulkCsvImportBar } from "@/components/bulk-csv-import";
 import { ExpandableSection } from "@/components/expandable-section";
+import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { isSystemAdminRole } from "@/lib/auth";
@@ -46,6 +47,7 @@ function emptyForm() {
     password: "demo",
     isActive: true,
     permissions: [] as PermissionKey[],
+    photo: null as ImageValue | null,
   };
 }
 
@@ -64,23 +66,40 @@ function UserRow({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-900/10 px-4 py-3 text-sm dark:border-white/10">
-      <div>
-        <p className="font-medium dark:text-sand-50">
-          {user.fullName}{" "}
-          <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
-            · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
-            {!user.isActive ? " · معطّل" : ""}
-            {user.isArchived ? " · مؤرشف" : ""}
+      <div className="flex min-w-0 items-center gap-3">
+        {user.photoDataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.photoDataUrl}
+            alt=""
+            className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-ink-900/10 dark:ring-white/15"
+          />
+        ) : (
+          <span
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-900/10 text-sm font-medium text-ink-700 dark:bg-white/10 dark:text-sand-100"
+            aria-hidden
+          >
+            {user.fullName.trim().charAt(0) || "?"}
           </span>
-        </p>
-        <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
-          {user.mobile}
-          {user.email ? ` · ${user.email}` : ""}
-          {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
-          {user.permissions?.length
-            ? ` · ${user.permissions.length} صلاحية`
-            : ""}
-        </p>
+        )}
+        <div className="min-w-0">
+          <p className="font-medium dark:text-sand-50">
+            {user.fullName}{" "}
+            <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
+              · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
+              {!user.isActive ? " · معطّل" : ""}
+              {user.isArchived ? " · مؤرشف" : ""}
+            </span>
+          </p>
+          <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+            {user.mobile}
+            {user.email ? ` · ${user.email}` : ""}
+            {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
+            {user.permissions?.length
+              ? ` · ${user.permissions.length} صلاحية`
+              : ""}
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap gap-3">
         {!user.isArchived ? (
@@ -428,6 +447,16 @@ function AdminUsersContent() {
               الحساب نشط (غير معطّل)
             </label>
           ) : null}
+          <div className="md:col-span-2 dark:text-sand-100">
+            <ImagePickerField
+              label="الصورة الشخصية"
+              hint="اختيارية — يمكن تركها فارغة."
+              value={form.photo}
+              onChange={(photo) => setForm((prev) => ({ ...prev, photo }))}
+              roundPreview
+              compressOptions={{ maxEdge: 320, quality: 0.7 }}
+            />
+          </div>
         </div>
 
         {showPermissions ? (
@@ -475,6 +504,8 @@ function AdminUsersContent() {
                     password: form.password,
                     isActive: form.isActive,
                     permissions,
+                    photoDataUrl: form.photo?.dataUrl ?? null,
+                    photoName: form.photo?.name ?? null,
                     actor: session
                       ? { id: session.id, role: session.role }
                       : null,
@@ -501,6 +532,8 @@ function AdminUsersContent() {
                     opsBranchId: form.opsBranchId || null,
                     password: form.password,
                     permissions,
+                    photoDataUrl: form.photo?.dataUrl ?? null,
+                    photoName: form.photo?.name ?? null,
                   });
                   if (!result.ok) {
                     setError(result.error);
@@ -552,6 +585,12 @@ function AdminUsersContent() {
                     permissions: (user.permissions?.length
                       ? user.permissions
                       : getDefaultPermissionsForRole(user.role)) as PermissionKey[],
+                    photo: user.photoDataUrl
+                      ? {
+                          name: user.photoName || "photo.jpg",
+                          dataUrl: user.photoDataUrl,
+                        }
+                      : null,
                   });
                   setMessage(null);
                   setError(null);
