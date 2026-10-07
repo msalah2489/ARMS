@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BulkCsvImportBar } from "@/components/bulk-csv-import";
 import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { isSystemAdminRole } from "@/lib/auth";
+import {
+  downloadBranchesImportTemplate,
+  importBranchesFromCsvFile,
+} from "@/lib/bulk-branches-import";
 import {
   createOpsBranch,
   listOpsBranchRecords,
   setOpsBranchActive,
   updateOpsBranch,
 } from "@/lib/branches-store";
+import { readSession } from "@/lib/session";
 import type { OpsBranchRecord } from "@/types/domain";
 
 function emptyForm() {
@@ -63,12 +70,15 @@ function AdminBranchesContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [canBulkImport, setCanBulkImport] = useState(false);
 
   const activeBranches = branches.filter((b) => b.isActive !== false);
   const disabledBranches = branches.filter((b) => b.isActive === false);
 
   function refresh() {
     setBranches(listOpsBranchRecords({ includeInactive: true }));
+    const session = readSession();
+    setCanBulkImport(session ? isSystemAdminRole(session.role) : false);
   }
 
   useEffect(() => {
@@ -92,6 +102,32 @@ function AdminBranchesContent() {
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
       {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
+
+      {canBulkImport ? (
+        <BulkCsvImportBar
+          title="استيراد فروع من ملف Excel/CSV"
+          hint="حمّل القالب، عبّئ الاسم والمدينة (والكود اختياري للمطابقة/التحديث)، ثم ارفع الملف. بدون كود يُنشأ تلقائيًا."
+          onDownloadTemplate={downloadBranchesImportTemplate}
+          onUpload={async (file) => {
+            setError(null);
+            setMessage(null);
+            const result = await importBranchesFromCsvFile(file);
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            if (result.summary.failed > 0 && result.summary.created + result.summary.updated === 0) {
+              setError(result.message);
+            } else if (result.summary.failed > 0) {
+              setMessage(result.message);
+              setError(`اكتمل الاستيراد مع أخطاء (${result.summary.failed} صف فشل).`);
+            } else {
+              setMessage(result.message);
+            }
+            refresh();
+          }}
+        />
+      ) : null}
 
       <ExpandableSection title={editingId ? "تعديل فرع" : "إضافة فرع"} defaultOpen>
         <div className="grid gap-4 md:grid-cols-2">

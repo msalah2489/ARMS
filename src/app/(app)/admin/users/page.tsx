@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BulkCsvImportBar } from "@/components/bulk-csv-import";
 import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { isSystemAdminRole } from "@/lib/auth";
+import {
+  downloadUsersImportTemplate,
+  importUsersFromCsvFile,
+  usersImportRoleHintAr,
+} from "@/lib/bulk-users-import";
 import {
   CRITICAL_SELF_ADMIN_PERMISSIONS,
   PERMISSION_GROUPS,
@@ -210,6 +217,7 @@ function AdminUsersContent() {
   const activeUsers = users.filter((u) => !u.isArchived);
   const archivedUsers = users.filter((u) => u.isArchived);
   const showPermissions = canManagePermissions(actor);
+  const canBulkImport = actor ? isSystemAdminRole(actor.role) : false;
 
   const lockedKeys: PermissionKey[] =
     editingId &&
@@ -252,6 +260,36 @@ function AdminUsersContent() {
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
       {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
+
+      {canBulkImport ? (
+        <BulkCsvImportBar
+          title="استيراد مستخدمين من ملف Excel/CSV"
+          hint={`حمّل القالب، عبّئ الصفوف، ثم ارفعه. الأدوار المسموحة: ${usersImportRoleHintAr()}. المطابقة بالتحديث تتم عبر username.`}
+          onDownloadTemplate={downloadUsersImportTemplate}
+          onUpload={async (file) => {
+            setError(null);
+            setMessage(null);
+            const session = readSession();
+            const result = await importUsersFromCsvFile(
+              file,
+              session ? { id: session.id, role: session.role } : null,
+            );
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            if (result.summary.failed > 0 && result.summary.created + result.summary.updated === 0) {
+              setError(result.message);
+            } else if (result.summary.failed > 0) {
+              setMessage(result.message);
+              setError(`اكتمل الاستيراد مع أخطاء (${result.summary.failed} صف فشل).`);
+            } else {
+              setMessage(result.message);
+            }
+            refresh();
+          }}
+        />
+      ) : null}
 
       <ExpandableSection title={editingId ? "تعديل موظف" : "إضافة مستخدم"} defaultOpen>
         <div className="grid gap-4 md:grid-cols-2">

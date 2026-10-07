@@ -235,3 +235,77 @@ export function deleteOpsBranch(id: string): { ok: true } | { ok: false; error: 
   if (!result.ok) return result;
   return { ok: true };
 }
+
+/**
+ * Bulk import helper: match by code (preferred) or name+city, then create/update.
+ * Optional custom code on create when unique; otherwise auto-generated.
+ */
+export function upsertOpsBranchFromImport(input: {
+  name: string;
+  city: string;
+  code?: string | null;
+  isServiceCenter?: boolean;
+  isActive?: boolean;
+}):
+  | { ok: true; branch: OpsBranchRecord; created: boolean }
+  | { ok: false; error: string } {
+  const name = input.name.trim();
+  const city = input.city.trim();
+  const code = (input.code ?? "").trim();
+  if (!name) return { ok: false, error: "اسم الفرع إلزامي." };
+  if (!city) return { ok: false, error: "المدينة إلزامية." };
+
+  const all = listOpsBranchRecords({ includeInactive: true });
+  const isServiceCenter = Boolean(input.isServiceCenter);
+  const isActive = input.isActive !== false;
+
+  let existing =
+    (code ? all.find((item) => item.code === code) : undefined) ??
+    all.find((item) => item.name === name && item.city === city);
+
+  if (existing) {
+    if (
+      all.some(
+        (item) =>
+          item.id !== existing!.id && item.name === name && item.city === city,
+      )
+    ) {
+      return { ok: false, error: "يوجد فرع بنفس الاسم والمدينة." };
+    }
+    const nextBranch: OpsBranchRecord = {
+      ...existing,
+      name,
+      city,
+      isServiceCenter,
+      isActive,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = all.map((item) => (item.id === existing!.id ? nextBranch : item));
+    writeJson(BRANCHES_KEY, next);
+    schedulePersist(next);
+    return { ok: true, branch: nextBranch, created: false };
+  }
+
+  if (code && all.some((item) => item.code === code)) {
+    return { ok: false, error: `كود الفرع مستخدم مسبقًا: ${code}` };
+  }
+  if (all.some((item) => item.name === name && item.city === city)) {
+    return { ok: false, error: "يوجد فرع بنفس الاسم والمدينة." };
+  }
+
+  const now = new Date().toISOString();
+  const branch: OpsBranchRecord = {
+    id: crypto.randomUUID(),
+    name,
+    city,
+    code: code || nextCode(isServiceCenter),
+    isServiceCenter,
+    isActive,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const next = [branch, ...all];
+  writeJson(BRANCHES_KEY, next);
+  schedulePersist(next);
+  return { ok: true, branch, created: true };
+}
