@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
+import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import {
   ASSIGNMENT_PATH_LABELS,
   deviceStatusLabel,
   formatMaintenanceDuration,
+  getDeviceAssignmentPath,
 } from "@/lib/branch-store";
 import { getMaintenanceRequestById, getOpsServiceRequest } from "@/lib/ops-data";
 import { formatDate } from "@/lib/utils";
@@ -152,6 +154,13 @@ export function RequestDetailClient({ id }: { id: string }) {
                       SN: {device.serialNumber || "—"} ·{" "}
                       {deviceStatusLabel(device.lifecycleStatus, "technician")}
                     </p>
+                    {device.lifecycleStatus ? (
+                      <LifecycleProgressStrip
+                        status={device.lifecycleStatus}
+                        path={getDeviceAssignmentPath(record!, device)}
+                        className="mt-2"
+                      />
+                    ) : null}
                     <p className="mt-1 text-xs text-ink-700/70 dark:text-sand-100/70">
                       العطل: {device.fault || "—"}
                     </p>

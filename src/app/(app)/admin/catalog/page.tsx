@@ -946,7 +946,7 @@ function CatalogAdminContent() {
 
 export default function AdminCatalogPage() {
   return (
-    <RoleGuard allow={["system_admin", "manager"]}>
+    <RoleGuard allow={["system_admin", "manager"]} permission="manage_catalog">
       <CatalogAdminContent />
     </RoleGuard>
   );

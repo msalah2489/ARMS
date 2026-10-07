@@ -1,6 +1,12 @@
 import { isDemoMode } from "@/lib/auth";
 import { isValidSaudiMobile } from "@/lib/branch-catalog";
 import { listBranchOptions } from "@/lib/branches-store";
+import {
+  getDefaultPermissionsForRole,
+  normalizePermissions,
+  protectSelfAdminPermissions,
+  type PermissionKey,
+} from "@/lib/permissions";
 import { pushAppUsers, pullAppUsers } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
@@ -18,7 +24,7 @@ export const ASSIGNABLE_ROLE_LABELS: Record<AssignableUserRole, string> = {
 
 export const ASSIGNABLE_ROLES = Object.keys(ASSIGNABLE_ROLE_LABELS) as AssignableUserRole[];
 
-const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt">> = [
+const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt" | "permissions">> = [
   {
     id: "admin-local",
     fullName: "أحمد المدير",
@@ -295,9 +301,12 @@ function normalizeUser(user: ManagedUser): ManagedUser {
       ? user.email.split("@")[0]
       : user.mobile) ||
     user.id.slice(0, 8);
+  const role = user.role;
   return {
     ...user,
     username: username.toLowerCase(),
+    role,
+    permissions: normalizePermissions(user.permissions, role),
     isActive: user.isActive !== false,
     isArchived: Boolean(user.isArchived),
   };
@@ -469,6 +478,7 @@ export async function createManagedUser(input: {
   role: AssignableUserRole;
   opsBranchId?: string | null;
   password?: string;
+  permissions?: string[];
 }): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
   await mergeRemoteUsersIntoLocal();
   const checked = validateUserInput({ ...input, requireUsername: true });
@@ -476,6 +486,10 @@ export async function createManagedUser(input: {
 
   const now = new Date().toISOString();
   const password = (input.password?.trim() || "demo").slice(0, 64);
+  const permissions = normalizePermissions(
+    input.permissions ?? getDefaultPermissionsForRole(input.role),
+    input.role,
+  );
   const user: ManagedUser = {
     id: crypto.randomUUID(),
     fullName: checked.fullName,
@@ -483,6 +497,7 @@ export async function createManagedUser(input: {
     email: checked.email || `${checked.username}@arms.local`,
     mobile: checked.mobile,
     role: input.role,
+    permissions,
     opsBranchId: checked.branch?.id ?? null,
     opsBranchName: checked.branch?.name ?? null,
     password,
@@ -504,7 +519,7 @@ export async function createManagedUser(input: {
   return { ok: true, user };
 }
 
-/** Admin update — username, branch/role/active, and password can change (upsert by id). */
+/** Admin update — username, branch/role/active, permissions, and password can change (upsert by id). */
 export async function updateManagedUserByAdmin(
   id: string,
   input: {
@@ -516,6 +531,9 @@ export async function updateManagedUserByAdmin(
     opsBranchId?: string | null;
     password?: string;
     isActive?: boolean;
+    permissions?: string[];
+    /** Actor performing the update (used to protect self-admin powers). */
+    actor?: { id: string; role: string } | null;
   },
 ): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
   await mergeRemoteUsersIntoLocal();
@@ -539,6 +557,29 @@ export async function updateManagedUserByAdmin(
       ? `${nextUsername}@arms.local`
       : existing.email);
 
+  let permissions = normalizePermissions(
+    input.permissions ?? existing.permissions,
+    input.role,
+  ) as PermissionKey[];
+  permissions = protectSelfAdminPermissions(
+    input.actor,
+    id,
+    input.role,
+    permissions,
+  );
+
+  // Block careless self-demotion of system_admin (strips all admin powers).
+  if (
+    input.actor?.id === id &&
+    existing.role === "system_admin" &&
+    input.role !== "system_admin"
+  ) {
+    return {
+      ok: false,
+      error: "لا يمكنك إزالة دور مدير النظام عن نفسك. اطلب من مدير نظام آخر إن لزم.",
+    };
+  }
+
   const next: ManagedUser = {
     ...existing,
     fullName: checked.fullName,
@@ -546,6 +587,7 @@ export async function updateManagedUserByAdmin(
     email: nextEmail,
     mobile: checked.mobile,
     role: input.role,
+    permissions,
     opsBranchId: checked.branch?.id ?? null,
     opsBranchName: checked.branch?.name ?? null,
     password: input.password?.trim() ? input.password.trim() : existing.password,
@@ -678,20 +720,22 @@ export async function deleteManagedUser(
 }
 
 export function managedUserToProfile(user: ManagedUser): Profile {
+  const normalized = normalizeUser(user);
   return {
-    id: user.id,
-    fullName: user.fullName,
-    username: user.username,
-    role: user.role,
-    email: user.email,
-    mobile: user.mobile,
-    opsBranchId: user.opsBranchId,
+    id: normalized.id,
+    fullName: normalized.fullName,
+    username: normalized.username,
+    role: normalized.role,
+    email: normalized.email,
+    mobile: normalized.mobile,
+    opsBranchId: normalized.opsBranchId,
     opsBranchName:
-      user.opsBranchName ??
-      (user.role === "technician" || user.role === "mobile_technician"
+      normalized.opsBranchName ??
+      (normalized.role === "technician" || normalized.role === "mobile_technician"
         ? "مركز الصيانة"
         : null),
-    isActive: user.isActive,
+    isActive: normalized.isActive,
+    permissions: normalized.permissions,
   };
 }
 

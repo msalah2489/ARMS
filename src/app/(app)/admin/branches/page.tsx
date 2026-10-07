@@ -234,7 +234,7 @@ function AdminBranchesContent() {
 
 export default function AdminBranchesPage() {
   return (
-    <RoleGuard allow={["system_admin", "manager"]}>
+    <RoleGuard allow={["system_admin", "manager"]} permission="manage_branches">
       <AdminBranchesContent />
     </RoleGuard>
   );

@@ -2,15 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
+import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { deviceStatusLabel, listAllRequestDevices } from "@/lib/branch-store";
+import {
+  deviceStatusLabel,
+  getDeviceAssignmentPath,
+  listAllRequestDevices,
+} from "@/lib/branch-store";
 import { getOpsDevice } from "@/lib/ops-data";
-import type { Device } from "@/types/domain";
+import type { Device, MaintenanceAssignmentPath } from "@/types/domain";
 
 export function DeviceDetailClient({ id }: { id: string }) {
   const [device, setDevice] = useState<Device | null>(null);
   const [lifecycle, setLifecycle] = useState<string>("");
+  const [assignmentPath, setAssignmentPath] = useState<MaintenanceAssignmentPath | null>(null);
   const [fault, setFault] = useState("");
   const [requestNumber, setRequestNumber] = useState("");
   const [receiptPhoto, setReceiptPhoto] = useState<{ name: string; dataUrl: string } | null>(null);
@@ -22,6 +28,7 @@ export function DeviceDetailClient({ id }: { id: string }) {
     const match = listAllRequestDevices().find((item) => item.device.localId === id);
     if (match) {
       setLifecycle(match.device.lifecycleStatus ?? "");
+      setAssignmentPath(getDeviceAssignmentPath(match.request, match.device));
       setFault(match.device.fault);
       setRequestNumber(match.request.requestNumber);
       if (match.device.receiptPhotoDataUrl) {
@@ -46,6 +53,13 @@ export function DeviceDetailClient({ id }: { id: string }) {
         description={`${device.brand} ${device.modelName}`}
         action={<StatusBadge value={device.status} />}
       />
+      {lifecycle ? (
+        <LifecycleProgressStrip
+          status={lifecycle}
+          path={assignmentPath}
+          className="mb-4"
+        />
+      ) : null}
       <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-900">
         <div className="mb-6 flex flex-wrap items-start gap-4">
           {device.imageDataUrl ? (

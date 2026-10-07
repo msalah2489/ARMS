@@ -355,7 +355,10 @@ function TechnicianWorkContent() {
 
 export default function TechnicianWorkPage() {
   return (
-    <RoleGuard allow={["technician", "mobile_technician"]}>
+    <RoleGuard
+      allow={["technician", "mobile_technician"]}
+      permission="view_work_queue"
+    >
       <TechnicianWorkContent />
     </RoleGuard>
   );

@@ -123,6 +123,23 @@ function payloadOf<T>(row: { payload?: unknown } | null | undefined, fallback: (
 // Users
 // ---------------------------------------------------------------------------
 
+function parsePermissionsColumn(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function userToRow(user: ManagedUser) {
   return {
     id: user.id,
@@ -131,6 +148,7 @@ function userToRow(user: ManagedUser) {
     email: user.email,
     mobile: user.mobile,
     role: user.role,
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
     ops_branch_id: user.opsBranchId,
     ops_branch_name: user.opsBranchName,
     password_plain: user.password,
@@ -150,6 +168,7 @@ function rowToUser(row: Record<string, unknown>): ManagedUser {
     email: String(row.email ?? ""),
     mobile: String(row.mobile ?? ""),
     role: (row.role as ManagedUser["role"]) ?? "branch",
+    permissions: parsePermissionsColumn(row.permissions),
     opsBranchId: (row.ops_branch_id as string | null) ?? null,
     opsBranchName: (row.ops_branch_name as string | null) ?? null,
     password: String(row.password_plain ?? ""),

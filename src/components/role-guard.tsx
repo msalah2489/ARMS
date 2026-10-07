@@ -2,16 +2,18 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { isBranchRole, isTechnicianRole, normalizeRole } from "@/lib/auth";
+import { homePathForRole, isBranchRole, isTechnicianRole, normalizeRole } from "@/lib/auth";
+import { hasAnyPermission, hasPermission, type PermissionKey } from "@/lib/permissions";
 import { readSession } from "@/lib/session";
 import type { AppRole } from "@/types/domain";
 
-type Allowed =
+type AllowedRole =
   | "branch"
   | "technician"
   | "admin"
-  | AppRole
-  | Array<"branch" | "technician" | "admin" | AppRole>;
+  | AppRole;
+
+type Allowed = AllowedRole | AllowedRole[];
 
 function roleAllowed(role: AppRole, allowed: Allowed) {
   const normalized = normalizeRole(role);
@@ -33,12 +35,32 @@ function roleAllowed(role: AppRole, allowed: Allowed) {
 
 export function RoleGuard({
   allow,
+  permission,
   children,
 }: {
-  allow: Allowed;
+  /** Role(s) that may access. Optional when `permission` is set. */
+  allow?: Allowed;
+  /** Permission key(s) — access if user has any of these (OR with roles). */
+  permission?: PermissionKey | PermissionKey[];
   children: React.ReactNode;
 }) {
   const router = useRouter();
+
+  function isAllowed(session: NonNullable<ReturnType<typeof readSession>>) {
+    const roleOk = allow ? roleAllowed(session.role, allow) : false;
+    const permList = permission
+      ? Array.isArray(permission)
+        ? permission
+        : [permission]
+      : [];
+    const permOk =
+      permList.length > 0 ? hasAnyPermission(session, permList) : false;
+    // If neither constraint provided, deny. If either matches, allow.
+    if (!allow && permList.length === 0) return false;
+    if (allow && permList.length > 0) return roleOk || permOk;
+    if (allow) return roleOk;
+    return permOk;
+  }
 
   useEffect(() => {
     const session = readSession();
@@ -46,15 +68,20 @@ export function RoleGuard({
       router.replace("/login");
       return;
     }
-    if (!roleAllowed(session.role, allow)) {
-      router.replace("/dashboard");
+    if (!isAllowed(session)) {
+      router.replace(homePathForRole(session.role));
     }
-  }, [allow, router]);
+  }, [allow, permission, router]);
 
   const session = typeof window !== "undefined" ? readSession() : null;
-  if (!session || !roleAllowed(session.role, allow)) {
+  if (!session || !isAllowed(session)) {
     return <p className="text-sm text-ink-700/70">جاري التحقق من الصلاحيات…</p>;
   }
 
   return <>{children}</>;
+}
+
+/** Convenience for action-level checks in pages. */
+export function sessionHasPermission(key: PermissionKey) {
+  return hasPermission(readSession(), key);
 }

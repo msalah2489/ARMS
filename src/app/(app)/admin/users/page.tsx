@@ -5,6 +5,15 @@ import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
+  CRITICAL_SELF_ADMIN_PERMISSIONS,
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  canManagePermissions,
+  getDefaultPermissionsForRole,
+  type PermissionKey,
+} from "@/lib/permissions";
+import { readSession } from "@/lib/session";
+import {
   ASSIGNABLE_ROLES,
   ASSIGNABLE_ROLE_LABELS,
   archiveManagedUser,
@@ -26,6 +35,7 @@ function emptyForm() {
     opsBranchId: "",
     password: "demo",
     isActive: true,
+    permissions: [] as PermissionKey[],
   };
 }
 
@@ -57,6 +67,9 @@ function UserRow({
           {user.mobile}
           {user.email ? ` · ${user.email}` : ""}
           {user.opsBranchName ? ` · ${user.opsBranchName}` : ""}
+          {user.permissions?.length
+            ? ` · ${user.permissions.length} صلاحية`
+            : ""}
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
@@ -90,19 +103,124 @@ function UserRow({
   );
 }
 
+function PermissionsEditor({
+  role,
+  permissions,
+  lockedKeys,
+  onChange,
+  onResetToRole,
+}: {
+  role: AssignableUserRole | "";
+  permissions: PermissionKey[];
+  lockedKeys: PermissionKey[];
+  onChange: (next: PermissionKey[]) => void;
+  onResetToRole: () => void;
+}) {
+  const selected = useMemo(() => new Set(permissions), [permissions]);
+
+  function toggle(key: PermissionKey) {
+    if (lockedKeys.includes(key) && selected.has(key)) return;
+    if (selected.has(key)) {
+      onChange(permissions.filter((item) => item !== key));
+    } else {
+      onChange([...permissions, key]);
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-xl border border-ink-900/10 p-4 dark:border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium dark:text-sand-50">الصلاحيات التفصيلية</p>
+          <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+            يُملأ تلقائيًا من قالب الدور، ويمكن تخصيصه لكل مستخدم.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={!role}
+          onClick={onResetToRole}
+          className="rounded-full border border-ink-900/15 px-4 py-1.5 text-xs disabled:opacity-40 dark:border-white/15 dark:text-sand-50"
+        >
+          إعادة لافتراضي الدور
+        </button>
+      </div>
+
+      {!role ? (
+        <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+          اختر الدور أولاً لتعبئة الصلاحيات.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {PERMISSION_GROUPS.map((group) => (
+            <details key={group.id} className="group rounded-lg border border-ink-900/8 open:bg-ink-900/[0.02] dark:border-white/10 dark:open:bg-white/[0.02]">
+              <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium dark:text-sand-50">
+                <span className="inline-flex items-center gap-2">
+                  {group.labelAr}
+                  <span className="text-xs font-normal text-ink-700/50 dark:text-sand-100/50">
+                    (
+                    {group.keys.filter((key) => selected.has(key)).length}/{group.keys.length})
+                  </span>
+                </span>
+              </summary>
+              <div className="grid gap-2 px-3 pb-3 sm:grid-cols-2">
+                {group.keys.map((key) => {
+                  const locked = lockedKeys.includes(key) && selected.has(key);
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-start gap-2 text-sm dark:text-sand-100"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={selected.has(key)}
+                        disabled={locked}
+                        onChange={() => toggle(key)}
+                      />
+                      <span>
+                        {PERMISSION_LABELS[key]}
+                        {locked ? (
+                          <span className="ms-1 text-xs text-amber-700 dark:text-amber-300">
+                            (محمية)
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminUsersContent() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [form, setForm] = useState(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actor, setActor] = useState(() => readSession());
 
   const branches = useMemo(() => listBranchOptionsForUsers(), []);
   const activeUsers = users.filter((u) => !u.isArchived);
   const archivedUsers = users.filter((u) => u.isArchived);
+  const showPermissions = canManagePermissions(actor);
+
+  const lockedKeys: PermissionKey[] =
+    editingId &&
+    actor?.id === editingId &&
+    form.role === "system_admin"
+      ? CRITICAL_SELF_ADMIN_PERMISSIONS
+      : [];
 
   function refresh() {
     setUsers(listManagedUsers({ includeArchived: true }));
+    setActor(readSession());
   }
 
   useEffect(() => {
@@ -117,11 +235,19 @@ function AdminUsersContent() {
     setEditingId(null);
   }
 
+  function applyRoleDefaults(role: AssignableUserRole) {
+    setForm((prev) => ({
+      ...prev,
+      role,
+      permissions: getDefaultPermissionsForRole(role),
+    }));
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="إدارة المستخدمين"
-        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول ويمكن تعديله (يجب أن يكون فريدًا). الأرشفة تحفظ السجل وتُخفي المستخدم من القوائم النشطة."
+        description="الاسم واسم المستخدم منفصلان. اسم المستخدم للدخول ويمكن تعديله (يجب أن يكون فريدًا). الصلاحيات التفصيلية تُبنى من قالب الدور ويمكن تخصيصها. الأرشفة تحفظ السجل وتُخفي المستخدم من القوائم النشطة."
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
@@ -167,18 +293,20 @@ function AdminUsersContent() {
             />
           </label>
           <label className="block text-sm dark:text-sand-100">
-            صلاحية المستخدم *
+            الدور (قالب الصلاحيات) *
             <select
               value={form.role}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  role: e.target.value as AssignableUserRole | "",
-                }))
-              }
+              onChange={(e) => {
+                const role = e.target.value as AssignableUserRole | "";
+                if (!role) {
+                  setForm((prev) => ({ ...prev, role: "", permissions: [] }));
+                  return;
+                }
+                applyRoleDefaults(role);
+              }}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             >
-              <option value="">اختر الصلاحية</option>
+              <option value="">اختر الدور</option>
               {ASSIGNABLE_ROLES.map((role) => (
                 <option key={role} value={role}>
                   {ASSIGNABLE_ROLE_LABELS[role]}
@@ -221,6 +349,22 @@ function AdminUsersContent() {
           ) : null}
         </div>
 
+        {showPermissions ? (
+          <PermissionsEditor
+            role={form.role}
+            permissions={form.permissions}
+            lockedKeys={lockedKeys}
+            onChange={(permissions) => setForm((prev) => ({ ...prev, permissions }))}
+            onResetToRole={() => {
+              if (!form.role) return;
+              setForm((prev) => ({
+                ...prev,
+                permissions: getDefaultPermissionsForRole(form.role as AssignableUserRole),
+              }));
+            }}
+          />
+        ) : null}
+
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
@@ -230,9 +374,15 @@ function AdminUsersContent() {
                 setError(null);
                 setMessage(null);
                 if (!form.role) {
-                  setError("صلاحية المستخدم إلزامية.");
+                  setError("الدور إلزامي.");
                   return;
                 }
+                const session = readSession();
+                const permissions =
+                  showPermissions && form.permissions.length > 0
+                    ? form.permissions
+                    : getDefaultPermissionsForRole(form.role);
+
                 if (editingId) {
                   const result = await updateManagedUserByAdmin(editingId, {
                     fullName: form.fullName,
@@ -243,10 +393,19 @@ function AdminUsersContent() {
                     opsBranchId: form.opsBranchId || null,
                     password: form.password,
                     isActive: form.isActive,
+                    permissions,
+                    actor: session
+                      ? { id: session.id, role: session.role }
+                      : null,
                   });
                   if (!result.ok) {
                     setError(result.error);
                     return;
+                  }
+                  if (session?.id === result.user.id) {
+                    const { managedUserToProfile } = await import("@/lib/users-store");
+                    const { writeSession } = await import("@/lib/session");
+                    writeSession(managedUserToProfile(result.user));
                   }
                   setMessage(
                     `تم تحديث بيانات ${result.user.fullName}. اسم الدخول: ${result.user.username}`,
@@ -260,6 +419,7 @@ function AdminUsersContent() {
                     role: form.role,
                     opsBranchId: form.opsBranchId || null,
                     password: form.password,
+                    permissions,
                   });
                   if (!result.ok) {
                     setError(result.error);
@@ -308,6 +468,9 @@ function AdminUsersContent() {
                     opsBranchId: user.opsBranchId ?? "",
                     password: "",
                     isActive: user.isActive,
+                    permissions: (user.permissions?.length
+                      ? user.permissions
+                      : getDefaultPermissionsForRole(user.role)) as PermissionKey[],
                   });
                   setMessage(null);
                   setError(null);
@@ -378,7 +541,7 @@ function AdminUsersContent() {
 
 export default function AdminUsersPage() {
   return (
-    <RoleGuard allow={["system_admin", "manager"]}>
+    <RoleGuard allow={["system_admin", "manager"]} permission="manage_users">
       <AdminUsersContent />
     </RoleGuard>
   );

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { usePreferences } from "@/components/preferences-provider";
 import { ROLE_LABELS } from "@/lib/auth";
-import { navForRole } from "@/lib/nav";
+import { navForUser } from "@/lib/nav";
 import { signOut } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
@@ -21,7 +21,7 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { t } = usePreferences();
-  const items = navForRole(user.role);
+  const items = navForUser(user);
   const isRail = variant === "rail";
 
   return (

@@ -322,7 +322,7 @@ function NewServiceRequestContent() {
 
 export default function NewServiceRequestPage() {
   return (
-    <RoleGuard allow="branch">
+    <RoleGuard allow="branch" permission="create_edit_request">
       <NewServiceRequestContent />
     </RoleGuard>
   );

@@ -370,7 +370,7 @@ function BranchShippingContent() {
 
 export default function BranchShippingPage() {
   return (
-    <RoleGuard allow="branch">
+    <RoleGuard allow="branch" permission="branch_shipping">
       <BranchShippingContent />
     </RoleGuard>
   );
