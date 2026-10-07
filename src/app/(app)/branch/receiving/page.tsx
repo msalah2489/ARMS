@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
-import { deviceStatusLabel, listMaintenanceRequests, normalizeLifecycleStatus } from "@/lib/branch-store";
+import {
+  deviceStatusLabel,
+  listMaintenanceRequests,
+  normalizeLifecycleStatus,
+  subscribeMaintenanceRequestsChanged,
+} from "@/lib/branch-store";
 import { markDeliveredToCustomer } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -25,6 +31,7 @@ type Row = {
 };
 
 function BranchReceivingContent() {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<Profile | null>(null);
   const [requests, setRequests] = useState<MaintenanceRequestRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -39,10 +46,18 @@ function BranchReceivingContent() {
     const session = readSession();
     setUser(session);
     refresh(session);
-    const onHydrated = () => refresh(session);
-    window.addEventListener("arms-ops-hydrated", onHydrated);
-    return () => window.removeEventListener("arms-ops-hydrated", onHydrated);
+    return subscribeMaintenanceRequestsChanged(() => {
+      const current = readSession();
+      setUser(current);
+      refresh(current);
+    });
   }, []);
+
+  useEffect(() => {
+    const created = searchParams?.get("created")?.trim();
+    if (!created) return;
+    setMessage(`تم حفظ الطلب ${created} بنجاح.`);
+  }, [searchParams]);
 
   const sections = useMemo(() => {
     const atBranch: Row[] = [];

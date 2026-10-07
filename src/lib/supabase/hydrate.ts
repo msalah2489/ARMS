@@ -5,6 +5,7 @@ import {
   applyRemoteWaybills,
   listMaintenanceRequestsLocal,
 } from "@/lib/branch-store";
+import type { MaintenanceRequestRecord } from "@/types/domain";
 import {
   applyRemoteCatalog,
   replaceCatalog,
@@ -39,6 +40,7 @@ import {
   pullAppTechnicianWork,
   pullAppUsers,
   pullAppWaybills,
+  pushAppMaintenanceRequests,
   pushAppUsers,
 } from "@/lib/supabase/app-sync";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
@@ -177,8 +179,6 @@ async function runHydratePull(): Promise<boolean> {
       pullAppWaybills(),
     ]);
 
-    void listMaintenanceRequestsLocal({ skipSeed: true });
-
     reconcilePayload({
       remoteHas: remoteBranches.length > 0,
       remoteValue: remoteBranches,
@@ -186,12 +186,31 @@ async function runHydratePull(): Promise<boolean> {
       apply: applyRemoteBranches,
     });
 
-    reconcilePayload({
-      remoteHas: remoteRequests.length > 0,
-      remoteValue: remoteRequests,
-      emptyValue: [],
-      apply: applyRemoteMaintenanceRequests,
-    });
+    // Requests: keep local-only rows (just saved, push still in flight) so a
+    // background re-pull cannot hide a brand-new request from the UI.
+    {
+      const local = listMaintenanceRequestsLocal({ skipSeed: true });
+      if (remoteRequests.length === 0) {
+        if (local.length > 0) {
+          await pushAppMaintenanceRequests(local);
+        } else {
+          applyRemoteMaintenanceRequests([]);
+        }
+      } else {
+        const remoteIds = new Set(remoteRequests.map((row) => row.id));
+        const localOnly = local.filter((row) => row.id && !remoteIds.has(row.id));
+        const merged: MaintenanceRequestRecord[] =
+          localOnly.length > 0
+            ? [...localOnly, ...remoteRequests].sort((a, b) =>
+                b.receivedAt.localeCompare(a.receivedAt),
+              )
+            : remoteRequests;
+        applyRemoteMaintenanceRequests(merged);
+        if (localOnly.length > 0) {
+          await pushAppMaintenanceRequests(merged);
+        }
+      }
+    }
 
     reconcilePayload({
       remoteHas: catalogHasRows(remoteCatalog),

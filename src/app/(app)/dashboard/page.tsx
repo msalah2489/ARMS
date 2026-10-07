@@ -15,6 +15,7 @@ import {
   deviceStatusLabel,
   listAllRequestDevices,
   listMaintenanceRequests,
+  subscribeMaintenanceRequestsChanged,
 } from "@/lib/branch-store";
 import {
   getDashboardAttentionCounts,
@@ -64,8 +65,7 @@ export default function DashboardPage() {
 
     load();
     void hydrateOpsFromSupabase().then(() => load());
-    window.addEventListener("arms-ops-hydrated", load);
-    return () => window.removeEventListener("arms-ops-hydrated", load);
+    return subscribeMaintenanceRequestsChanged(load);
   }, []);
 
   if (!user) {

@@ -8,7 +8,11 @@ import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { StatusBadge } from "@/components/status-badge";
-import { listAllRequestDevices, normalizeLifecycleStatus } from "@/lib/branch-store";
+import {
+  listAllRequestDevices,
+  normalizeLifecycleStatus,
+  subscribeMaintenanceRequestsChanged,
+} from "@/lib/branch-store";
 import { getDevices } from "@/lib/data";
 import type { Device } from "@/types/domain";
 
@@ -27,11 +31,21 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    void getDevices(locale).then((rows) => {
-      setDevices(rows);
-      setLoading(false);
-    });
+    let cancelled = false;
+    const load = (opts?: { quiet?: boolean }) => {
+      if (!opts?.quiet) setLoading(true);
+      void getDevices(locale).then((rows) => {
+        if (cancelled) return;
+        setDevices(rows);
+        setLoading(false);
+      });
+    };
+    load();
+    const unsubscribe = subscribeMaintenanceRequestsChanged(() => load({ quiet: true }));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [locale]);
 
   const visible = useMemo(() => {

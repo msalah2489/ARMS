@@ -290,7 +290,10 @@ function NewServiceRequestContent() {
                   requestNumber,
                 });
                 setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
-                setTimeout(() => router.push("/dashboard"), 700);
+                // Go to receiving list so the new row is visible without a full reload.
+                router.push(
+                  `/branch/receiving?created=${encodeURIComponent(saved.requestNumber)}`,
+                );
               } catch (err) {
                 setError(err instanceof Error ? err.message : "تعذر حفظ الطلب.");
               }

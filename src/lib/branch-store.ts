@@ -15,6 +15,9 @@ const REQUESTS_KEY = "arms_maintenance_requests_v1";
 const WAYBILLS_KEY = "arms_waybills_v1";
 const REQUESTS_SEED_FLAG = "arms_maintenance_requests_seeded_v1";
 
+/** Fired when local maintenance-request cache changes (save / remote apply). */
+export const MAINTENANCE_REQUESTS_CHANGED_EVENT = "arms-maintenance-requests-changed";
+
 /** In-memory cache — avoids re-parsing large JSON on every tab switch. */
 let requestsMemoryCache: MaintenanceRequestRecord[] | null = null;
 
@@ -28,11 +31,38 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+export function notifyMaintenanceRequestsChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MAINTENANCE_REQUESTS_CHANGED_EVENT));
+}
+
+/** Re-read lists after local save, hydrate, tab focus, or bfcache restore. */
+export function subscribeMaintenanceRequestsChanged(handler: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const onChanged = () => handler();
+  const onVisible = () => {
+    if (document.visibilityState === "visible") handler();
+  };
+  window.addEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, onChanged);
+  window.addEventListener("arms-ops-hydrated", onChanged);
+  window.addEventListener("pageshow", onChanged);
+  document.addEventListener("visibilitychange", onVisible);
+  return () => {
+    window.removeEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, onChanged);
+    window.removeEventListener("arms-ops-hydrated", onChanged);
+    window.removeEventListener("pageshow", onChanged);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
+}
+
 function writeJson<T>(key: string, value: T) {
   if (key === REQUESTS_KEY) {
     requestsMemoryCache = value as MaintenanceRequestRecord[];
   }
   window.localStorage.setItem(key, JSON.stringify(value));
+  if (key === REQUESTS_KEY) {
+    notifyMaintenanceRequestsChanged();
+  }
 }
 
 function readRequestsCached(): MaintenanceRequestRecord[] {

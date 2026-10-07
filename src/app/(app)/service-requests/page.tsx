@@ -7,6 +7,7 @@ import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { StatusBadge } from "@/components/status-badge";
+import { subscribeMaintenanceRequestsChanged } from "@/lib/branch-store";
 import { getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { formatDate } from "@/lib/utils";
@@ -84,13 +85,13 @@ export default function ServiceRequestsPage() {
       });
     };
     load();
-    const onHydrated = () => load({ quiet: true });
-    window.addEventListener("arms-ops-hydrated", onHydrated);
-    window.addEventListener("arms-sync-status", onHydrated);
+    const onSyncStatus = () => load({ quiet: true });
+    window.addEventListener("arms-sync-status", onSyncStatus);
+    const unsubscribe = subscribeMaintenanceRequestsChanged(() => load({ quiet: true }));
     return () => {
       cancelled = true;
-      window.removeEventListener("arms-ops-hydrated", onHydrated);
-      window.removeEventListener("arms-sync-status", onHydrated);
+      window.removeEventListener("arms-sync-status", onSyncStatus);
+      unsubscribe();
     };
   }, [locale]);
 
