@@ -30,6 +30,7 @@ export type PermissionKey =
   | "view_reports"
   | "export_reports"
   | "system_settings"
+  | "repair_shipping_status"
   | "login"
   | "edit_own_profile";
 
@@ -76,6 +77,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   view_reports: "عرض التقارير",
   export_reports: "تصدير التقارير",
   system_settings: "إعدادات النظام",
+  repair_shipping_status: "إصلاح حالات الشحن غير المتسقة",
   login: "تسجيل الدخول",
   edit_own_profile: "تعديل الملف الشخصي",
 };
@@ -133,6 +135,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "view_reports",
       "export_reports",
       "system_settings",
+      "repair_shipping_status",
     ],
   },
   {
@@ -176,6 +179,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "consume_spares",
     "view_reports",
     "export_reports",
+    "repair_shipping_status",
   ]),
 
   maintenance_supervisor: uniq([

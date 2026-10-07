@@ -10,6 +10,7 @@ import { ROLE_LABELS, isSystemAdminRole, normalizeRole } from "@/lib/auth";
 import { translate } from "@/lib/i18n/messages";
 import type { AppLocale, AppTheme } from "@/lib/preferences";
 import { readSession, writeSession } from "@/lib/session";
+import { canRepairShippingStatus } from "@/lib/shipping-store";
 import {
   ASSIGNABLE_ROLE_LABELS,
   findManagedUserForSession,
@@ -71,7 +72,9 @@ export default function SettingsPage() {
   }
 
   const role = normalizeRole(user.role);
-  const showSystem = isSystemAdminRole(role) || role === "manager";
+  const canRepairShipping = canRepairShippingStatus(user);
+  const showSystem =
+    isSystemAdminRole(role) || role === "manager" || canRepairShipping;
   const roleLabel =
     ASSIGNABLE_ROLE_LABELS[user.role as AssignableUserRole] ?? ROLE_LABELS[user.role];
 
@@ -315,6 +318,17 @@ export default function SettingsPage() {
               <p className="font-medium dark:text-sand-50">{t("settings.branches")}</p>
               <p className="mt-1 text-sm text-ink-700/70 dark:text-sand-100/70">{t("settings.branchesHint")}</p>
             </Link>
+            {canRepairShipping ? (
+              <Link
+                href="/admin/shipping-repair"
+                className="rounded-xl border border-ink-900/10 px-4 py-3 hover:border-aroma-400 dark:border-white/10 dark:hover:border-aroma-400"
+              >
+                <p className="font-medium dark:text-sand-50">{t("settings.shippingRepair")}</p>
+                <p className="mt-1 text-sm text-ink-700/70 dark:text-sand-100/70">
+                  {t("settings.shippingRepairHint")}
+                </p>
+              </Link>
+            ) : null}
           </div>
           <p className="mt-4 text-xs text-ink-700/50 dark:text-sand-100/50">
             {t("settings.signedInAs")

@@ -1,16 +1,20 @@
 import {
   listAllRequestDevices,
   listMaintenanceRequests,
+  locationForLifecycleStatus,
+  normalizeLifecycleStatus,
   updateDeviceLifecycle,
   updateDevicesLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { listBranchOptions } from "@/lib/branches-store";
 import { isDemoMode } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { pushAppAuditEvents, pushAppShippingBatches } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   BranchReturnReceiveOutcome,
+  DeviceLifecycleStatus,
   DraftRequestDevice,
   Profile,
   ShippingBatch,
@@ -97,18 +101,75 @@ function writeBatches(batches: ShippingBatch[]) {
   schedulePersistBatches(batches);
 }
 
+/** Normalize device codes so common OCR/typo variants (O↔0) still match. */
+export function normalizeDeviceCodeKey(code: string | null | undefined) {
+  return (code ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/O/g, "0");
+}
+
+function openBatchActiveItems(excludeBatchId?: string) {
+  return readAllBatches()
+    .filter(
+      (batch) =>
+        batch.id !== excludeBatchId &&
+        batch.status !== "cancelled" &&
+        batch.status !== "received",
+    )
+    .flatMap((batch) =>
+      batch.items
+        .filter((item) => item.status === "active")
+        .map((item) => ({ batch, item })),
+    );
+}
+
 function activeDeviceIdsOnOpenBatches(excludeBatchId?: string) {
   return new Set(
-    readAllBatches()
-      .filter(
-        (batch) =>
-          batch.id !== excludeBatchId &&
-          batch.status !== "cancelled" &&
-          batch.status !== "received",
-      )
-      .flatMap((batch) => batch.items)
-      .filter((item) => item.status === "active")
-      .map((item) => item.requestDeviceId),
+    openBatchActiveItems(excludeBatchId).map(({ item }) => item.requestDeviceId),
+  );
+}
+
+function activeDeviceCodeKeysOnOpenBatches(excludeBatchId?: string) {
+  return new Set(
+    openBatchActiveItems(excludeBatchId)
+      .map(({ item }) => normalizeDeviceCodeKey(item.deviceCode))
+      .filter(Boolean),
+  );
+}
+
+function deviceOnOpenOutboundBatch(device: DraftRequestDevice, excludeBatchId?: string) {
+  const activeIds = activeDeviceIdsOnOpenBatches(excludeBatchId);
+  const activeCodes = activeDeviceCodeKeysOnOpenBatches(excludeBatchId);
+  return (
+    activeIds.has(device.localId) ||
+    activeCodes.has(normalizeDeviceCodeKey(device.deviceCode))
+  );
+}
+
+function findDeviceQueueItem(
+  deviceLocalIdOrCode: string,
+): TechnicianQueueItem | null {
+  const raw = deviceLocalIdOrCode.trim();
+  if (!raw) return null;
+  const codeKey = normalizeDeviceCodeKey(raw);
+  const all = listAllRequestDevices();
+  return (
+    all.find((row) => row.device.localId === raw) ??
+    all.find((row) => row.device.deviceCode.trim().toUpperCase() === raw.toUpperCase()) ??
+    all.find((row) => normalizeDeviceCodeKey(row.device.deviceCode) === codeKey) ??
+    null
+  );
+}
+
+function findOpenBatchForDevice(device: DraftRequestDevice) {
+  const codeKey = normalizeDeviceCodeKey(device.deviceCode);
+  return (
+    openBatchActiveItems().find(
+      ({ item }) =>
+        item.requestDeviceId === device.localId ||
+        normalizeDeviceCodeKey(item.deviceCode) === codeKey,
+    ) ?? null
   );
 }
 
@@ -129,19 +190,16 @@ export function getShippingBatch(id: string) {
 
 /** Devices at branch eligible for outbound shipment (one branch only). */
 export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQueueItem[] {
-  const activeIds = activeDeviceIdsOnOpenBatches();
-
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
-    if (activeIds.has(device.localId)) return false;
-    const status = device.lifecycleStatus ?? "received_at_branch";
-    return [
-      "received_at_branch",
-      "excluded_from_shipment",
-      "ready_to_ship",
-      "maintenance_failed",
-    ].includes(status);
+    if (deviceOnOpenOutboundBatch(device)) return false;
+    const status = normalizeLifecycleStatus(device.lifecycleStatus);
+    return (
+      status === "received_at_branch" ||
+      status === "excluded_from_shipment" ||
+      status === "maintenance_failed"
+    );
   });
 }
 
@@ -149,23 +207,21 @@ export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQ
 export function listDevicesEligibleForMobileDirectShip(
   opsBranchId: string,
 ): TechnicianQueueItem[] {
-  const activeIds = activeDeviceIdsOnOpenBatches();
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
-    if (activeIds.has(device.localId)) return false;
-    return device.lifecycleStatus === "maintenance_failed";
+    if (deviceOnOpenOutboundBatch(device)) return false;
+    return normalizeLifecycleStatus(device.lifecycleStatus) === "maintenance_failed";
   });
 }
 
 /** Devices ready to return to their origin branch. */
 export function listDevicesEligibleForReturn(opsBranchId: string): TechnicianQueueItem[] {
-  const activeIds = activeDeviceIdsOnOpenBatches();
-
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
-    if (activeIds.has(device.localId)) return false;
-    return device.lifecycleStatus === "ready_to_return";
+    if (device.lockedAfterShip) return false;
+    if (deviceOnOpenOutboundBatch(device)) return false;
+    return normalizeLifecycleStatus(device.lifecycleStatus) === "ready_to_return";
   });
 }
 
@@ -865,3 +921,285 @@ export const BRANCH_RETURN_OUTCOME_LABELS: Record<BranchReturnReceiveOutcome, st
   damaged: "تالف",
   not_received: "لم يتم الاستلام",
 };
+
+/** Shipping-related lifecycle statuses a repair admin may set manually. */
+export const REPAIRABLE_SHIPPING_STATUSES = [
+  "received_at_branch",
+  "in_transit_to_service",
+  "excluded_from_shipment",
+  "ready_to_return",
+  "in_return_transit",
+] as const;
+
+export type RepairableShippingStatus = (typeof REPAIRABLE_SHIPPING_STATUSES)[number];
+
+export type ShippingStatusInconsistency = {
+  requestId: string;
+  deviceLocalId: string;
+  deviceCode: string;
+  opsBranchName: string;
+  issue: string;
+  currentStatus: string;
+  currentLocked: boolean;
+  suggestedStatus: DeviceLifecycleStatus;
+  suggestedLocked: boolean;
+  batchId?: string;
+  batchShipmentNumber?: string;
+};
+
+/** True if user may run shipping status repair tools. */
+export function canRepairShippingStatus(user: Profile | null | undefined) {
+  if (!user) return false;
+  if (hasPermission(user, "repair_shipping_status")) return true;
+  return ["system_admin", "manager", "maintenance_manager"].includes(user.role);
+}
+
+function patchForShippingStatus(
+  status: RepairableShippingStatus,
+): Partial<DraftRequestDevice> {
+  const locked =
+    status === "in_transit_to_service" || status === "in_return_transit";
+  return {
+    lifecycleStatus: status,
+    currentLocation: locationForLifecycleStatus(status),
+    lockedAfterShip: locked,
+  };
+}
+
+/** Scan requests + open waybills for status/lock mismatches after sync races. */
+export function listShippingStatusInconsistencies(): ShippingStatusInconsistency[] {
+  const issues: ShippingStatusInconsistency[] = [];
+  const seen = new Set<string>();
+
+  for (const { batch, item } of openBatchActiveItems()) {
+    const match =
+      listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId) ??
+      listAllRequestDevices().find(
+        (row) =>
+          normalizeDeviceCodeKey(row.device.deviceCode) ===
+          normalizeDeviceCodeKey(item.deviceCode),
+      );
+    if (!match) continue;
+
+    const status = normalizeLifecycleStatus(match.device.lifecycleStatus);
+    const expectedStatus: DeviceLifecycleStatus =
+      batch.direction === "return" ? "in_return_transit" : "in_transit_to_service";
+    const locked = Boolean(match.device.lockedAfterShip);
+    const statusWrong = status !== expectedStatus;
+    const lockWrong = !locked;
+    if (!statusWrong && !lockWrong) continue;
+
+    const key = `${match.device.localId}::batch`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    issues.push({
+      requestId: match.request.id,
+      deviceLocalId: match.device.localId,
+      deviceCode: match.device.deviceCode,
+      opsBranchName: match.request.opsBranchName,
+      issue:
+        batch.direction === "return"
+          ? "الجهاز على بوليصة إرجاع نشطة لكن حالته غير متوافقة"
+          : "الجهاز على بوليصة إرسال نشطة لكن حالته غير متوافقة",
+      currentStatus: status,
+      currentLocked: locked,
+      suggestedStatus: expectedStatus,
+      suggestedLocked: true,
+      batchId: batch.id,
+      batchShipmentNumber: batch.shipmentNumber,
+    });
+  }
+
+  for (const { request, device } of listAllRequestDevices()) {
+    const status = normalizeLifecycleStatus(device.lifecycleStatus);
+    const locked = Boolean(device.lockedAfterShip);
+    const onOpen = Boolean(findOpenBatchForDevice(device));
+    const key = `${device.localId}::orphan`;
+    if (seen.has(`${device.localId}::batch`)) continue;
+
+    if (!onOpen && locked) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const suggestedStatus: DeviceLifecycleStatus =
+        status === "in_transit_to_service"
+          ? "received_at_branch"
+          : status === "in_return_transit"
+            ? "ready_to_return"
+            : status;
+      issues.push({
+        requestId: request.id,
+        deviceLocalId: device.localId,
+        deviceCode: device.deviceCode,
+        opsBranchName: request.opsBranchName,
+        issue: "قفل الشحن مفعّل دون بوليصة نشطة — يمنع الإدراج في بوليصة جديدة",
+        currentStatus: status,
+        currentLocked: locked,
+        suggestedStatus,
+        suggestedLocked: false,
+      });
+      continue;
+    }
+
+    if (!onOpen && status === "in_transit_to_service") {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push({
+        requestId: request.id,
+        deviceLocalId: device.localId,
+        deviceCode: device.deviceCode,
+        opsBranchName: request.opsBranchName,
+        issue: "حالة «جاري الشحن» دون بوليصة نشطة",
+        currentStatus: status,
+        currentLocked: locked,
+        suggestedStatus: "received_at_branch",
+        suggestedLocked: false,
+      });
+      continue;
+    }
+
+    if (!onOpen && status === "in_return_transit") {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push({
+        requestId: request.id,
+        deviceLocalId: device.localId,
+        deviceCode: device.deviceCode,
+        opsBranchName: request.opsBranchName,
+        issue: "حالة «في الطريق للفرع» دون بوليصة إرجاع نشطة",
+        currentStatus: status,
+        currentLocked: locked,
+        suggestedStatus: "ready_to_return",
+        suggestedLocked: false,
+      });
+    }
+  }
+
+  return issues.sort((a, b) => a.deviceCode.localeCompare(b.deviceCode, "ar"));
+}
+
+/** Fix all detected shipping/lifecycle inconsistencies. Requires repair permission. */
+export function repairInconsistentShippingStatuses(input: {
+  user: Profile;
+}): { ok: true; fixed: number; details: string[] } | { ok: false; error: string } {
+  if (!canRepairShippingStatus(input.user)) {
+    return { ok: false, error: "ليست لديك صلاحية إصلاح حالات الشحن." };
+  }
+
+  const issues = listShippingStatusInconsistencies();
+  if (!issues.length) {
+    return { ok: true, fixed: 0, details: ["لا توجد تناقضات حالياً."] };
+  }
+
+  const updates = issues.map((issue) => ({
+    requestId: issue.requestId,
+    deviceLocalId: issue.deviceLocalId,
+    patch: {
+      lifecycleStatus: issue.suggestedStatus,
+      currentLocation: locationForLifecycleStatus(issue.suggestedStatus),
+      lockedAfterShip: issue.suggestedLocked,
+    } satisfies Partial<DraftRequestDevice>,
+  }));
+
+  updateDevicesLifecycle(updates);
+
+  const details = issues.map(
+    (issue) =>
+      `${issue.deviceCode}: ${issue.currentStatus} → ${issue.suggestedStatus}` +
+      (issue.batchShipmentNumber ? ` (بوليصة ${issue.batchShipmentNumber})` : ""),
+  );
+
+  writeAudit({
+    actorId: input.user.id,
+    actorName: input.user.fullName,
+    action: "repair_shipping_status_batch",
+    entityType: "shipping_repair",
+    entityId: crypto.randomUUID(),
+    after: { fixed: issues.length, devices: details },
+  });
+
+  return { ok: true, fixed: issues.length, details };
+}
+
+/** Manually set a device shipping-related status (allowed subset only). */
+export function repairDeviceShippingStatus(input: {
+  user: Profile;
+  deviceLocalIdOrCode: string;
+  /** When omitted, auto-sync from open waybill or unlock for eligibility. */
+  targetStatus?: RepairableShippingStatus;
+}):
+  | { ok: true; deviceCode: string; before: string; after: string; note: string }
+  | { ok: false; error: string } {
+  if (!canRepairShippingStatus(input.user)) {
+    return { ok: false, error: "ليست لديك صلاحية إصلاح حالات الشحن." };
+  }
+
+  const match = findDeviceQueueItem(input.deviceLocalIdOrCode);
+  if (!match) {
+    return { ok: false, error: "الجهاز غير موجود. تحقق من الكود (مثال: ARMS-…)." };
+  }
+
+  const before = normalizeLifecycleStatus(match.device.lifecycleStatus);
+  const open = findOpenBatchForDevice(match.device);
+
+  let target: RepairableShippingStatus;
+  let note: string;
+
+  if (input.targetStatus) {
+    if (
+      !(REPAIRABLE_SHIPPING_STATUSES as readonly string[]).includes(input.targetStatus)
+    ) {
+      return { ok: false, error: "الحالة المطلوبة غير مسموحة لإصلاح الشحن." };
+    }
+    target = input.targetStatus;
+    note = "تصحيح يدوي ضمن الحالات المسموحة للشحن.";
+  } else if (open) {
+    target =
+      open.batch.direction === "return" ? "in_return_transit" : "in_transit_to_service";
+    note = `مزامنة مع بوليصة ${open.batch.shipmentNumber} (${open.batch.status}).`;
+  } else if (
+    before === "in_transit_to_service" ||
+    (Boolean(match.device.lockedAfterShip) &&
+      (before === "received_at_branch" ||
+        before === "excluded_from_shipment" ||
+        before === "maintenance_failed"))
+  ) {
+    target = "received_at_branch";
+    note = "إزالة قفل الشحن وإعادة الجهاز لمؤهّل للإرسال.";
+  } else if (
+    before === "in_return_transit" ||
+    (Boolean(match.device.lockedAfterShip) && before === "ready_to_return")
+  ) {
+    target = "ready_to_return";
+    note = "إزالة قفل الشحن وإعادة الجهاز لمؤهّل للإرجاع.";
+  } else {
+    return {
+      ok: false,
+      error: `لا يوجد تناقض واضح لإصلاحه تلقائياً (الحالة الحالية: ${before}). اختر حالة يدوياً إن لزم.`,
+    };
+  }
+
+  const patch = patchForShippingStatus(target);
+  updateDeviceLifecycle(match.request.id, match.device.localId, patch);
+
+  writeAudit({
+    actorId: input.user.id,
+    actorName: input.user.fullName,
+    action: "repair_device_shipping_status",
+    entityType: "request_device",
+    entityId: match.device.localId,
+    before: {
+      lifecycleStatus: before,
+      lockedAfterShip: match.device.lockedAfterShip,
+    },
+    after: { ...patch, note },
+  });
+
+  return {
+    ok: true,
+    deviceCode: match.device.deviceCode,
+    before,
+    after: target,
+    note,
+  };
+}

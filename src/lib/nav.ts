@@ -185,6 +185,14 @@ const ADMIN_NAV: NavItem[] = [
     permission: "manage_branches",
   },
   {
+    href: "/admin/shipping-repair",
+    labelKey: "nav.shippingRepair",
+    icon: Truck,
+    roles: ["system_admin", "manager", "maintenance_manager"],
+    // Shown by role; page actions still require repair_shipping_status (or admin role).
+    permission: "login",
+  },
+  {
     href: "/spare-parts",
     labelKey: "nav.spareParts",
     icon: Package,

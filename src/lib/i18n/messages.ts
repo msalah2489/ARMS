@@ -34,6 +34,7 @@ const messagesAr = {
   "nav.catalog": "كتالوج الأجهزة",
   "nav.users": "المستخدمون",
   "nav.adminBranches": "إدارة الفروع",
+  "nav.shippingRepair": "إصلاح حالات الشحن",
   "nav.spareParts": "قطع الغيار والمخزون",
   "nav.reports": "التقارير",
   "nav.account": "حسابي",
@@ -159,6 +160,8 @@ const messagesAr = {
   "settings.usersHint": "إضافة مستخدمين وإدارة بياناتهم وصلاحياتهم.",
   "settings.branches": "الفروع ومراكز الصيانة",
   "settings.branchesHint": "إضافة فروع مع المدينة وكود تلقائي وتحديد مراكز الصيانة.",
+  "settings.shippingRepair": "إصلاح حالات الشحن",
+  "settings.shippingRepairHint": "مزامنة حالة الجهاز مع البوليصات النشطة وإصلاح التناقضات العالقة.",
   "settings.signedInAs": "مسجّل كـ {email} · {role}",
 
   "account.title": "حسابي",
@@ -316,6 +319,7 @@ const messagesEn: Record<MessageKey, string> = {
   "nav.catalog": "Device catalog",
   "nav.users": "Users",
   "nav.adminBranches": "Manage branches",
+  "nav.shippingRepair": "Repair shipping status",
   "nav.spareParts": "Spare parts & inventory",
   "nav.reports": "Reports",
   "nav.account": "My account",
@@ -441,6 +445,8 @@ const messagesEn: Record<MessageKey, string> = {
   "settings.usersHint": "Create users and manage their profiles and permissions.",
   "settings.branches": "Branches & service centers",
   "settings.branchesHint": "Add branches with city and auto code; mark service centers.",
+  "settings.shippingRepair": "Repair shipping status",
+  "settings.shippingRepairHint": "Sync device status with active waybills and fix stuck inconsistencies.",
   "settings.signedInAs": "Signed in as {email} · {role}",
 
   "account.title": "My account",

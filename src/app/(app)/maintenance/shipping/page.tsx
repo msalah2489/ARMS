@@ -8,6 +8,7 @@ import { RoleGuard } from "@/components/role-guard";
 import { readSession } from "@/lib/session";
 import {
   SHIPPING_BATCH_STATUS_LABELS,
+  canRepairShippingStatus,
   confirmReceivedAtService,
   createReturnShippingBatch,
   createShippingBatch,
@@ -16,6 +17,8 @@ import {
   listDevicesEligibleForShipment,
   listOpsBranchesWithReadyCounts,
   listShippingBatches,
+  listShippingStatusInconsistencies,
+  repairInconsistentShippingStatuses,
   type BranchReadyToShipSummary,
 } from "@/lib/shipping-store";
 import {
@@ -63,6 +66,10 @@ function MaintenanceShippingContent() {
   const returnEligible = useMemo(
     () => listDevicesEligibleForReturn(returnBranchId),
     [returnBranchId, batches, pendingManager],
+  );
+  const shippingInconsistencies = useMemo(
+    () => listShippingStatusInconsistencies(),
+    [batches, readyBranches, pendingManager],
   );
 
   function refresh() {
@@ -116,12 +123,51 @@ function MaintenanceShippingContent() {
             >
               استلام قطع
             </Link>
+            {canRepairShippingStatus(user) ? (
+              <Link
+                href="/admin/shipping-repair"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                إصلاح حالات الشحن
+              </Link>
+            ) : null}
           </>
         }
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
-      {message ? <p className="text-sm text-aroma-700 dark:text-aroma-200">{message}</p> : null}
+      {message ? (
+        <p className="whitespace-pre-line text-sm text-aroma-700 dark:text-aroma-200">{message}</p>
+      ) : null}
+
+      {canRepairShippingStatus(user) && shippingInconsistencies.length > 0 ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-50/60 px-4 py-3 text-sm dark:border-amber-400/30 dark:bg-amber-950/30">
+          <p className="dark:text-sand-50">
+            يوجد {shippingInconsistencies.length} تناقض بين حالة جهاز وبوليصة نشطة.
+          </p>
+          <button
+            type="button"
+            className="mt-2 text-aroma-800 underline dark:text-aroma-200"
+            onClick={() => {
+              const result = repairInconsistentShippingStatuses({ user });
+              if (!result.ok) {
+                setError(result.error);
+                setMessage(null);
+                return;
+              }
+              setError(null);
+              setMessage(
+                result.fixed === 0
+                  ? "لا توجد تناقضات لإصلاحها."
+                  : `تم إصلاح ${result.fixed} جهاز/أجهزة.\n${result.details.join("\n")}`,
+              );
+              refresh();
+            }}
+          >
+            إصلاح حالات الشحن غير المتسقة الآن
+          </button>
+        </div>
+      ) : null}
 
       <ExpandableSection title="صيانة بالفرع (فني متنقل)" defaultOpen={mobileAtBranch.length > 0}>
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
