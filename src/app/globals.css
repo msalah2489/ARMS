@@ -31,30 +31,71 @@ html.dark ::selection {
   background: #3d6238;
 }
 
-/* Dark mode: convert light panels/cards so inherited light text stays readable */
+/*
+ * Dark mode surfaces — page is ink-950 (#0f1612).
+ * Panels lift to ink-700 (#2a3d33) so cards read clearly vs the canvas,
+ * matching light mode's sand-50 page / white card contrast.
+ * Do NOT force background on .shadow-panel alone (tinted widgets use it too).
+ */
 html.dark .bg-white,
 html.dark .bg-white\/80,
-html.dark .shadow-panel {
-  background-color: #1e2d25 !important;
+html.dark .bg-white\/70 {
+  background-color: #2a3d33 !important;
   color: #fbf7f0;
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Explicit dark panel tokens used as card chrome */
+html.dark .dark\:bg-ink-900 {
+  background-color: #2a3d33 !important;
+  color: #fbf7f0;
+}
+
+html.dark .dark\:bg-ink-800 {
+  background-color: #2a3d33 !important;
+  color: #fbf7f0;
+}
+
+/* Nested rows / chips on panels — solid enough to separate from card */
+html.dark .dark\:bg-ink-900\/40 {
+  background-color: rgba(15, 22, 18, 0.55) !important;
+}
+
+html.dark .dark\:bg-ink-950\/40,
+html.dark .dark\:bg-ink-950\/30 {
+  background-color: rgba(15, 22, 18, 0.45) !important;
+}
+
+html.dark .shadow-panel {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 18px 40px -24px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 html.dark .bg-sand-50,
 html.dark .bg-sand-100,
 html.dark .disabled\:bg-sand-50:disabled {
-  background-color: #24352c !important;
+  background-color: #1e2d25 !important;
   color: #fbf7f0;
 }
 
 html.dark .border-ink-900\/5,
 html.dark .border-ink-900\/10,
 html.dark .border-ink-900\/15 {
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .dark\:border-white\/10 {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .dark\:border-white\/15 {
+  border-color: rgba(255, 255, 255, 0.26) !important;
 }
 
 html.dark .border-dashed {
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
 }
 
 html.dark .text-ink-900 {

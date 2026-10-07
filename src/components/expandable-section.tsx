@@ -24,7 +24,7 @@ export function ExpandableSection({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900",
+        "rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/15 dark:bg-ink-800",
         className,
       )}
     >

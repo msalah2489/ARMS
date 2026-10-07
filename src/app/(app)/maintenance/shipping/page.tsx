@@ -422,7 +422,7 @@ function MaintenanceShippingContent() {
       <ExpandableSection
         title={`أجهزة معلقة (${pendingManager.length})`}
         defaultOpen={pendingManager.length > 0}
-        className="dark:bg-ink-800"
+        className="dark:border-white/15"
       >
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
           أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«بانتظار الصيانة».

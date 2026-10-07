@@ -349,7 +349,7 @@ export default function DashboardPage() {
 
 function DashboardColumn({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-800">
+    <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/15 dark:bg-ink-800">
       <h2 className="font-display text-xl dark:text-sand-50">{title}</h2>
       <div className="mt-4 space-y-3">{children}</div>
     </section>
@@ -358,7 +358,7 @@ function DashboardColumn({ title, children }: { title: string; children: ReactNo
 
 function StatRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-ink-900/10 px-3 py-3 dark:border-white/10">
+    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-ink-900/10 bg-sand-50/60 px-3 py-3 dark:border-white/15 dark:bg-ink-950/40">
       <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{label}</p>
       <p className="font-display text-3xl dark:text-sand-50">{value}</p>
     </div>
@@ -413,10 +413,10 @@ function AttentionWidgets({
             className={[
               "rounded-2xl border px-4 py-4 shadow-panel transition hover:border-aroma-400 dark:hover:border-aroma-400",
               item.tone === "urgent"
-                ? "border-rose-300/70 bg-rose-50/80 dark:border-rose-500/30 dark:bg-rose-950/20"
+                ? "border-rose-300/70 bg-rose-50/80 dark:border-rose-400/40 dark:bg-rose-950/45"
                 : item.tone === "hold"
-                  ? "border-amber-300/70 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/20"
-                  : "border-emerald-300/70 bg-emerald-50/80 dark:border-emerald-500/30 dark:bg-emerald-950/20",
+                  ? "border-amber-300/70 bg-amber-50/80 dark:border-amber-400/40 dark:bg-amber-950/45"
+                  : "border-emerald-300/70 bg-emerald-50/80 dark:border-emerald-400/40 dark:bg-emerald-950/45",
             ].join(" ")}
           >
             <p className="text-sm font-medium text-ink-800 dark:text-sand-100">{item.label}</p>
@@ -452,7 +452,7 @@ function ShippingAttentionWidgets({
         </Link>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-2xl border border-emerald-300/70 bg-emerald-50/80 px-4 py-4 shadow-panel dark:border-emerald-500/30 dark:bg-emerald-950/20">
+        <div className="rounded-2xl border border-emerald-300/70 bg-emerald-50/80 px-4 py-4 shadow-panel dark:border-emerald-400/40 dark:bg-emerald-950/45">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
               {t("dashboard.widget.readyToShipBranches")}
@@ -471,7 +471,7 @@ function ShippingAttentionWidgets({
                 <li key={branch.branchId}>
                   <Link
                     href="/maintenance/shipping"
-                    className="flex items-center justify-between gap-3 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900/40 dark:hover:border-aroma-400"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900/40 dark:hover:border-aroma-400"
                   >
                     <span className="font-medium text-ink-900 dark:text-sand-50">
                       {branch.branchName}
@@ -489,7 +489,7 @@ function ShippingAttentionWidgets({
           )}
         </div>
 
-        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 px-4 py-4 shadow-panel dark:border-amber-500/30 dark:bg-amber-950/20">
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 px-4 py-4 shadow-panel dark:border-amber-400/40 dark:bg-amber-950/45">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
               {t("dashboard.widget.openCarriers")}
@@ -515,7 +515,7 @@ function ShippingAttentionWidgets({
                   <li key={carrier.carrier}>
                     <Link
                       href="/maintenance/shipping"
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900/40 dark:hover:border-aroma-400"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 bg-white/70 px-3 py-2 text-sm transition hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900/40 dark:hover:border-aroma-400"
                     >
                       <span className="font-medium text-ink-900 dark:text-sand-50">
                         {carrier.carrier}
