@@ -29,12 +29,13 @@ import {
   ASSIGNABLE_ROLE_LABELS,
   archiveManagedUser,
   createManagedUser,
+  genderSymbol,
   listBranchOptionsForUsers,
   listManagedUsers,
   setManagedUserActive,
   updateManagedUserByAdmin,
 } from "@/lib/users-store";
-import type { AssignableUserRole, ManagedUser } from "@/types/domain";
+import type { AssignableUserRole, ManagedUser, UserGender } from "@/types/domain";
 
 function emptyForm() {
   return {
@@ -47,6 +48,7 @@ function emptyForm() {
     password: "demo",
     isActive: true,
     permissions: [] as PermissionKey[],
+    gender: "" as UserGender | "",
     photo: null as ImageValue | null,
   };
 }
@@ -84,7 +86,12 @@ function UserRow({
         )}
         <div className="min-w-0">
           <p className="font-medium dark:text-sand-50">
-            {user.fullName}{" "}
+            {user.fullName}
+            {genderSymbol(user.gender) ? (
+              <span className="ms-1 text-ink-700/70 dark:text-sand-100/70" title={user.gender === "male" ? "ذكر" : "أنثى"}>
+                {genderSymbol(user.gender)}
+              </span>
+            ) : null}{" "}
             <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
               · @{user.username} · {ASSIGNABLE_ROLE_LABELS[user.role]}
               {!user.isActive ? " · معطّل" : ""}
@@ -289,7 +296,7 @@ function AdminUsersContent() {
       {canBulkImport ? (
         <BulkCsvImportBar
           title="استيراد مستخدمين من ملف Excel"
-          hint={`حمّل قالب Excel (قوائم منسدلة للدور والفرع والحالة)، راجع المعاينة، ثم وافق وأكّد. الأدوار: ${usersImportRoleHintAr()}. المطابقة عبر username.`}
+          hint={`تأكد أن الفروع موجودة في «إدارة الفروع» ثم حمّل القالب (قوائم منسدلة للدور والفرع والحالة). دور «فرع» يتطلب اختيار فرع. راجع المعاينة ثم وافق وأكّد. الأدوار: ${usersImportRoleHintAr()}.`}
           onDownloadTemplate={downloadUsersImportTemplate}
           onParseFile={async (file) => {
             setError(null);
@@ -355,6 +362,16 @@ function AdminUsersContent() {
 
       <ExpandableSection title={editingId ? "تعديل موظف" : "إضافة مستخدم"} defaultOpen>
         <div className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2 dark:text-sand-100">
+            <ImagePickerField
+              label="الصورة الشخصية"
+              hint="اختيارية — يمكن رفع صورة للموظف أو تركها فارغة."
+              value={form.photo}
+              onChange={(photo) => setForm((prev) => ({ ...prev, photo }))}
+              roundPreview
+              compressOptions={{ maxEdge: 320, quality: 0.7 }}
+            />
+          </div>
           <label className="block text-sm dark:text-sand-100">
             الاسم (اسم الشخص) *
             <input
@@ -363,6 +380,35 @@ function AdminUsersContent() {
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
+          <fieldset className="block text-sm dark:text-sand-100">
+            <legend className="font-medium">الجنس (اختياري)</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(
+                [
+                  { value: "" as const, label: "غير محدد" },
+                  { value: "male" as const, label: "ذكر ♂" },
+                  { value: "female" as const, label: "أنثى ♀" },
+                ] as const
+              ).map((option) => {
+                const selected = form.gender === option.value;
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, gender: option.value }))}
+                    className={[
+                      "rounded-full border px-4 py-2 text-sm transition",
+                      selected
+                        ? "border-ink-900 bg-ink-900 text-white dark:border-aroma-500 dark:bg-aroma-600"
+                        : "border-ink-900/15 dark:border-white/15 dark:text-sand-50",
+                    ].join(" ")}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           <label className="block text-sm dark:text-sand-100">
             اسم المستخدم (للدخول) *
             <input
@@ -447,16 +493,6 @@ function AdminUsersContent() {
               الحساب نشط (غير معطّل)
             </label>
           ) : null}
-          <div className="md:col-span-2 dark:text-sand-100">
-            <ImagePickerField
-              label="الصورة الشخصية"
-              hint="اختيارية — يمكن تركها فارغة."
-              value={form.photo}
-              onChange={(photo) => setForm((prev) => ({ ...prev, photo }))}
-              roundPreview
-              compressOptions={{ maxEdge: 320, quality: 0.7 }}
-            />
-          </div>
         </div>
 
         {showPermissions ? (
@@ -504,6 +540,7 @@ function AdminUsersContent() {
                     password: form.password,
                     isActive: form.isActive,
                     permissions,
+                    gender: form.gender || null,
                     photoDataUrl: form.photo?.dataUrl ?? null,
                     photoName: form.photo?.name ?? null,
                     actor: session
@@ -532,6 +569,7 @@ function AdminUsersContent() {
                     opsBranchId: form.opsBranchId || null,
                     password: form.password,
                     permissions,
+                    gender: form.gender || null,
                     photoDataUrl: form.photo?.dataUrl ?? null,
                     photoName: form.photo?.name ?? null,
                   });
@@ -585,6 +623,7 @@ function AdminUsersContent() {
                     permissions: (user.permissions?.length
                       ? user.permissions
                       : getDefaultPermissionsForRole(user.role)) as PermissionKey[],
+                    gender: user.gender ?? "",
                     photo: user.photoDataUrl
                       ? {
                           name: user.photoName || "photo.jpg",

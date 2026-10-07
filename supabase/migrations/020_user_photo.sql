@@ -1,4 +1,4 @@
--- Optional personal photo on app_users (compressed data URL)
+-- Optional personal photo + gender on app_users
 -- DROP + CREATE v_app_users so column list stays stable for Table Editor
 
 alter table if exists public.app_users
@@ -7,11 +7,17 @@ alter table if exists public.app_users
 alter table if exists public.app_users
   add column if not exists photo_name text;
 
+alter table if exists public.app_users
+  add column if not exists gender text;
+
 comment on column public.app_users.photo_data_url is
   'صورة شخصية اختيارية (data URL مضغوط)';
 
 comment on column public.app_users.photo_name is
   'اسم ملف الصورة الشخصية (اختياري)';
+
+comment on column public.app_users.gender is
+  'الجنس اختياري: male | female';
 
 drop view if exists public.v_app_users cascade;
 
@@ -29,6 +35,7 @@ select
   is_active,
   is_archived,
   permissions,
+  gender,
   (photo_data_url is not null and length(trim(photo_data_url)) > 0) as has_photo,
   photo_name,
   created_at,

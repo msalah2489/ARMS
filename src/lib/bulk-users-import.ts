@@ -1,7 +1,11 @@
+import { isDemoMode } from "@/lib/auth";
+import { applyRemoteBranches } from "@/lib/branches-store";
 import {
   formatBulkImportSummaryAr,
   type BulkImportSummary,
 } from "@/lib/csv-excel";
+import { pullAppBranches } from "@/lib/supabase/app-sync";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   downloadXlsxTemplate,
   parseSpreadsheetFile,
@@ -84,20 +88,60 @@ function resolveRole(raw: string): AssignableUserRole | null {
   return byLabel?.[0] ?? null;
 }
 
+function stripServiceCenterSuffix(name: string) {
+  return name.replace(/\s*\(مركز صيانة\)\s*$/u, "").trim();
+}
+
+/** Ensure local branch cache is filled (pull from Supabase when empty). */
+export async function ensureBranchesLoadedForImport(): Promise<
+  { id: string; name: string }[]
+> {
+  let branches = listBranchOptionsForUsers();
+  if (
+    branches.length === 0 &&
+    isSupabaseConfigured() &&
+    !isDemoMode() &&
+    typeof window !== "undefined"
+  ) {
+    try {
+      const remote = await pullAppBranches();
+      if (remote.length > 0) {
+        applyRemoteBranches(remote);
+        branches = listBranchOptionsForUsers();
+      }
+    } catch (error) {
+      console.warn("[arms] ensureBranchesLoadedForImport", error);
+    }
+  }
+  return branches;
+}
+
 function resolveBranchByName(opsBranchName: string): {
   id: string | null;
   error?: string;
 } {
   const name = opsBranchName.trim();
   if (!name) return { id: null };
+  if (name === "— لا فروع —" || name === "-" || name === "—") {
+    return { id: null, error: "اختر فرعًا حقيقيًا من القائمة (لا توجد فروع محملة في القالب)." };
+  }
   const branches = listBranchOptionsForUsers();
-  const matches = branches.filter(
-    (b) =>
-      b.name === name ||
-      b.name.replace(/\s*\(مركز صيانة\)\s*$/, "") === name,
-  );
+  if (branches.length === 0) {
+    return {
+      id: null,
+      error: "لا توجد فروع في النظام. أضف فروعًا من إدارة الفروع ثم أعد تحميل القالب.",
+    };
+  }
+  const needle = stripServiceCenterSuffix(name);
+  const matches = branches.filter((b) => {
+    const option = stripServiceCenterSuffix(b.name);
+    return b.name === name || option === name || option === needle;
+  });
   if (matches.length === 0) {
-    return { id: null, error: `اسم الفرع غير موجود: ${name}` };
+    return {
+      id: null,
+      error: `اسم الفرع غير موجود: ${name}. أعد تحميل القالب بعد التأكد من وجود الفروع.`,
+    };
   }
   if (matches.length > 1) {
     return {
@@ -109,9 +153,17 @@ function resolveBranchByName(opsBranchName: string): {
 }
 
 export async function downloadUsersImportTemplate() {
-  const branchNames = listBranchOptionsForUsers().map((b) => b.name);
+  const branches = await ensureBranchesLoadedForImport();
+  const branchNames = branches.map((b) => b.name);
+
+  if (branchNames.length === 0) {
+    throw new Error(
+      "لا توجد فروع نشطة في النظام. أضف فرعًا واحدًا على الأقل من «إدارة الفروع»، ثم حمّل القالب مرة أخرى حتى تظهر قائمة الفروع في Excel.",
+    );
+  }
+
   const sampleRole = ASSIGNABLE_ROLE_LABELS.branch;
-  const sampleBranch = branchNames[0] ?? "";
+  const sampleBranch = branchNames[0];
 
   await downloadXlsxTemplate({
     filename: "arms-users-template.xlsx",
@@ -132,14 +184,16 @@ export async function downloadUsersImportTemplate() {
       {
         col: 7,
         header: "ops_branch_name",
-        list: branchNames.length > 0 ? branchNames : ["— لا فروع —"],
+        list: branchNames,
       },
       { col: 8, header: "is_active", list: [...YES_NO_AR] },
     ],
     notes: [
       "املأ الصفوف فقط — لا تغيّر عناوين الأعمدة في الصف الأول.",
-      "الدور والفرع والحالة (نشط) تُختار من القوائم المنسدلة.",
-      "لا يوجد عمود لمعرّف الفرع؛ النظام يربطه تلقائيًا من اسم الفرع.",
+      "الدور والفرع والحالة (نشط) تُختار من القوائم المنسدلة في الصفوف.",
+      "عمود ops_branch_name إلزامي عندما يكون الدور «فرع». لباقي الأدوار يمكن تركه فارغًا.",
+      "لا يوجد عمود لمعرّف الفرع؛ النظام يربطه تلقائيًا من اسم الفرع الظاهر في القائمة.",
+      "إن كانت قائمة الفروع فارغة: أضف الفروع من إدارة الفروع ثم أعد تحميل هذا القالب.",
       "كلمة المرور اختيارية عند التحديث؛ للمستخدم الجديد إن تُركت فارغة تُستخدم demo.",
       "المطابقة للتحديث تتم عبر اسم المستخدم (username).",
       `الأدوار: ${usersImportRoleHintAr()}`,
@@ -150,6 +204,8 @@ export async function downloadUsersImportTemplate() {
 export async function previewUsersImportFile(
   file: File,
 ): Promise<UserImportPreview | { ok: false; error: string }> {
+  await ensureBranchesLoadedForImport();
+
   const { headers, rows } = await parseSpreadsheetFile(file);
   if (headers.length === 0) {
     return { ok: false, error: "الملف فارغ أو غير صالح." };
@@ -166,6 +222,8 @@ export async function previewUsersImportFile(
     return { ok: false, error: "لا توجد صفوف بيانات في الملف (بعد صف العناوين)." };
   }
 
+  const availableBranches = listBranchOptionsForUsers();
+
   const previewRows: UserImportPreviewRow[] = rows.map((row, i) => {
     const rowNum = i + 2;
     const username = (row.username ?? "").trim();
@@ -181,6 +239,11 @@ export async function previewUsersImportFile(
     let error: string | undefined;
     if (!username || !fullName || !role || !mobile) {
       error = "حقول إلزامية ناقصة (username, full_name, role, mobile).";
+    } else if (role === "branch" && !opsBranchName) {
+      error =
+        availableBranches.length === 0
+          ? "دور «فرع» يحتاج اسم فرع، ولا توجد فروع في النظام. أضف فروعًا ثم أعد تحميل القالب."
+          : "دور «فرع» يتطلب اختيار فرع من عمود ops_branch_name.";
     } else if (branch.error) {
       error = branch.error;
     }

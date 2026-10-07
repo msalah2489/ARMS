@@ -141,6 +141,9 @@ export type ServiceRequestStatus =
 
 export type RequestPriority = "low" | "normal" | "high" | "urgent";
 
+/** Optional employee gender (for display symbol only; no default avatar). */
+export type UserGender = "male" | "female";
+
 export type Profile = {
   id: string;
   fullName: string;
@@ -153,6 +156,8 @@ export type Profile = {
   isActive?: boolean;
   /** Effective permission keys (role template + admin overrides). */
   permissions?: string[];
+  /** Optional gender: male ♂ / female ♀ */
+  gender?: UserGender | null;
   /** Optional personal photo (compressed data URL). */
   photoDataUrl?: string | null;
   photoName?: string | null;
@@ -182,6 +187,8 @@ export type ManagedUser = {
   isActive: boolean;
   /** Soft-delete: hidden from active lists, history kept */
   isArchived: boolean;
+  /** Optional gender: male ♂ / female ♀ */
+  gender?: UserGender | null;
   /** Optional personal photo (compressed data URL). */
   photoDataUrl?: string | null;
   photoName?: string | null;

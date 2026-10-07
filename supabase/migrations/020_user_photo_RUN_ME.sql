@@ -1,5 +1,5 @@
 -- انسخ هذا الملف كاملاً إلى Supabase SQL Editor وشغّله مرة واحدة.
--- يضيف أعمدة الصورة الشخصية الاختيارية على app_users ويحدّث v_app_users.
+-- يضيف أعمدة الصورة الشخصية والجنس الاختيارية على app_users ويحدّث v_app_users.
 
 alter table if exists public.app_users
   add column if not exists photo_data_url text;
@@ -7,11 +7,17 @@ alter table if exists public.app_users
 alter table if exists public.app_users
   add column if not exists photo_name text;
 
+alter table if exists public.app_users
+  add column if not exists gender text;
+
 comment on column public.app_users.photo_data_url is
   'صورة شخصية اختيارية (data URL مضغوط)';
 
 comment on column public.app_users.photo_name is
   'اسم ملف الصورة الشخصية (اختياري)';
+
+comment on column public.app_users.gender is
+  'الجنس اختياري: male | female';
 
 drop view if exists public.v_app_users cascade;
 
@@ -29,6 +35,7 @@ select
   is_active,
   is_archived,
   permissions,
+  gender,
   (photo_data_url is not null and length(trim(photo_data_url)) > 0) as has_photo,
   photo_name,
   created_at,

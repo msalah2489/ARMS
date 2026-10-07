@@ -154,6 +154,7 @@ function userToRow(user: ManagedUser) {
     password_plain: user.password,
     is_active: user.isActive !== false,
     is_archived: Boolean(user.isArchived),
+    gender: user.gender === "male" || user.gender === "female" ? user.gender : null,
     photo_data_url: user.photoDataUrl?.trim() || null,
     photo_name: user.photoDataUrl?.trim() ? user.photoName?.trim() || null : null,
     created_at: user.createdAt,
@@ -167,6 +168,7 @@ function rowToUser(row: Record<string, unknown>): ManagedUser {
     typeof row.photo_data_url === "string" && row.photo_data_url.trim()
       ? row.photo_data_url.trim()
       : null;
+  const genderRaw = typeof row.gender === "string" ? row.gender.trim() : "";
   return {
     id: String(row.id ?? ""),
     fullName: String(row.full_name ?? ""),
@@ -180,6 +182,7 @@ function rowToUser(row: Record<string, unknown>): ManagedUser {
     password: String(row.password_plain ?? ""),
     isActive: row.is_active !== false,
     isArchived: Boolean(row.is_archived),
+    gender: genderRaw === "male" || genderRaw === "female" ? genderRaw : null,
     photoDataUrl,
     photoName:
       photoDataUrl && typeof row.photo_name === "string" && row.photo_name.trim()

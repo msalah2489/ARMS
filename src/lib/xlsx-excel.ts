@@ -77,12 +77,14 @@ export async function downloadXlsxTemplate(spec: XlsxTemplateSpec): Promise<void
   const dataEnd = 500;
 
   spec.dropdowns.forEach((dd, listIdx) => {
+    if (!dd.list.length) return;
     const listCol = listIdx + 1;
     dd.list.forEach((value, i) => {
       lists.getCell(i + 1, listCol).value = value;
     });
-    const listEnd = Math.max(1, dd.list.length);
+    const listEnd = dd.list.length;
     const listColLetter = colLetter(listCol);
+    // Quoted sheet name + absolute range — works in Excel desktop and Excel Online.
     const formula = `'_lists'!$${listColLetter}$1:$${listColLetter}$${listEnd}`;
     const targetCol = colLetter(dd.col);
     sheet.dataValidations.add(`${targetCol}${dataStart}:${targetCol}${dataEnd}`, {
@@ -106,6 +108,16 @@ export async function downloadXlsxTemplate(spec: XlsxTemplateSpec): Promise<void
     spec.notes.forEach((note, i) => {
       noteSheet.getCell(i + 1, 1).value = note;
     });
+
+    // Visible copy of dropdown lists so values can be checked / pasted if needed.
+    const branchDd = spec.dropdowns.find((d) => d.header === "ops_branch_name");
+    if (branchDd && branchDd.list.length > 0) {
+      noteSheet.getCell(spec.notes.length + 2, 1).value = "أسماء الفروع المتاحة (انسخ الاسم إلى عمود ops_branch_name):";
+      noteSheet.getCell(spec.notes.length + 2, 1).font = { bold: true };
+      branchDd.list.forEach((name, i) => {
+        noteSheet.getCell(spec.notes.length + 3 + i, 1).value = name;
+      });
+    }
   }
 
   const buffer = await wb.xlsx.writeBuffer();

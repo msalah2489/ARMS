@@ -188,6 +188,7 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
           <div className={isRail && !open ? "sr-only" : "min-w-0 flex-1"}>
             <p className="truncate text-sm font-medium text-sand-50" title={user.fullName}>
               {user.fullName}
+              {user.gender === "male" ? " ♂" : user.gender === "female" ? " ♀" : ""}
             </p>
             <p className="mt-0.5 truncate text-xs text-aroma-200">{ROLE_LABELS[user.role]}</p>
           </div>

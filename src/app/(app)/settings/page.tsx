@@ -13,10 +13,11 @@ import { readSession, writeSession } from "@/lib/session";
 import {
   ASSIGNABLE_ROLE_LABELS,
   findManagedUserForSession,
+  genderSymbol,
   managedUserToProfile,
   updateManagedUserSelf,
 } from "@/lib/users-store";
-import type { AssignableUserRole, Profile } from "@/types/domain";
+import type { AssignableUserRole, Profile, UserGender } from "@/types/domain";
 
 const inputClass =
   "mt-1 w-full rounded-xl border border-ink-900/15 bg-white px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50";
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<Profile | null>(null);
   const [managedId, setManagedId] = useState<string | null>(null);
   const [mobile, setMobile] = useState("");
+  const [gender, setGender] = useState<UserGender | "">("");
   const [photo, setPhoto] = useState<ImageValue | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -44,6 +46,7 @@ export default function SettingsPage() {
       setUser(profile);
       setManagedId(managed.id);
       setMobile(managed.mobile);
+      setGender(managed.gender ?? "");
       setPhoto(
         managed.photoDataUrl
           ? { name: managed.photoName || "photo.jpg", dataUrl: managed.photoDataUrl }
@@ -54,6 +57,7 @@ export default function SettingsPage() {
 
     setUser(session);
     setMobile(session.mobile ?? "");
+    setGender(session.gender ?? "");
     setPhoto(
       session.photoDataUrl
         ? { name: session.photoName || "photo.jpg", dataUrl: session.photoDataUrl }
@@ -120,7 +124,20 @@ export default function SettingsPage() {
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-ink-700/60 dark:text-sand-100/60">{t("account.name")}</dt>
-            <dd className="font-medium dark:text-sand-50">{user.fullName}</dd>
+            <dd className="font-medium dark:text-sand-50">
+              {user.fullName}
+              {genderSymbol(user.gender) ? ` ${genderSymbol(user.gender)}` : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-700/60 dark:text-sand-100/60">{t("account.gender")}</dt>
+            <dd className="font-medium dark:text-sand-50">
+              {user.gender === "male"
+                ? t("account.genderMale")
+                : user.gender === "female"
+                  ? t("account.genderFemale")
+                  : "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-ink-700/60 dark:text-sand-100/60">{t("account.username")}</dt>
@@ -155,6 +172,35 @@ export default function SettingsPage() {
                 compressOptions={{ maxEdge: 320, quality: 0.7 }}
               />
             </div>
+            <fieldset className="md:col-span-2 block text-sm dark:text-sand-100">
+              <legend className="font-medium">{t("account.genderOptional")}</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(
+                  [
+                    { value: "" as const, label: t("account.genderUnset") },
+                    { value: "male" as const, label: t("account.genderMale") },
+                    { value: "female" as const, label: t("account.genderFemale") },
+                  ] as const
+                ).map((option) => {
+                  const selected = gender === option.value;
+                  return (
+                    <button
+                      key={option.value || "unset"}
+                      type="button"
+                      onClick={() => setGender(option.value)}
+                      className={[
+                        "rounded-full border px-4 py-2 text-sm transition",
+                        selected
+                          ? "border-ink-900 bg-ink-900 text-white dark:border-aroma-500 dark:bg-aroma-600"
+                          : "border-ink-900/15 dark:border-white/15",
+                      ].join(" ")}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
             <label className="block text-sm md:col-span-2 dark:text-sand-100">
               {t("account.mobileRequired")}
               <input
@@ -208,6 +254,7 @@ export default function SettingsPage() {
                   mobile,
                   currentPassword: newPassword ? currentPassword : undefined,
                   newPassword: newPassword || undefined,
+                  gender: gender || null,
                   photoDataUrl: photo?.dataUrl ?? null,
                   photoName: photo?.name ?? null,
                 });
@@ -218,6 +265,7 @@ export default function SettingsPage() {
                 const nextSession = managedUserToProfile(result.user);
                 writeSession(nextSession);
                 setUser(nextSession);
+                setGender(result.user.gender ?? "");
                 setPhoto(
                   result.user.photoDataUrl
                     ? {

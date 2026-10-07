@@ -9,7 +9,18 @@ import {
 } from "@/lib/permissions";
 import { pushAppUsers, pullAppUsers } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { AssignableUserRole, ManagedUser, Profile } from "@/types/domain";
+import type { AssignableUserRole, ManagedUser, Profile, UserGender } from "@/types/domain";
+
+export function genderSymbol(gender?: UserGender | null): string {
+  if (gender === "male") return "♂";
+  if (gender === "female") return "♀";
+  return "";
+}
+
+export function normalizeGender(value: unknown): UserGender | null {
+  if (value === "male" || value === "female") return value;
+  return null;
+}
 
 const USERS_KEY = "arms_managed_users_v1";
 
@@ -311,6 +322,7 @@ function normalizeUser(user: ManagedUser): ManagedUser {
     permissions: normalizePermissions(user.permissions, role),
     isActive: user.isActive !== false,
     isArchived: Boolean(user.isArchived),
+    gender: normalizeGender(user.gender),
     photoDataUrl,
     photoName,
   };
@@ -483,6 +495,7 @@ export async function createManagedUser(input: {
   opsBranchId?: string | null;
   password?: string;
   permissions?: string[];
+  gender?: UserGender | null;
   photoDataUrl?: string | null;
   photoName?: string | null;
 }): Promise<{ ok: true; user: ManagedUser } | { ok: false; error: string }> {
@@ -510,6 +523,7 @@ export async function createManagedUser(input: {
     password,
     isActive: true,
     isArchived: false,
+    gender: normalizeGender(input.gender),
     photoDataUrl,
     photoName: photoDataUrl ? input.photoName?.trim() || null : null,
     createdAt: now,
@@ -541,6 +555,7 @@ export async function updateManagedUserByAdmin(
     password?: string;
     isActive?: boolean;
     permissions?: string[];
+    gender?: UserGender | null;
     photoDataUrl?: string | null;
     photoName?: string | null;
     /** Actor performing the update (used to protect self-admin powers). */
@@ -607,6 +622,8 @@ export async function updateManagedUserByAdmin(
     opsBranchName: checked.branch?.name ?? null,
     password: input.password?.trim() ? input.password.trim() : existing.password,
     isActive: input.isActive ?? existing.isActive,
+    gender:
+      input.gender !== undefined ? normalizeGender(input.gender) : existing.gender ?? null,
     photoDataUrl,
     photoName: photoDataUrl
       ? input.photoName !== undefined
@@ -652,6 +669,7 @@ export async function updateManagedUserSelf(
     mobile: string;
     currentPassword?: string;
     newPassword?: string;
+    gender?: UserGender | null;
     photoDataUrl?: string | null;
     photoName?: string | null;
   },
@@ -694,6 +712,8 @@ export async function updateManagedUserSelf(
     ...existing,
     mobile,
     password,
+    gender:
+      input.gender !== undefined ? normalizeGender(input.gender) : existing.gender ?? null,
     photoDataUrl,
     photoName: photoDataUrl
       ? input.photoName !== undefined
@@ -769,6 +789,7 @@ export function managedUserToProfile(user: ManagedUser): Profile {
         : null),
     isActive: normalized.isActive,
     permissions: normalized.permissions,
+    gender: normalized.gender ?? null,
     photoDataUrl: normalized.photoDataUrl ?? null,
     photoName: normalized.photoName ?? null,
   };

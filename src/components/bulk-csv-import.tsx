@@ -73,8 +73,13 @@ export function BulkCsvImportBar({
             onClick={() => {
               void (async () => {
                 setBusy(true);
+                setParseError(null);
                 try {
                   await onDownloadTemplate();
+                } catch (error) {
+                  setParseError(
+                    error instanceof Error ? error.message : String(error),
+                  );
                 } finally {
                   setBusy(false);
                 }
