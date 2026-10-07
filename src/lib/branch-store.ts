@@ -313,6 +313,9 @@ export function saveMaintenanceRequest(input: {
   generalNotes: string;
   devices: DraftRequestDevice[];
   requestNumber?: string;
+  /** When set (e.g. manager picking a branch), overrides the user's own branch. */
+  opsBranchId?: string;
+  opsBranchName?: string;
 }) {
   if (
     input.assignmentPath !== "mobile_technician" &&
@@ -337,8 +340,10 @@ export function saveMaintenanceRequest(input: {
     existingReceipts.add(receipt);
   }
 
-  if (!input.user.opsBranchId || !input.user.opsBranchName) {
-    throw new Error("حساب الفرع غير مرتبط بفرع في قاعدة البيانات. راجع مدير النظام.");
+  const opsBranchId = (input.opsBranchId || input.user.opsBranchId || "").trim();
+  const opsBranchName = (input.opsBranchName || input.user.opsBranchName || "").trim();
+  if (!opsBranchId || !opsBranchName) {
+    throw new Error("يجب اختيار الفرع قبل حفظ الطلب.");
   }
 
   const isMobile = input.assignmentPath === "mobile_technician";
@@ -347,8 +352,8 @@ export function saveMaintenanceRequest(input: {
     id: crypto.randomUUID(),
     requestNumber: input.requestNumber || generateRequestNumber(),
     receivedAt: new Date().toISOString(),
-    opsBranchId: input.user.opsBranchId,
-    opsBranchName: input.user.opsBranchName,
+    opsBranchId,
+    opsBranchName,
     branchStaffId: input.user.id,
     branchStaffName: input.user.fullName,
     priority: input.priority,

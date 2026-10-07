@@ -8,7 +8,9 @@ import { DeviceFormModal } from "@/components/device-form-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { usePreferences } from "@/components/preferences-provider";
+import { isBranchRole, isMaintenanceManagerRole } from "@/lib/auth";
 import { EXTERNAL_CONDITION_LABELS, generateRequestNumber, isValidSaudiMobile } from "@/lib/branch-catalog";
+import { getOpsBranch, listBranchOptions } from "@/lib/branches-store";
 import {
   ASSIGNMENT_PATH_LABELS,
   findCustomersByMobile,
@@ -31,6 +33,7 @@ function NewServiceRequestContent() {
   const [priority, setPriority] = useState<BranchPriority>("normal");
   const [assignmentPath, setAssignmentPath] =
     useState<MaintenanceAssignmentPath>("service_center");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [mobile, setMobile] = useState("");
   const [contactName, setContactName] = useState("");
   const [purchaseInvoice, setPurchaseInvoice] = useState("");
@@ -40,11 +43,25 @@ function NewServiceRequestContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const [branchOptions, setBranchOptions] = useState(() => listBranchOptions());
+
   useEffect(() => {
     const session = readSession();
     setUser(session);
     setRequestNumber(generateRequestNumber());
+    setBranchOptions(listBranchOptions());
   }, []);
+
+  const mustSelectBranch = Boolean(
+    user &&
+      (isMaintenanceManagerRole(user.role) ||
+        (!isBranchRole(user.role) && !user.opsBranchId)),
+  );
+
+  const selectedBranch = useMemo(
+    () => branchOptions.find((item) => item.id === selectedBranchId) ?? null,
+    [branchOptions, selectedBranchId],
+  );
 
   const receivedAtLabel = useMemo(
     () =>
@@ -92,14 +109,33 @@ function NewServiceRequestContent() {
               className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
           </label>
-          <label className="block text-sm dark:text-sand-100">
-            الفرع
-            <input
-              value={user.opsBranchName || "—"}
-              readOnly
-              className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
-            />
-          </label>
+          {mustSelectBranch ? (
+            <label className="block text-sm dark:text-sand-100">
+              الفرع *
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                required
+                className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              >
+                <option value="">اختر الفرع</option>
+                {branchOptions.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="block text-sm dark:text-sand-100">
+              الفرع
+              <input
+                value={user.opsBranchName || "—"}
+                readOnly
+                className="mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              />
+            </label>
+          )}
           <label className="block text-sm dark:text-sand-100">
             مسؤول الفرع
             <input
@@ -265,6 +301,12 @@ function NewServiceRequestContent() {
             onClick={() => {
               setError(null);
               setSuccess(null);
+              if (mustSelectBranch) {
+                if (!selectedBranchId || !selectedBranch) {
+                  setError("يجب اختيار الفرع قبل حفظ الطلب.");
+                  return;
+                }
+              }
               if (!isValidSaudiMobile(mobile)) {
                 setError("رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.");
                 return;
@@ -288,12 +330,26 @@ function NewServiceRequestContent() {
                   generalNotes,
                   devices,
                   requestNumber,
+                  ...(mustSelectBranch && selectedBranch
+                    ? {
+                        opsBranchId: selectedBranch.id,
+                        opsBranchName:
+                          getOpsBranch(selectedBranch.id)?.name ??
+                          selectedBranch.name,
+                      }
+                    : {}),
                 });
                 setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
-                // Go to receiving list so the new row is visible without a full reload.
-                router.push(
-                  `/branch/receiving?created=${encodeURIComponent(saved.requestNumber)}`,
-                );
+                // Managers stay on the requests list; branch users go to receiving.
+                if (mustSelectBranch) {
+                  router.push(
+                    `/service-requests?created=${encodeURIComponent(saved.requestNumber)}`,
+                  );
+                } else {
+                  router.push(
+                    `/branch/receiving?created=${encodeURIComponent(saved.requestNumber)}`,
+                  );
+                }
               } catch (err) {
                 setError(err instanceof Error ? err.message : "تعذر حفظ الطلب.");
               }
