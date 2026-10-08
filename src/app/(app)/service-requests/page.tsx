@@ -142,16 +142,17 @@ export default function ServiceRequestsPage() {
       ) : (
         <DataTable
           mobilePrimaryIndex={0}
-          mobileBadgeIndexes={[4, 5]}
+          mobileBadgeIndexes={[5, 6]}
           columns={[
             t("serviceRequests.col.request"),
-            t("serviceRequests.col.customerBranch"),
-            t("serviceRequests.col.device"),
-            t("serviceRequests.col.problem"),
+            t("serviceRequests.col.opened"),
+            t("serviceRequests.col.customer"),
+            t("serviceRequests.col.branch"),
+            t("serviceRequests.col.deviceCount"),
             t("serviceRequests.col.priority"),
             t("serviceRequests.col.status"),
+            t("serviceRequests.col.statusAt"),
             t("serviceRequests.col.technician"),
-            t("serviceRequests.col.opened"),
           ]}
           rows={filtered.map((request) => [
             <Link
@@ -161,13 +162,14 @@ export default function ServiceRequestsPage() {
             >
               {request.requestNumber}
             </Link>,
-            `${request.customerName} · ${request.branchName}`,
-            `${request.deviceCode} / ${request.serialNumber}`,
-            request.reportedProblem,
+            formatDate(request.requestedAt, locale),
+            request.customerName,
+            request.branchName,
+            String(request.deviceCount ?? 0),
             <StatusBadge key="p" value={request.priority} />,
             <StatusBadge key="s" value={request.status} />,
+            formatDate(request.statusAt ?? request.requestedAt, locale),
             request.assignedTechnician ?? t("common.unassigned"),
-            formatDate(request.requestedAt, locale),
           ])}
         />
       )}

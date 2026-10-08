@@ -119,6 +119,20 @@ function resolveRequestAssignmentPath(
   return getDeviceAssignmentPath(request, first);
 }
 
+/**
+ * Status date for list/report: newest of request.receivedAt and any device
+ * maintenanceStartedAt / maintenanceFinishedAt (no separate statusChangedAt field).
+ */
+function resolveStatusAt(request: MaintenanceRequestRecord): string {
+  let latest = request.receivedAt;
+  for (const device of request.devices) {
+    for (const ts of [device.maintenanceStartedAt, device.maintenanceFinishedAt]) {
+      if (ts && ts > latest) latest = ts;
+    }
+  }
+  return latest;
+}
+
 /** Convert branch-created maintenance requests into the shared ServiceRequest list shape. */
 export function listOpsServiceRequests(): ServiceRequest[] {
   return listMaintenanceRequests()
@@ -134,6 +148,7 @@ export function listOpsServiceRequests(): ServiceRequest[] {
       const lifecycles = request.devices.map((device) =>
         normalizeLifecycleStatus(device.lifecycleStatus),
       );
+      const deviceCount = request.devices.length;
 
       return {
         id: request.id,
@@ -141,15 +156,17 @@ export function listOpsServiceRequests(): ServiceRequest[] {
         customerName: request.contactName,
         branchName: request.opsBranchName,
         deviceCode:
-          request.devices.length > 1
-            ? `${first?.deviceCode ?? "—"} (+${request.devices.length - 1})`
+          deviceCount > 1
+            ? `${first?.deviceCode ?? "—"} (+${deviceCount - 1})`
             : first?.deviceCode ?? "—",
         serialNumber: first?.serialNumber ?? "—",
         reportedProblem: problem,
+        deviceCount,
         priority: mapPriority(request.priority),
         status: summarizeRequestStatus(request),
         assignedTechnician: tech,
         requestedAt: request.receivedAt,
+        statusAt: resolveStatusAt(request),
         assignmentPath: resolveRequestAssignmentPath(request),
         hasAwaitingMaintenance: lifecycles.some((status) => status === "awaiting_maintenance"),
         hasOnHold: lifecycles.some(
@@ -178,6 +195,8 @@ export function listOpsDevices(): Device[] {
       ),
       qrCode: device.deviceCode,
       imageDataUrl: device.deviceImageDataUrl,
+      requestId: request.id,
+      requestNumber: request.requestNumber,
     }))
     .sort((a, b) => a.deviceCode.localeCompare(b.deviceCode, "ar"));
 }

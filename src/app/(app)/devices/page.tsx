@@ -88,9 +88,10 @@ export default function DevicesPage() {
       ) : (
         <DataTable
           mobilePrimaryIndex={0}
-          mobileBadgeIndexes={[5]}
+          mobileBadgeIndexes={[6]}
           columns={[
             t("devices.col.code"),
+            t("devices.col.requestNumber"),
             t("devices.col.model"),
             t("devices.col.serial"),
             t("devices.col.customer"),
@@ -106,6 +107,17 @@ export default function DevicesPage() {
             >
               {device.deviceCode}
             </Link>,
+            device.requestId && device.requestNumber ? (
+              <Link
+                key="sr"
+                href={`/service-requests/detail/?id=${encodeURIComponent(device.requestId)}`}
+                className="font-medium text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 transition hover:text-aroma-800 dark:text-aroma-200 dark:decoration-aroma-500/80 dark:hover:text-aroma-100"
+              >
+                {device.requestNumber}
+              </Link>
+            ) : (
+              "—"
+            ),
             `${device.brand} ${device.modelName}`,
             device.serialNumber,
             device.customerName,

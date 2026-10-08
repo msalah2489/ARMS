@@ -243,6 +243,9 @@ export type Device = {
   qrCode: string;
   /** Compressed device photo (data URL) when available */
   imageDataUrl?: string;
+  /** Parent maintenance request when device comes from ops cache */
+  requestId?: string;
+  requestNumber?: string;
 };
 
 export type ServiceRequest = {
@@ -253,10 +256,17 @@ export type ServiceRequest = {
   deviceCode: string;
   serialNumber: string;
   reportedProblem: string;
+  /** Number of devices on the request (list shows count, not a single device). */
+  deviceCount: number;
   priority: RequestPriority;
   status: ServiceRequestStatus;
   assignedTechnician: string | null;
   requestedAt: string;
+  /**
+   * Latest status-related timestamp available on the request/devices
+   * (receivedAt, maintenanceStartedAt, maintenanceFinishedAt).
+   */
+  statusAt: string;
   /** Ops-backed rows only — used by list quick filters */
   assignmentPath?: MaintenanceAssignmentPath | null;
   hasAwaitingMaintenance?: boolean;
