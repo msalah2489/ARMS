@@ -386,7 +386,7 @@ function requestToRow(request: MaintenanceRequestRecord) {
 }
 
 function rowToDevice(row: Record<string, unknown>): DraftRequestDevice {
-  return payloadOf(row, () => ({
+  const fromPayload = payloadOf(row, () => ({
     localId: String(row.local_id ?? ""),
     deviceCode: String(row.device_code ?? ""),
     deviceTypeId: "",
@@ -414,6 +414,27 @@ function rowToDevice(row: Record<string, unknown>): DraftRequestDevice {
     receiptNumber: "",
     receiptPhotoName: "",
   }));
+  // Normalized columns win for claim/ownership so concurrent technicians see the same lock.
+  return {
+    ...fromPayload,
+    localId: String(row.local_id ?? fromPayload.localId ?? ""),
+    deviceCode: String(row.device_code ?? fromPayload.deviceCode ?? ""),
+    lifecycleStatus:
+      (row.lifecycle_status as DraftRequestDevice["lifecycleStatus"]) ??
+      fromPayload.lifecycleStatus,
+    currentLocation: row.current_location
+      ? String(row.current_location)
+      : fromPayload.currentLocation,
+    assignedTechnicianId:
+      (row.assigned_technician_id as string | null | undefined) !== undefined
+        ? ((row.assigned_technician_id as string | null) ?? null)
+        : (fromPayload.assignedTechnicianId ?? null),
+    assignedTechnicianName:
+      (row.assigned_technician_name as string | null | undefined) !== undefined
+        ? ((row.assigned_technician_name as string | null) ?? null)
+        : (fromPayload.assignedTechnicianName ?? null),
+    lockedAfterShip: Boolean(row.locked_after_ship),
+  };
 }
 
 export async function pullAppMaintenanceRequests(): Promise<MaintenanceRequestRecord[]> {
@@ -443,12 +464,39 @@ export async function pullAppMaintenanceRequests(): Promise<MaintenanceRequestRe
 
   return (reqRes.data ?? []).map((row) => {
     const rec = row as Record<string, unknown>;
+    const requestId = String(rec.id ?? "");
+    const columnDevices = devicesByRequest.get(requestId) ?? [];
     const fromPayload = asRecord(rec.payload) as MaintenanceRequestRecord | null;
     if (fromPayload?.id && Array.isArray(fromPayload.devices)) {
-      return fromPayload;
+      // Prefer normalized device columns for claim ownership fields so a stale
+      // request payload cannot re-open a device another technician already claimed.
+      if (columnDevices.length === 0) return fromPayload;
+      const byLocalId = new Map(
+        columnDevices.map((device) => [device.localId, device] as const),
+      );
+      return {
+        ...fromPayload,
+        devices: fromPayload.devices.map((device) => {
+          const fromColumn = byLocalId.get(device.localId);
+          if (!fromColumn) return device;
+          return {
+            ...device,
+            lifecycleStatus: fromColumn.lifecycleStatus ?? device.lifecycleStatus,
+            currentLocation: fromColumn.currentLocation ?? device.currentLocation,
+            assignedTechnicianId:
+              fromColumn.assignedTechnicianId ?? device.assignedTechnicianId ?? null,
+            assignedTechnicianName:
+              fromColumn.assignedTechnicianName ?? device.assignedTechnicianName ?? null,
+            maintenanceStartedAt:
+              fromColumn.maintenanceStartedAt ?? device.maintenanceStartedAt ?? null,
+            maintenanceFinishedAt:
+              fromColumn.maintenanceFinishedAt ?? device.maintenanceFinishedAt ?? null,
+          };
+        }),
+      };
     }
     return {
-      id: String(rec.id ?? ""),
+      id: requestId,
       requestNumber: String(rec.request_number ?? ""),
       receivedAt: String(rec.received_at ?? nowIso()),
       opsBranchId: String(rec.ops_branch_id ?? ""),
@@ -460,7 +508,7 @@ export async function pullAppMaintenanceRequests(): Promise<MaintenanceRequestRe
       contactName: String(rec.contact_name ?? ""),
       purchaseInvoice: String(rec.purchase_invoice ?? ""),
       generalNotes: String(rec.general_notes ?? ""),
-      devices: devicesByRequest.get(String(rec.id ?? "")) ?? [],
+      devices: columnDevices,
     };
   });
 }

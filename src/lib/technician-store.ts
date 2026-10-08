@@ -3,7 +3,6 @@ import {
   listAllRequestDevices,
   listMaintenanceRequests,
   normalizeLifecycleStatus,
-  repairStaleTechnicianAssignments,
   updateDeviceLifecycle,
   updateDevicesLifecycle,
   type TechnicianQueueItem,
@@ -23,7 +22,7 @@ import type {
 const WORK_KEY = "arms_technician_work_v1";
 
 const CLAIM_RACE_MESSAGE =
-  "بدأ فني آخر العمل على هذا الجهاز. اختر جهازًا آخر.";
+  "الجهاز غير متاح يرجى اختيار جهاز آخر";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -69,16 +68,31 @@ function isServiceCenterTechRole(role: Profile["role"]) {
   return normalizeRole(role) === "technician";
 }
 
-function hasOpenWorkForDevice(requestId: string, deviceLocalId: string) {
-  return listTechnicianWork().some(
-    (work) =>
-      work.requestId === requestId &&
-      work.deviceLocalId === deviceLocalId &&
-      work.status === "in_progress",
-  );
+/**
+ * Free devices stuck in maintenance with no assignee after hold/complete left a bad status.
+ * Never clears an existing assignedTechnicianId — missing local work is sync lag, not an orphan,
+ * and wiping it would push a stale unlock to Supabase for other technicians.
+ */
+function latestWorkForDevice(
+  work: TechnicianWorkRecord[],
+  requestId: string,
+  deviceLocalId: string,
+) {
+  return work
+    .filter((record) => record.requestId === requestId && record.deviceLocalId === deviceLocalId)
+    .sort((a, b) => (b.finishedAt ?? b.startedAt ?? "").localeCompare(a.finishedAt ?? a.startedAt ?? ""))[0];
 }
 
-/** Free devices stuck in maintenance after a hold/complete that left a stale assignment. */
+function isSuccessfulOutcome(outcome: TechnicianWorkRecord["outcome"] | null | undefined) {
+  return outcome === "repaired" || outcome === "no_repair_needed";
+}
+
+/**
+ * Free devices stuck in maintenance with no assignee after hold/complete left a bad status.
+ * Also upgrades successful completed work still stuck at awaiting/in_maintenance → ready_to_return.
+ * Never clears an existing assignedTechnicianId — missing local work is sync lag, not an orphan,
+ * and wiping it would push a stale unlock to Supabase for other technicians.
+ */
 function repairOrphanedMaintenanceDevices() {
   const work = listTechnicianWork();
   const updates: Array<{
@@ -89,7 +103,79 @@ function repairOrphanedMaintenanceDevices() {
 
   for (const item of listAllRequestDevices()) {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    const path = getDeviceAssignmentPath(item.request, item.device);
+    const latest = latestWorkForDevice(work, item.request.id, item.device.localId);
+    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+
+    // Successful finish still showing a pre-return SC status → جاهز للإرجاع
+    if (
+      !assigned &&
+      latest?.status === "completed" &&
+      isSuccessfulOutcome(latest.outcome) &&
+      ["awaiting_maintenance", "in_maintenance", "in_maintenance_at_branch"].includes(status)
+    ) {
+      if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
+        updates.push({
+          requestId: item.request.id,
+          deviceLocalId: item.device.localId,
+          patch: {
+            lifecycleStatus: "awaiting_customer",
+            currentLocation: "branch",
+            assignedTechnicianId: null,
+            assignedTechnicianName: null,
+            maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
+          },
+        });
+      } else {
+        updates.push({
+          requestId: item.request.id,
+          deviceLocalId: item.device.localId,
+          patch: {
+            lifecycleStatus: "ready_to_return",
+            currentLocation: "service_center",
+            assignedTechnicianId: null,
+            assignedTechnicianName: null,
+            maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
+          },
+        });
+      }
+      continue;
+    }
+
+    // Failed / held finish → supervisor hold
+    if (
+      !assigned &&
+      latest &&
+      (latest.status === "held" ||
+        (latest.status === "completed" && !isSuccessfulOutcome(latest.outcome))) &&
+      ["awaiting_maintenance", "in_maintenance", "in_maintenance_at_branch"].includes(status)
+    ) {
+      updates.push({
+        requestId: item.request.id,
+        deviceLocalId: item.device.localId,
+        patch: {
+          lifecycleStatus:
+            path === "mobile_technician" || status === "in_maintenance_at_branch"
+              ? latest.status === "completed" && latest.outcome === "not_repairable"
+                ? "maintenance_failed"
+                : "awaiting_manager_decision"
+              : "awaiting_manager_decision",
+          currentLocation:
+            path === "mobile_technician" || status === "in_maintenance_at_branch"
+              ? "branch"
+              : "service_center",
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+          maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
+        },
+      });
+      continue;
+    }
+
     if (status !== "in_maintenance" && status !== "in_maintenance_at_branch") continue;
+
+    // Assigned device belongs to that technician until they finish/hold — do not unlock.
+    if (assigned) continue;
 
     const hasOpen = work.some(
       (record) =>
@@ -99,14 +185,8 @@ function repairOrphanedMaintenanceDevices() {
     );
     if (hasOpen) continue;
 
-    const held = work.find(
-      (record) =>
-        record.deviceLocalId === item.device.localId &&
-        record.requestId === item.request.id &&
-        record.status === "held",
-    );
+    const held = latest?.status === "held" ? latest : undefined;
 
-    const path = getDeviceAssignmentPath(item.request, item.device);
     if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
       updates.push({
         requestId: item.request.id,
@@ -116,7 +196,7 @@ function repairOrphanedMaintenanceDevices() {
           currentLocation: "branch",
           assignedTechnicianId: null,
           assignedTechnicianName: null,
-          maintenanceStartedAt: null,
+          maintenanceStartedAt: held ? item.device.maintenanceStartedAt ?? null : null,
           maintenanceFinishedAt: held ? item.device.maintenanceFinishedAt ?? null : null,
         },
       });
@@ -139,6 +219,11 @@ function repairOrphanedMaintenanceDevices() {
   updateDevicesLifecycle(updates);
 }
 
+/** Run status repairs when listing devices outside the technician queue. */
+export function ensureDeviceLifecycleRepairs() {
+  repairOrphanedMaintenanceDevices();
+}
+
 /** Apply urgent-only rule: if any urgent exists in the set, keep only urgent. */
 function applyUrgentOnlyFilter(items: TechnicianQueueItem[]): TechnicianQueueItem[] {
   const hasUrgent = items.some((item) => item.request.priority === "urgent");
@@ -156,24 +241,36 @@ function applyUrgentOnlyFilter(items: TechnicianQueueItem[]): TechnicianQueueIte
 function isClaimedByOther(item: TechnicianQueueItem, technicianId: string) {
   const assigned = String(item.device.assignedTechnicianId ?? "").trim();
   if (!assigned) return false;
-  if (assigned === technicianId) return false;
-  return hasOpenWorkForDevice(item.request.id, item.device.localId);
+  return assigned !== technicianId;
+}
+
+/** True when another technician already owns this device (assignment and/or open work). */
+function isOwnedByOtherTechnician(
+  item: TechnicianQueueItem,
+  technicianId: string,
+): boolean {
+  if (isClaimedByOther(item, technicianId)) return true;
+  return listTechnicianWork().some(
+    (work) =>
+      work.deviceLocalId === item.device.localId &&
+      work.requestId === item.request.id &&
+      work.status === "in_progress" &&
+      work.technicianId !== technicianId,
+  );
 }
 
 /**
- * Eligible queue for a technician:
+ * Waiting devices for a technician (before urgent-only filter):
  * - service-center tech: awaiting_maintenance at SC only (never mobile path)
  * - mobile tech: in_maintenance_at_branch for their branch only
- * - claimed-by-other devices hidden
- * - urgent-only when any urgent exists
+ * - claimed-by-other / own in-progress devices hidden from waiting
  */
-export function getEligibleQueueForTechnician(technician: Profile): TechnicianQueueItem[] {
-  repairStaleTechnicianAssignments();
+function listAwaitingForTechnicianRaw(technician: Profile): TechnicianQueueItem[] {
   repairOrphanedMaintenanceDevices();
 
   const role = normalizeRole(technician.role);
-  const raw = listAllRequestDevices().filter((item) => {
-    if (isClaimedByOther(item, technician.id)) return false;
+  return listAllRequestDevices().filter((item) => {
+    if (isOwnedByOtherTechnician(item, technician.id)) return false;
 
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
     const path = getDeviceAssignmentPath(item.request, item.device);
@@ -186,15 +283,16 @@ export function getEligibleQueueForTechnician(technician: Profile): TechnicianQu
       }
       const assigned = String(item.device.assignedTechnicianId ?? "").trim();
       if (assigned && assigned !== technician.id) return false;
-      if (assigned === technician.id && hasOpenWorkForDevice(item.request.id, item.device.localId)) {
-        return false; // shown under in-progress, not queue
-      }
+      // Claimed by me → «استئناف العمل», not waiting queue.
+      if (assigned === technician.id) return false;
       return true;
     }
 
     if (role === "technician") {
       if (path === "mobile_technician") return false;
       if (status === "in_maintenance_at_branch" || status === "maintenance_failed") return false;
+      // Service-center active maintenance is never in the waiting queue.
+      if (status === "in_maintenance") return false;
 
       if (status !== "awaiting_maintenance") {
         if (
@@ -213,50 +311,46 @@ export function getEligibleQueueForTechnician(technician: Profile): TechnicianQu
       }
 
       const assigned = String(item.device.assignedTechnicianId ?? "").trim();
-      if (!assigned) return true;
-      const openWork = listTechnicianWork().some(
-        (work) =>
-          work.deviceLocalId === item.device.localId &&
-          work.status === "in_progress" &&
-          work.technicianId === assigned,
-      );
-      if (openWork) return false;
-      updateDeviceLifecycle(item.request.id, item.device.localId, {
-        assignedTechnicianId: null,
-        assignedTechnicianName: null,
-      });
+      // Assigned to me without finishing → show under in-progress, not queue.
+      if (assigned && assigned !== technician.id) return false;
+      if (assigned === technician.id) return false;
       return true;
     }
 
     return false;
   });
+}
 
-  return applyUrgentOnlyFilter(raw);
+/** Counts for work-page stat cards (total awaiting ignores urgent-only display filter). */
+export function getTechnicianWorkPageStats(technician: Profile) {
+  const awaitingRaw = listAwaitingForTechnicianRaw(technician);
+  const myWork = listTechnicianWork().filter((item) => item.technicianId === technician.id);
+  return {
+    awaitingTotal: awaitingRaw.length,
+    awaitingUrgent: awaitingRaw.filter((item) => item.request.priority === "urgent").length,
+    myInProgress: myWork.filter((item) => item.status === "in_progress").length,
+    myCompleted: myWork.filter((item) => item.status === "completed").length,
+  };
+}
+
+/**
+ * Eligible queue for a technician (urgent-only when any urgent exists).
+ */
+export function getEligibleQueueForTechnician(technician: Profile): TechnicianQueueItem[] {
+  return applyUrgentOnlyFilter(listAwaitingForTechnicianRaw(technician));
 }
 
 /** @deprecated prefer getEligibleQueueForTechnician — kept for older callers */
 export function getSortedAwaitingDevices(technician?: Profile): TechnicianQueueItem[] {
   if (technician) return getEligibleQueueForTechnician(technician);
-  repairStaleTechnicianAssignments();
   repairOrphanedMaintenanceDevices();
   const awaiting = listAllRequestDevices().filter((item) => {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
     if (status !== "awaiting_maintenance") return false;
     if (getDeviceAssignmentPath(item.request, item.device) === "mobile_technician") return false;
     const assigned = String(item.device.assignedTechnicianId ?? "").trim();
-    if (!assigned) return true;
-    const openWork = listTechnicianWork().some(
-      (work) =>
-        work.deviceLocalId === item.device.localId &&
-        work.status === "in_progress" &&
-        work.technicianId === assigned,
-    );
-    if (openWork) return false;
-    updateDeviceLifecycle(item.request.id, item.device.localId, {
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-    });
-    return true;
+    // Hide anything already claimed; do not wipe remote assignments from this filter.
+    return !assigned;
   });
   return applyUrgentOnlyFilter(awaiting);
 }
@@ -291,24 +385,28 @@ export function startDeviceWork(
     }
   }
 
-  const assigned = String(fresh.device.assignedTechnicianId ?? "").trim();
-  if (assigned && assigned !== technician.id) {
-    if (hasOpenWorkForDevice(fresh.request.id, fresh.device.localId)) {
-      return { ok: false, error: CLAIM_RACE_MESSAGE };
-    }
+  if (isOwnedByOtherTechnician(fresh, technician.id)) {
+    return { ok: false, error: CLAIM_RACE_MESSAGE };
+  }
+
+  // Service-center device already under maintenance without being ours.
+  if (
+    !mobile &&
+    status === "in_maintenance" &&
+    String(fresh.device.assignedTechnicianId ?? "").trim() !== technician.id
+  ) {
+    return { ok: false, error: CLAIM_RACE_MESSAGE };
   }
 
   const existingOpen = findOpenWorkForDevice(fresh.device.localId, technician.id);
-  if (existingOpen) return { ok: true, record: existingOpen };
-
-  const otherOpen = listTechnicianWork().find(
-    (work) =>
-      work.deviceLocalId === fresh.device.localId &&
-      work.requestId === fresh.request.id &&
-      work.status === "in_progress" &&
-      work.technicianId !== technician.id,
-  );
-  if (otherOpen) return { ok: false, error: CLAIM_RACE_MESSAGE };
+  if (existingOpen) {
+    // Resume only if this device is still assigned to the current technician.
+    const assigned = String(fresh.device.assignedTechnicianId ?? "").trim();
+    if (assigned && assigned !== technician.id) {
+      return { ok: false, error: CLAIM_RACE_MESSAGE };
+    }
+    return { ok: true, record: existingOpen };
+  }
 
   const startedAt = new Date().toISOString();
   const nextStatus = mobile ? "in_maintenance_at_branch" : "in_maintenance";
@@ -639,10 +737,14 @@ export function getDeviceHoldSummary(requestId: string, deviceLocalId: string) {
 
 export function listMyInProgressDevices(technicianId: string): TechnicianQueueItem[] {
   repairOrphanedMaintenanceDevices();
+  const myId = String(technicianId ?? "").trim();
+  if (!myId) return [];
   return listAllRequestDevices().filter((item) => {
     const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
     if (status !== "in_maintenance" && status !== "in_maintenance_at_branch") return false;
-    return item.device.assignedTechnicianId === technicianId;
+    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+    // Strict ownership: never show another technician's in-progress device under «استئناف العمل».
+    return assigned === myId;
   });
 }
 
@@ -791,7 +893,6 @@ export function markDeliveredToCustomer(input: {
 }
 
 export function getTechnicianDashboardStats(technicianId: string, technician?: Profile) {
-  repairStaleTechnicianAssignments();
   const profile =
     technician ??
     ({

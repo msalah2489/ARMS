@@ -5,12 +5,14 @@ import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { branchScopeId } from "@/lib/auth";
 import {
   deviceStatusLabel,
   getDeviceAssignmentPath,
   listAllRequestDevices,
 } from "@/lib/branch-store";
 import { getOpsDevice } from "@/lib/ops-data";
+import { readSession } from "@/lib/session";
 import type { Device, MaintenanceAssignmentPath } from "@/types/domain";
 
 export function DeviceDetailClient({ id }: { id: string }) {
@@ -21,11 +23,16 @@ export function DeviceDetailClient({ id }: { id: string }) {
   const [requestNumber, setRequestNumber] = useState("");
   const [receiptPhoto, setReceiptPhoto] = useState<{ name: string; dataUrl: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
-    const ops = getOpsDevice(id);
+    const scope = branchScopeId(readSession());
+    const ops = getOpsDevice(id, scope);
     setDevice(ops);
-    const match = listAllRequestDevices().find((item) => item.device.localId === id);
+    const match = listAllRequestDevices().find(
+      (item) =>
+        item.device.localId === id && (!scope || item.request.opsBranchId === scope),
+    );
     if (match) {
       setLifecycle(match.device.lifecycleStatus ?? "");
       setAssignmentPath(getDeviceAssignmentPath(match.request, match.device));
@@ -39,11 +46,19 @@ export function DeviceDetailClient({ id }: { id: string }) {
       } else {
         setReceiptPhoto(null);
       }
+      setForbidden(false);
+    } else if (scope && listAllRequestDevices().some((item) => item.device.localId === id)) {
+      setForbidden(true);
+    } else {
+      setForbidden(false);
     }
     setLoading(false);
   }, [id]);
 
   if (loading) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+  if (forbidden) {
+    return <p className="text-sm text-rose-700">لا يمكنك عرض أجهزة فروع أخرى.</p>;
+  }
   if (!device) return <p className="text-sm text-rose-700">الجهاز غير موجود.</p>;
 
   return (
@@ -51,7 +66,11 @@ export function DeviceDetailClient({ id }: { id: string }) {
       <PageHeader
         title={device.deviceCode}
         description={`${device.brand} ${device.modelName}`}
-        action={<StatusBadge value={device.status} />}
+        backHref="/devices"
+        backLabel="رجوع"
+        action={
+          <StatusBadge value={lifecycle || device.lifecycleStatus || device.status} />
+        }
       />
       {lifecycle ? (
         <LifecycleProgressStrip

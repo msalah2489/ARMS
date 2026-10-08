@@ -69,15 +69,15 @@ function canUseOpsLocalCache(): boolean {
   return true;
 }
 
-function clientOpsDevices(): Device[] | null {
+function clientOpsDevices(opsBranchId?: string | null): Device[] | null {
   if (!canUseOpsLocalCache()) return null;
-  const rows = listOpsDevices();
+  const rows = listOpsDevices(opsBranchId);
   return rows.length > 0 ? rows : null;
 }
 
-function clientOpsCustomers(): Customer[] | null {
+function clientOpsCustomers(opsBranchId?: string | null): Customer[] | null {
   if (!canUseOpsLocalCache()) return null;
-  const rows = listOpsCustomers();
+  const rows = listOpsCustomers(opsBranchId);
   return rows.length > 0 ? rows : null;
 }
 
@@ -87,12 +87,15 @@ function clientOpsBranches(locale?: AppLocale): Branch[] | null {
   return rows.length > 0 ? rows : null;
 }
 
-export async function getCustomers(locale?: AppLocale): Promise<Customer[]> {
+export async function getCustomers(
+  locale?: AppLocale,
+  opsBranchId?: string | null,
+): Promise<Customer[]> {
   await ensureOpsHydrated();
 
   if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
 
-  const ops = clientOpsCustomers();
+  const ops = clientOpsCustomers(opsBranchId);
   if (ops) return ops;
 
   if (!isSupabaseConfigured()) {
@@ -154,12 +157,15 @@ export async function getBranches(locale?: AppLocale): Promise<Branch[]> {
   }
 }
 
-export async function getDevices(locale?: AppLocale): Promise<Device[]> {
+export async function getDevices(
+  locale?: AppLocale,
+  opsBranchId?: string | null,
+): Promise<Device[]> {
   await ensureOpsHydrated();
 
   if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
 
-  const ops = clientOpsDevices();
+  const ops = clientOpsDevices(opsBranchId);
   if (ops) return ops;
 
   if (!isSupabaseConfigured()) {
@@ -192,7 +198,10 @@ export async function getDevices(locale?: AppLocale): Promise<Device[]> {
   }
 }
 
-export async function getServiceRequests(locale?: AppLocale): Promise<ServiceRequest[]> {
+export async function getServiceRequests(
+  locale?: AppLocale,
+  opsBranchId?: string | null,
+): Promise<ServiceRequest[]> {
   await ensureOpsHydrated();
 
   if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
@@ -200,7 +209,7 @@ export async function getServiceRequests(locale?: AppLocale): Promise<ServiceReq
   // Ops cache mirrors app_maintenance_requests after hydrate.
   // Never fall back to classic CRM `service_requests` (often empty / unused).
   if (canUseOpsLocalCache()) {
-    return listOpsServiceRequests();
+    return listOpsServiceRequests(opsBranchId);
   }
 
   // Broken/missing cloud keys or auth failure: empty list + sync banner.
@@ -259,9 +268,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   return {
     openRequests: requests.filter((item) => openStatuses.has(item.status)).length,
-    devicesUnderMaintenance: devices.filter((item) => item.status === "under_maintenance").length,
+    devicesUnderMaintenance: devices.filter((item) =>
+      ["under_maintenance", "waiting_for_spare_parts"].includes(item.status) ||
+      ["awaiting_maintenance", "in_maintenance", "in_maintenance_at_branch", "awaiting_manager_decision"].includes(
+        item.lifecycleStatus ?? "",
+      ),
+    ).length,
     dispatchedDevices: devices.filter((item) =>
-      ["sent_to_service_center", "under_service_center_maintenance"].includes(item.status),
+      ["sent_to_service_center", "under_service_center_maintenance", "returned", "ready"].includes(
+        item.status,
+      ) ||
+      ["in_transit_to_service", "ready_to_return", "in_return_transit"].includes(
+        item.lifecycleStatus ?? "",
+      ),
     ).length,
     lowStockParts:
       inventory.length > 0

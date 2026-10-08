@@ -5,7 +5,8 @@ import { ChevronDown, Download } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
-import { isBranchRole, isDemoMode } from "@/lib/auth";
+import { branchScopeId, isBranchRole, isDemoMode } from "@/lib/auth";
+import { deviceStatusLabel } from "@/lib/branch-store";
 import {
   buildDevicesReport,
   buildExcludedDevicesReport,
@@ -158,7 +159,7 @@ export default function ReportsPage() {
     };
   }, []);
 
-  const branchId = user && isBranchRole(user.role) ? user.opsBranchId : null;
+  const branchId = branchScopeId(user);
 
   const maintenanceRows = useMemo(
     () => (ready ? buildMaintenanceRequestReport(branchId) : []),
@@ -216,6 +217,7 @@ export default function ReportsPage() {
       t("reports.col.branch"),
       t("reports.col.fault"),
       t("reports.col.location"),
+      t("reports.col.currentStatus"),
       t("reports.col.urgency"),
       t("reports.col.requestCreated"),
       t("reports.col.sentToService"),
@@ -235,6 +237,7 @@ export default function ReportsPage() {
       row.branch,
       row.fault,
       row.currentLocation,
+      deviceStatusLabel(row.lifecycleStatus),
       urgencyLabel(row.urgency),
       formatMaybeDate(row.requestCreatedAt, locale),
       formatMaybeDate(row.sentToServiceAt, locale),
@@ -256,6 +259,7 @@ export default function ReportsPage() {
       row.branch,
       row.fault,
       row.currentLocation,
+      deviceStatusLabel(row.lifecycleStatus),
       urgencyLabel(row.urgency),
       formatMaybeDate(row.requestCreatedAt, locale),
       formatMaybeDate(row.sentToServiceAt, locale),

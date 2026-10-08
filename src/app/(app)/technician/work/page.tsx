@@ -7,6 +7,7 @@ import { TechnicianWorkModal } from "@/components/technician-work-modal";
 import {
   deviceStatusLabel,
   formatMaintenanceDuration,
+  subscribeMaintenanceRequestsChanged,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { normalizeRole } from "@/lib/auth";
@@ -14,14 +15,20 @@ import {
   createShippingBatch,
 } from "@/lib/shipping-store";
 import {
+  CLAIM_RACE_MESSAGE,
   getEligibleQueueForTechnician,
+  getTechnicianWorkPageStats,
   listMaintenanceFailedDevices,
   listMyInProgressDevices,
   returnFailedDeviceToBranchEmployee,
   startDeviceWork,
 } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
+import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type { Profile } from "@/types/domain";
+
+/** Light re-pull so another technician's claim disappears without a full page reload. */
+const QUEUE_POLL_MS = 20_000;
 
 function TechnicianWorkContent() {
   const [user, setUser] = useState<Profile | null>(null);
@@ -41,6 +48,7 @@ function TechnicianWorkContent() {
   function refresh(session?: Profile | null) {
     const current = session ?? readSession();
     if (!current) return;
+    setUser(current);
     setQueue(getEligibleQueueForTechnician(current));
     setInProgress(listMyInProgressDevices(current.id));
     if (normalizeRole(current.role) === "mobile_technician") {
@@ -50,10 +58,39 @@ function TechnicianWorkContent() {
     }
   }
 
+  function pullAndRefresh() {
+    void hydrateOpsFromSupabase({ force: true }).then(() => {
+      refresh(readSession());
+    });
+  }
+
   useEffect(() => {
     const session = readSession();
     setUser(session);
     if (session) refresh(session);
+    // Fresh cloud snapshot on open so claims from other sessions are visible.
+    pullAndRefresh();
+
+    const unsubscribe = subscribeMaintenanceRequestsChanged(() => {
+      refresh(readSession());
+    });
+
+    const onHydrated = () => refresh(readSession());
+    window.addEventListener("arms-ops-hydrated", onHydrated);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") pullAndRefresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    const pollId = window.setInterval(pullAndRefresh, QUEUE_POLL_MS);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("arms-ops-hydrated", onHydrated);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(pollId);
+    };
   }, []);
 
   // Refresh elapsed duration display every 30s for in-progress work.
@@ -70,9 +107,11 @@ function TechnicianWorkContent() {
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
-  const urgentCount = queue.filter((item) => item.request.priority === "urgent").length;
+  const workStats = getTechnicianWorkPageStats(user);
   const showingUrgentOnly =
-    urgentCount > 0 && queue.every((item) => item.request.priority === "urgent");
+    workStats.awaitingUrgent > 0 &&
+    queue.length > 0 &&
+    queue.every((item) => item.request.priority === "urgent");
 
   return (
     <div className="space-y-6">
@@ -89,20 +128,28 @@ function TechnicianWorkContent() {
       {actionMessage ? <p className="text-sm text-aroma-700">{actionMessage}</p> : null}
       {actionError ? <p className="text-sm text-rose-700">{actionError}</p> : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-          <p className="text-sm text-ink-700/70">
-            {isMobile ? "جاري الصيانة بالفرع" : "بانتظار الصيانة"}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
+          <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
+            {isMobile ? "بانتظار الصيانة (الإجمالي)" : "بانتظار الصيانة"}
           </p>
-          <p className="mt-2 font-display text-4xl">{queue.length}</p>
+          <p className="mt-1 text-[11px] text-ink-700/50 dark:text-sand-100/50">
+            عاجل + عادي (قبل فلتر العرض)
+          </p>
+          <p className="mt-2 font-display text-4xl dark:text-sand-50">{workStats.awaitingTotal}</p>
         </div>
-        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-          <p className="text-sm text-ink-700/70">منها عاجلة</p>
-          <p className="mt-2 font-display text-4xl">{urgentCount}</p>
+        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
+          <p className="text-sm text-ink-700/70 dark:text-sand-100/70">منها عاجلة</p>
+          <p className="mt-2 font-display text-4xl dark:text-sand-50">{workStats.awaitingUrgent}</p>
         </div>
-        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-          <p className="text-sm text-ink-700/70">قيد التنفيذ لديّ</p>
-          <p className="mt-2 font-display text-4xl">{inProgress.length}</p>
+        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
+          <p className="text-sm text-ink-700/70 dark:text-sand-100/70">قيد التنفيذ لديّ</p>
+          <p className="mt-2 font-display text-4xl dark:text-sand-50">{inProgress.length}</p>
+        </div>
+        <div className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
+          <p className="text-sm text-ink-700/70 dark:text-sand-100/70">أجهزة صيّنتُها</p>
+          <p className="mt-1 text-[11px] text-ink-700/50 dark:text-sand-100/50">منجزة بواسطة هذا الموظف</p>
+          <p className="mt-2 font-display text-4xl dark:text-sand-50">{workStats.myCompleted}</p>
         </div>
       </div>
 
@@ -141,6 +188,12 @@ function TechnicianWorkContent() {
                   type="button"
                   onClick={() => {
                     setClaimError(null);
+                    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
+                    if (!assigned || assigned !== user.id) {
+                      setClaimError(CLAIM_RACE_MESSAGE);
+                      refresh(user);
+                      return;
+                    }
                     setSelected(item);
                     setModalOpen(true);
                   }}

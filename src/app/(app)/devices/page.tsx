@@ -8,12 +8,14 @@ import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { StatusBadge } from "@/components/status-badge";
+import { branchScopeId } from "@/lib/auth";
 import {
   listAllRequestDevices,
   normalizeLifecycleStatus,
   subscribeMaintenanceRequestsChanged,
 } from "@/lib/branch-store";
 import { getDevices } from "@/lib/data";
+import { readSession } from "@/lib/session";
 import type { Device } from "@/types/domain";
 
 type ListFocus = "pending_supervisor" | "awaiting_customer" | null;
@@ -29,12 +31,19 @@ export default function DevicesPage() {
   const focus = readFocus(searchParams?.get("focus") ?? null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const [branchId, setBranchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBranchId(branchScopeId(readSession()));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const load = (opts?: { quiet?: boolean }) => {
       if (!opts?.quiet) setLoading(true);
-      void getDevices(locale).then((rows) => {
+      const scope = branchScopeId(readSession());
+      setBranchId(scope);
+      void getDevices(locale, scope).then((rows) => {
         if (cancelled) return;
         setDevices(rows);
         setLoading(false);
@@ -55,12 +64,14 @@ export default function DevicesPage() {
     const ids = new Set(
       listAllRequestDevices()
         .filter(
-          (item) => normalizeLifecycleStatus(item.device.lifecycleStatus) === lifecycle,
+          (item) =>
+            (!branchId || item.request.opsBranchId === branchId) &&
+            normalizeLifecycleStatus(item.device.lifecycleStatus) === lifecycle,
         )
         .map((item) => item.device.localId),
     );
     return devices.filter((device) => ids.has(device.id));
-  }, [devices, focus]);
+  }, [devices, focus, branchId]);
 
   const filterLabel =
     focus === "pending_supervisor"
@@ -122,7 +133,10 @@ export default function DevicesPage() {
             device.serialNumber,
             device.customerName,
             device.currentLocation,
-            <StatusBadge key="s" value={device.status} />,
+            <StatusBadge
+              key="s"
+              value={device.lifecycleStatus ?? device.status}
+            />,
             device.imageDataUrl ? (
               <ClickableImage
                 key="img"

@@ -542,85 +542,72 @@ export function listAwaitingMaintenanceDevices(): TechnicianQueueItem[] {
   });
 }
 
-/** Clear stale technician assignment when device is still marked ready for maintenance. */
+/**
+ * Previously cleared assignedTechnicianId while status was still awaiting_maintenance.
+ * That raced with multi-technician claims and pushed stale unlocks to Supabase.
+ * Queue filters now hide assigned devices instead of wiping ownership.
+ */
 export function repairStaleTechnicianAssignments() {
-  const updates = listAllRequestDevices().flatMap((item) => {
-    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
-    if (status !== "awaiting_maintenance") return [];
-    const assigned = String(item.device.assignedTechnicianId ?? "").trim();
-    if (!assigned) return [];
-    return [
-      {
-        requestId: item.request.id,
-        deviceLocalId: item.device.localId,
-        patch: {
-          assignedTechnicianId: null,
-          assignedTechnicianName: null,
-        },
-      },
-    ];
-  });
-  updateDevicesLifecycle(updates);
+  // no-op — kept for older callers
 }
 
-/** Canonical English keys → Arabic labels (primary + internal/legacy). */
+/** Canonical English keys → Arabic labels (9-step lifecycle + legacy). */
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
-  received_at_branch: "مستلم بالفرع",
-  in_transit_to_service: "جاري الشحن",
+  received_at_branch: "تم الاستلام",
+  in_transit_to_service: "جاري الإرسال",
   awaiting_maintenance: "بانتظار الصيانة",
   in_maintenance: "جاري الصيانة",
-  in_maintenance_at_branch: "جاري الصيانة بالفرع",
-  maintenance_failed: "تعذر الصيانة",
-  in_return_transit: "فى الطريق الى الفرع",
-  awaiting_customer: "بانتظار العميل",
-  awaiting_manager_decision: "معلق",
-  // Internal ops (between maintenance complete and return waybill)
-  ready_to_return: "جاهز للإرجاع للفرع",
-  ready_to_send: "جاهز للإرجاع للفرع",
+  in_maintenance_at_branch: "جاري الصيانة",
+  ready_to_return: "جاهز للإرجاع",
+  ready_to_send: "جاهز للإرجاع",
+  awaiting_manager_decision: "معلق لدى المشرف",
+  maintenance_failed: "معلق لدى المشرف",
+  in_return_transit: "جاري الإرجاع",
+  awaiting_customer: "بانتظار التسليم للعميل",
+  delivered_to_customer: "منتهي",
+  closed: "منتهي",
   excluded_from_shipment: "مستبعد من البوليصة",
-  delivered_to_customer: "تم التسليم للعميل",
-  closed: "تم إغلاق الحالة",
-  // Legacy → same wording as the 7 statuses
-  awaiting_branch_handover: "جاري الشحن",
-  handed_to_carrier: "جاري الشحن",
-  in_shipping: "جاري الشحن",
-  ready_to_ship: "مستلم بالفرع",
+  // Legacy → same wording as the 9 statuses
+  awaiting_branch_handover: "جاري الإرسال",
+  handed_to_carrier: "جاري الإرسال",
+  in_shipping: "جاري الإرسال",
+  ready_to_ship: "تم الاستلام",
   received_at_warehouse: "بانتظار الصيانة",
   at_service_center: "بانتظار الصيانة",
   under_maintenance: "جاري الصيانة",
-  returning_from_service: "فى الطريق الى الفرع",
-  received_at_destination: "بانتظار العميل",
-  received_damaged: "بانتظار العميل",
-  excluded: "معلق",
+  returning_from_service: "جاري الإرجاع",
+  received_at_destination: "بانتظار التسليم للعميل",
+  received_damaged: "بانتظار التسليم للعميل",
+  excluded: "معلق لدى المشرف",
 };
 
 /** English display labels for the primary lifecycle set. */
 export const DEVICE_STATUS_LABELS_EN: Record<string, string> = {
-  received_at_branch: "Received at branch",
-  in_transit_to_service: "Shipping in progress",
+  received_at_branch: "Received",
+  in_transit_to_service: "Sending",
   awaiting_maintenance: "Awaiting maintenance",
   in_maintenance: "In maintenance",
-  in_maintenance_at_branch: "In maintenance at branch",
-  maintenance_failed: "Maintenance failed",
-  in_return_transit: "On the way to branch",
-  awaiting_customer: "Awaiting customer",
-  awaiting_manager_decision: "On hold",
+  in_maintenance_at_branch: "In maintenance",
   ready_to_return: "Ready to return",
   ready_to_send: "Ready to return",
+  awaiting_manager_decision: "On hold with supervisor",
+  maintenance_failed: "On hold with supervisor",
+  in_return_transit: "Returning",
+  awaiting_customer: "Awaiting customer handover",
+  delivered_to_customer: "Completed",
+  closed: "Completed",
   excluded_from_shipment: "Excluded from shipment",
-  delivered_to_customer: "Delivered to customer",
-  closed: "Closed",
-  awaiting_branch_handover: "Shipping in progress",
-  handed_to_carrier: "Shipping in progress",
-  in_shipping: "Shipping in progress",
-  ready_to_ship: "Received at branch",
+  awaiting_branch_handover: "Sending",
+  handed_to_carrier: "Sending",
+  in_shipping: "Sending",
+  ready_to_ship: "Received",
   received_at_warehouse: "Awaiting maintenance",
   at_service_center: "Awaiting maintenance",
   under_maintenance: "In maintenance",
-  returning_from_service: "On the way to branch",
-  received_at_destination: "Awaiting customer",
-  received_damaged: "Awaiting customer",
-  excluded: "On hold",
+  returning_from_service: "Returning",
+  received_at_destination: "Awaiting customer handover",
+  received_damaged: "Awaiting customer handover",
+  excluded: "On hold with supervisor",
 };
 
 export const ASSIGNMENT_PATH_LABELS: Record<MaintenanceAssignmentPath, string> = {
@@ -642,7 +629,7 @@ export const DEVICE_LOCATION_LABELS: Record<string, string> = {
   customer: "العميل",
 };
 
-/** Map legacy lifecycle keys to the canonical 7 (+ ready_to_return). */
+/** Map legacy lifecycle keys to the canonical 9-step set. */
 export function normalizeLifecycleStatus(
   status: string | null | undefined,
 ): DeviceLifecycleStatus {
@@ -784,6 +771,6 @@ export function deviceStatusLabel(
   status: string | null | undefined,
   _audience: "technician" | "branch" | "default" = "default",
 ) {
-  const key = status ?? "received_at_branch";
-  return DEVICE_STATUS_LABELS[key] ?? DEVICE_STATUS_LABELS[normalizeLifecycleStatus(key)] ?? key;
+  const normalized = normalizeLifecycleStatus(status);
+  return DEVICE_STATUS_LABELS[normalized] ?? DEVICE_STATUS_LABELS[status ?? ""] ?? normalized;
 }

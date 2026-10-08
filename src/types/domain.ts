@@ -24,26 +24,28 @@ export type ExternalCondition =
   | "other";
 
 export type DeviceLifecycleStatus =
-  /** مستلم بالفرع — location: branch */
+  /** 1 تم الاستلام — location: branch */
   | "received_at_branch"
-  /** جاري الشحن — location: in_transit_to_service */
+  /** 2 جاري الإرسال — location: in_transit_to_service */
   | "in_transit_to_service"
-  /** بانتظار الصيانة — location: service_center */
+  /** 3 بانتظار الصيانة — location: service_center */
   | "awaiting_maintenance"
-  /** جاري الصيانة — location: service_center */
+  /** 4 جاري الصيانة — location: service_center */
   | "in_maintenance"
   /** جاري الصيانة بالفرع — location: branch (mobile technician path) */
   | "in_maintenance_at_branch"
   /** تعذر الصيانة — location: branch (mobile tech could not repair) */
   | "maintenance_failed"
-  /** فى الطريق الى الفرع — location: in_return_transit */
-  | "in_return_transit"
-  /** بانتظار العميل — location: branch */
-  | "awaiting_customer"
-  /** معلق — location: service_center */
-  | "awaiting_manager_decision"
-  /** Internal: repaired / approved, waiting for return waybill */
+  /** 5 جاهز للإرجاع — location: service_center (no return waybill yet) */
   | "ready_to_return"
+  /** 6 معلق لدى المشرف — location: service_center */
+  | "awaiting_manager_decision"
+  /** 7 جاري الإرجاع — location: in_return_transit */
+  | "in_return_transit"
+  /** 8 بانتظار التسليم للعميل — location: branch */
+  | "awaiting_customer"
+  /** 9 منتهي — location: customer */
+  | "delivered_to_customer"
   | "excluded_from_shipment"
   | "ready_to_send"
   | "excluded"
@@ -58,7 +60,6 @@ export type DeviceLifecycleStatus =
   | "in_shipping"
   | "under_maintenance"
   | "returning_from_service"
-  | "delivered_to_customer"
   | "closed";
 
 /** Maintenance manager decision for held / failed / missing-return devices */
@@ -239,6 +240,8 @@ export type Device = {
   customerName: string;
   branchName: string;
   status: DeviceStatus;
+  /** Canonical maintenance lifecycle (9-step display source of truth) */
+  lifecycleStatus?: DeviceLifecycleStatus;
   currentLocation: string;
   qrCode: string;
   /** Compressed device photo (data URL) when available */
@@ -246,6 +249,13 @@ export type Device = {
   /** Parent maintenance request when device comes from ops cache */
   requestId?: string;
   requestNumber?: string;
+  /** Ops branch id when device comes from maintenance requests cache */
+  opsBranchId?: string;
+};
+
+export type ServiceRequestDeviceLifecycle = {
+  deviceCode: string;
+  status: DeviceLifecycleStatus;
 };
 
 export type ServiceRequest = {
@@ -271,6 +281,10 @@ export type ServiceRequest = {
   assignmentPath?: MaintenanceAssignmentPath | null;
   hasAwaitingMaintenance?: boolean;
   hasOnHold?: boolean;
+  /** Ops branch id for branch-employee list scoping */
+  opsBranchId?: string;
+  /** Per-device canonical lifecycle (list "الحالة" column) */
+  deviceLifecycles?: ServiceRequestDeviceLifecycle[];
 };
 
 export type SparePart = {

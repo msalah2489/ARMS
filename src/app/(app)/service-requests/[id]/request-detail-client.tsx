@@ -5,13 +5,17 @@ import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { branchScopeId } from "@/lib/auth";
 import {
   ASSIGNMENT_PATH_LABELS,
   deviceStatusLabel,
   formatMaintenanceDuration,
   getDeviceAssignmentPath,
+  getMaintenanceRequestById,
+  normalizeLifecycleStatus,
 } from "@/lib/branch-store";
-import { getMaintenanceRequestById, getOpsServiceRequest } from "@/lib/ops-data";
+import { getOpsServiceRequest } from "@/lib/ops-data";
+import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type { MaintenanceRequestRecord, ServiceRequest } from "@/types/domain";
 
@@ -19,15 +23,28 @@ export function RequestDetailClient({ id }: { id: string }) {
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   const [record, setRecord] = useState<MaintenanceRequestRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
+    const scope = branchScopeId(readSession());
     const opsRecord = getMaintenanceRequestById(id);
+    if (scope && opsRecord && opsRecord.opsBranchId !== scope) {
+      setRecord(null);
+      setRequest(null);
+      setForbidden(true);
+      setLoading(false);
+      return;
+    }
+    setForbidden(false);
     setRecord(opsRecord);
-    setRequest(getOpsServiceRequest(id));
+    setRequest(getOpsServiceRequest(id, scope));
     setLoading(false);
   }, [id]);
 
   if (loading) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+  if (forbidden) {
+    return <p className="text-sm text-rose-700">لا يمكنك عرض طلبات فروع أخرى.</p>;
+  }
   if (!request && !record) {
     return <p className="text-sm text-rose-700">طلب الصيانة غير موجود.</p>;
   }
@@ -36,13 +53,30 @@ export function RequestDetailClient({ id }: { id: string }) {
   const description = record
     ? `${record.contactName} · ${record.opsBranchName}`
     : `${request?.customerName} · ${request?.branchName}`;
+  const headerLifecycle =
+    request?.deviceLifecycles?.length === 1
+      ? request.deviceLifecycles[0].status
+      : request?.deviceLifecycles &&
+          new Set(request.deviceLifecycles.map((item) => item.status)).size === 1
+        ? request.deviceLifecycles[0].status
+        : record?.devices.length === 1
+          ? normalizeLifecycleStatus(record.devices[0].lifecycleStatus)
+          : null;
 
   return (
     <div>
       <PageHeader
         title={title}
         description={description}
-        action={request ? <StatusBadge value={request.status} /> : null}
+        backHref="/service-requests"
+        backLabel="رجوع"
+        action={
+          headerLifecycle ? (
+            <StatusBadge value={headerLifecycle} />
+          ) : request ? (
+            <StatusBadge value={request.status} />
+          ) : null
+        }
       />
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-900 lg:col-span-2">

@@ -9,6 +9,7 @@ import {
 } from "@/lib/branch-store";
 import { listOpsBranchRecords } from "@/lib/branches-store";
 import type { AppLocale } from "@/lib/preferences";
+import { ensureDeviceLifecycleRepairs } from "@/lib/technician-store";
 import type {
   Branch,
   Customer,
@@ -58,17 +59,20 @@ function mapLifecycleToDeviceStatus(status: string | undefined): DeviceStatus {
     case "in_maintenance":
     case "in_maintenance_at_branch":
     case "awaiting_maintenance":
+      return "under_maintenance";
     case "awaiting_manager_decision":
     case "maintenance_failed":
-      return "under_maintenance";
+      return "waiting_for_spare_parts";
     case "in_transit_to_service":
       return "sent_to_service_center";
     case "ready_to_return":
+      return "ready";
     case "in_return_transit":
-      return "under_service_center_maintenance";
+      return "returned";
+    case "awaiting_customer":
+      return "ready";
     case "delivered_to_customer":
     case "closed":
-    case "awaiting_customer":
       return "active";
     default:
       return "active";
@@ -134,8 +138,11 @@ function resolveStatusAt(request: MaintenanceRequestRecord): string {
 }
 
 /** Convert branch-created maintenance requests into the shared ServiceRequest list shape. */
-export function listOpsServiceRequests(): ServiceRequest[] {
-  return listMaintenanceRequests()
+export function listOpsServiceRequests(opsBranchId?: string | null): ServiceRequest[] {
+  if (typeof window !== "undefined") {
+    ensureDeviceLifecycleRepairs();
+  }
+  return listMaintenanceRequests(opsBranchId)
     .map((request) => {
       const first = request.devices[0];
       const tech =
@@ -149,6 +156,10 @@ export function listOpsServiceRequests(): ServiceRequest[] {
         normalizeLifecycleStatus(device.lifecycleStatus),
       );
       const deviceCount = request.devices.length;
+      const deviceLifecycles = request.devices.map((device) => ({
+        deviceCode: device.deviceCode,
+        status: normalizeLifecycleStatus(device.lifecycleStatus),
+      }));
 
       return {
         id: request.id,
@@ -172,48 +183,62 @@ export function listOpsServiceRequests(): ServiceRequest[] {
         hasOnHold: lifecycles.some(
           (status) => status === "awaiting_manager_decision" || status === "maintenance_failed",
         ),
+        opsBranchId: request.opsBranchId,
+        deviceLifecycles,
       } satisfies ServiceRequest;
     })
     .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
 
 /** Convert all devices on maintenance requests into the shared Device list shape. */
-export function listOpsDevices(): Device[] {
+export function listOpsDevices(opsBranchId?: string | null): Device[] {
+  if (typeof window !== "undefined") {
+    ensureDeviceLifecycleRepairs();
+  }
   return listAllRequestDevices()
-    .map(({ request, device }) => ({
-      id: device.localId,
-      deviceCode: device.deviceCode,
-      serialNumber: device.serialNumber,
-      modelName: device.modelName,
-      brand: device.brandName,
-      color: device.color ?? "",
-      customerName: request.contactName,
-      branchName: request.opsBranchName,
-      status: mapLifecycleToDeviceStatus(device.lifecycleStatus),
-      currentLocation: deviceLocationLabel(
-        device.currentLocation || locationForLifecycleStatus(device.lifecycleStatus),
-      ),
-      qrCode: device.deviceCode,
-      imageDataUrl: device.deviceImageDataUrl,
-      requestId: request.id,
-      requestNumber: request.requestNumber,
-    }))
+    .filter(({ request }) => !opsBranchId || request.opsBranchId === opsBranchId)
+    .map(({ request, device }) => {
+      const lifecycleStatus = normalizeLifecycleStatus(device.lifecycleStatus);
+      return {
+        id: device.localId,
+        deviceCode: device.deviceCode,
+        serialNumber: device.serialNumber,
+        modelName: device.modelName,
+        brand: device.brandName,
+        color: device.color ?? "",
+        customerName: request.contactName,
+        branchName: request.opsBranchName,
+        status: mapLifecycleToDeviceStatus(lifecycleStatus),
+        lifecycleStatus,
+        currentLocation: deviceLocationLabel(
+          device.currentLocation || locationForLifecycleStatus(lifecycleStatus),
+        ),
+        qrCode: device.deviceCode,
+        imageDataUrl: device.deviceImageDataUrl,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        opsBranchId: request.opsBranchId,
+      };
+    })
     .sort((a, b) => a.deviceCode.localeCompare(b.deviceCode, "ar"));
 }
 
-export function getOpsServiceRequest(id: string): ServiceRequest | null {
-  return listOpsServiceRequests().find((item) => item.id === id) ?? null;
+export function getOpsServiceRequest(
+  id: string,
+  opsBranchId?: string | null,
+): ServiceRequest | null {
+  return listOpsServiceRequests(opsBranchId).find((item) => item.id === id) ?? null;
 }
 
-export function getOpsDevice(id: string): Device | null {
-  return listOpsDevices().find((item) => item.id === id) ?? null;
+export function getOpsDevice(id: string, opsBranchId?: string | null): Device | null {
+  return listOpsDevices(opsBranchId).find((item) => item.id === id) ?? null;
 }
 
 /**
  * Customers registered via branch receiving / service requests (localStorage).
  * One row per mobile number, with aggregated branch and device counts.
  */
-export function listOpsCustomers(): Customer[] {
+export function listOpsCustomers(opsBranchId?: string | null): Customer[] {
   type Acc = {
     contactName: string;
     phone: string;
@@ -225,7 +250,7 @@ export function listOpsCustomers(): Customer[] {
 
   const byMobile = new Map<string, Acc>();
 
-  for (const request of listMaintenanceRequests()) {
+  for (const request of listMaintenanceRequests(opsBranchId)) {
     const phone = request.customerMobile.trim();
     if (!phone) continue;
 

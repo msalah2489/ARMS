@@ -22,7 +22,7 @@ const TONES: Record<string, string> = {
   ready: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
   completed: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
   closed: "bg-stone-100 text-stone-700 ring-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:ring-stone-700",
-  returned: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
+  returned: "bg-sky-50 text-sky-800 ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
   damaged: "bg-rose-50 text-rose-800 ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-800",
   non_repairable: "bg-rose-50 text-rose-800 ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-800",
   retired: "bg-stone-100 text-stone-700 ring-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:ring-stone-700",
@@ -31,6 +31,20 @@ const TONES: Record<string, string> = {
   urgent: "bg-rose-50 text-rose-800 ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-800",
   normal: "bg-stone-100 text-stone-700 ring-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:ring-stone-700",
   low: "bg-sand-100 text-ink-700 ring-sand-200 dark:bg-ink-800 dark:text-sand-100 dark:ring-ink-700",
+  // Lifecycle (9-step)
+  received_at_branch: "bg-sky-50 text-sky-800 ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
+  in_transit_to_service: "bg-violet-50 text-violet-900 ring-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:ring-violet-800",
+  awaiting_maintenance: "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
+  in_maintenance: "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
+  in_maintenance_at_branch: "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
+  ready_to_return: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
+  ready_to_send: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
+  awaiting_manager_decision: "bg-orange-50 text-orange-900 ring-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:ring-orange-800",
+  maintenance_failed: "bg-orange-50 text-orange-900 ring-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:ring-orange-800",
+  in_return_transit: "bg-sky-50 text-sky-800 ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
+  awaiting_customer: "bg-cyan-50 text-cyan-900 ring-cyan-200 dark:bg-cyan-950 dark:text-cyan-200 dark:ring-cyan-800",
+  delivered_to_customer: "bg-stone-100 text-stone-700 ring-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:ring-stone-700",
+  excluded_from_shipment: "bg-rose-50 text-rose-800 ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-800",
 };
 
 export function StatusBadge({ value }: { value: string }) {
