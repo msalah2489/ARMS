@@ -422,6 +422,13 @@ export type DraftRequestDevice = {
   maintenanceStartedAt?: string | null;
   /** ISO timestamp when maintenance work ended (complete / hold / failed) */
   maintenanceFinishedAt?: string | null;
+  /**
+   * Stable device identity for QR deep links (usually equals localId).
+   * QR encodes a URL only — authorization happens at scan time from session.
+   */
+  qrToken?: string;
+  /** ISO timestamp when branch staff printed (or confirmed) the device QR label */
+  qrPrintedAt?: string | null;
 };
 
 export type TechnicianExternalCheck = "damaged" | "intact";

@@ -213,7 +213,7 @@ export function listOpsDevices(opsBranchId?: string | null): Device[] {
         currentLocation: deviceLocationLabel(
           device.currentLocation || locationForLifecycleStatus(lifecycleStatus),
         ),
-        qrCode: device.deviceCode,
+        qrCode: device.qrToken || device.localId || device.deviceCode,
         imageDataUrl: device.deviceImageDataUrl,
         requestId: request.id,
         requestNumber: request.requestNumber,

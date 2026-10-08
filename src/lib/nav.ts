@@ -138,6 +138,13 @@ const COURIER_NAV: NavItem[] = [
     permission: "login",
   },
   {
+    href: "/scan",
+    labelKey: "nav.scan",
+    icon: QrCode,
+    roles: ["pickup_courier"],
+    permission: "login",
+  },
+  {
     href: "/courier/receipts",
     labelKey: "nav.courierReceipts",
     icon: ClipboardSignature,
@@ -173,6 +180,13 @@ const ADMIN_NAV: NavItem[] = [
     href: "/devices",
     labelKey: "nav.devices",
     icon: Cpu,
+    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+    permission: "view_devices",
+  },
+  {
+    href: "/scan",
+    labelKey: "nav.scan",
+    icon: QrCode,
     roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
     permission: "view_devices",
   },

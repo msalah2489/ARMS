@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { ROLE_LABELS, homePathForRole, isDemoMode } from "@/lib/auth";
+import { safeNextPath } from "@/lib/device-qr";
 import { readSession, signIn } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import {
@@ -15,8 +16,9 @@ import type { ManagedUser } from "@/types/domain";
 
 const RECOVERY_AUTO_FLAG = "arms_users_recovery_auto_v1";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const demo = isDemoMode();
   const [email, setEmail] = useState(demo ? "admin" : "");
   const [password, setPassword] = useState(demo ? "demo" : "");
@@ -137,7 +139,12 @@ export default function LoginPage() {
                 return;
               }
               const session = readSession();
-              router.replace(session ? homePathForRole(session.role) : "/dashboard");
+              if (!session) {
+                router.replace("/dashboard");
+                return;
+              }
+              const next = safeNextPath(searchParams?.get("next"), session.role);
+              router.replace(next || homePathForRole(session.role));
             }}
           >
             <label className="block text-sm dark:text-sand-100">
@@ -192,5 +199,13 @@ export default function LoginPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-sm">جاري التحميل…</main>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

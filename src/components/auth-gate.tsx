@@ -28,7 +28,15 @@ export function AuthGate({
       if (!session) {
         setUser(null);
         setReady(false);
-        router.replace("/login");
+        const next =
+          typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : "";
+        const loginPath =
+          next && next !== "/login" && next !== "/login/"
+            ? `/login?next=${encodeURIComponent(next)}`
+            : "/login";
+        router.replace(loginPath);
         return;
       }
       setUser(session);

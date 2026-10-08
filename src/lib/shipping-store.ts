@@ -276,6 +276,7 @@ export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQ
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
+    if (!device.qrPrintedAt) return false;
     if (deviceOnOpenOutboundBatch(device)) return false;
     if (deviceOnOpenPickupReceiptLocal(device.localId)) return false;
     const status = normalizeLifecycleStatus(device.lifecycleStatus);
@@ -294,6 +295,7 @@ export function listDevicesEligibleForMobileDirectShip(
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
+    if (!device.qrPrintedAt) return false;
     if (deviceOnOpenOutboundBatch(device)) return false;
     return normalizeLifecycleStatus(device.lifecycleStatus) === "maintenance_failed";
   });

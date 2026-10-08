@@ -2,21 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
+import { DeviceHistoryPanel } from "@/components/device-history-panel";
+import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { branchScopeId } from "@/lib/auth";
+import { branchScopeId, isBranchRole } from "@/lib/auth";
 import {
   deviceStatusLabel,
   getDeviceAssignmentPath,
   listAllRequestDevices,
+  type TechnicianQueueItem,
 } from "@/lib/branch-store";
+import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { getOpsDevice } from "@/lib/ops-data";
 import { readSession } from "@/lib/session";
-import type { Device, MaintenanceAssignmentPath } from "@/types/domain";
+import type { Device, DraftRequestDevice, MaintenanceAssignmentPath } from "@/types/domain";
 
 export function DeviceDetailClient({ id }: { id: string }) {
   const [device, setDevice] = useState<Device | null>(null);
+  const [match, setMatch] = useState<TechnicianQueueItem | null>(null);
   const [lifecycle, setLifecycle] = useState<string>("");
   const [assignmentPath, setAssignmentPath] = useState<MaintenanceAssignmentPath | null>(null);
   const [fault, setFault] = useState("");
@@ -24,35 +29,46 @@ export function DeviceDetailClient({ id }: { id: string }) {
   const [receiptPhoto, setReceiptPhoto] = useState<{ name: string; dataUrl: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [canPrintQr, setCanPrintQr] = useState(false);
 
-  useEffect(() => {
-    const scope = branchScopeId(readSession());
+  function reload() {
+    const session = readSession();
+    const scope = branchScopeId(session);
     const ops = getOpsDevice(id, scope);
     setDevice(ops);
-    const match = listAllRequestDevices().find(
+    setCanPrintQr(Boolean(session && isBranchRole(session.role)));
+    const found = listAllRequestDevices().find(
       (item) =>
         item.device.localId === id && (!scope || item.request.opsBranchId === scope),
     );
-    if (match) {
-      setLifecycle(match.device.lifecycleStatus ?? "");
-      setAssignmentPath(getDeviceAssignmentPath(match.request, match.device));
-      setFault(match.device.fault);
-      setRequestNumber(match.request.requestNumber);
-      if (match.device.receiptPhotoDataUrl) {
+    if (found) {
+      setMatch(found);
+      setLifecycle(found.device.lifecycleStatus ?? "");
+      setAssignmentPath(getDeviceAssignmentPath(found.request, found.device));
+      setFault(found.device.fault);
+      setRequestNumber(found.request.requestNumber);
+      if (found.device.receiptPhotoDataUrl) {
         setReceiptPhoto({
-          name: match.device.receiptPhotoName || "سند الاستلام",
-          dataUrl: match.device.receiptPhotoDataUrl,
+          name: found.device.receiptPhotoName || "سند الاستلام",
+          dataUrl: found.device.receiptPhotoDataUrl,
         });
       } else {
         setReceiptPhoto(null);
       }
       setForbidden(false);
     } else if (scope && listAllRequestDevices().some((item) => item.device.localId === id)) {
+      setMatch(null);
       setForbidden(true);
     } else {
+      setMatch(null);
       setForbidden(false);
     }
     setLoading(false);
+  }
+
+  useEffect(() => {
+    reload();
   }, [id]);
 
   if (loading) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
@@ -60,6 +76,10 @@ export function DeviceDetailClient({ id }: { id: string }) {
     return <p className="text-sm text-rose-700">لا يمكنك عرض أجهزة فروع أخرى.</p>;
   }
   if (!device) return <p className="text-sm text-rose-700">الجهاز غير موجود.</p>;
+
+  const draftDevice: DraftRequestDevice | null = match
+    ? ensureDeviceQrFields(match.device)
+    : null;
 
   return (
     <div>
@@ -69,7 +89,18 @@ export function DeviceDetailClient({ id }: { id: string }) {
         backHref="/devices"
         backLabel="رجوع"
         action={
-          <StatusBadge value={lifecycle || device.lifecycleStatus || device.status} />
+          <div className="flex flex-wrap items-center gap-2">
+            {canPrintQr && draftDevice ? (
+              <button
+                type="button"
+                onClick={() => setQrOpen(true)}
+                className="rounded-full border border-ink-900/15 px-3 py-1.5 text-xs dark:border-white/15"
+              >
+                {isDeviceQrPrinted(draftDevice) ? "إعادة طباعة QR" : "طباعة QR"}
+              </button>
+            ) : null}
+            <StatusBadge value={lifecycle || device.lifecycleStatus || device.status} />
+          </div>
         }
       />
       {lifecycle ? (
@@ -120,12 +151,38 @@ export function DeviceDetailClient({ id }: { id: string }) {
             <dt className="text-ink-700/60 dark:text-sand-100/60">الموقع الحالي</dt>
             <dd>{device.currentLocation}</dd>
           </div>
+          <div>
+            <dt className="text-ink-700/60 dark:text-sand-100/60">ملصق QR</dt>
+            <dd>
+              {draftDevice && isDeviceQrPrinted(draftDevice) ? "مطبوع" : "غير مطبوع"}
+            </dd>
+          </div>
           <div className="sm:col-span-2">
             <dt className="text-ink-700/60 dark:text-sand-100/60">العطل</dt>
             <dd className="mt-1">{fault || "—"}</dd>
           </div>
         </dl>
       </section>
+
+      {match ? (
+        <div className="mt-6">
+          <DeviceHistoryPanel request={match.request} device={match.device} />
+        </div>
+      ) : null}
+
+      {draftDevice && match ? (
+        <DeviceQrPrintModal
+          open={qrOpen}
+          device={draftDevice}
+          requestId={match.request.id}
+          requirePrint={false}
+          onPrinted={() => {
+            setQrOpen(false);
+            reload();
+          }}
+          onClose={() => setQrOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

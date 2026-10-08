@@ -143,6 +143,7 @@ function sampleDevice(
   input: Partial<DraftRequestDevice> &
     Pick<DraftRequestDevice, "localId" | "deviceCode" | "serialNumber" | "receiptNumber" | "lifecycleStatus">,
 ): DraftRequestDevice {
+  const localId = input.localId;
   return {
     deviceTypeId: "type-pos",
     deviceTypeName: "جهاز نقاط بيع",
@@ -164,6 +165,8 @@ function sampleDevice(
     lockedAfterShip: false,
     assignedTechnicianId: null,
     assignedTechnicianName: null,
+    qrToken: localId,
+    qrPrintedAt: new Date().toISOString(),
     ...input,
   };
 }
@@ -338,6 +341,11 @@ export function saveMaintenanceRequest(input: {
       throw new Error(`رقم سند الاستلام «${receipt}» مستخدم مسبقًا لجهاز آخر.`);
     }
     existingReceipts.add(receipt);
+    if (!device.qrPrintedAt || !String(device.qrPrintedAt).trim()) {
+      throw new Error(
+        `يجب طباعة ملصق QR للجهاز «${device.deviceCode || "بدون كود"}» قبل حفظ الطلب.`,
+      );
+    }
   }
 
   const opsBranchId = (input.opsBranchId || input.user.opsBranchId || "").trim();
@@ -362,19 +370,26 @@ export function saveMaintenanceRequest(input: {
     contactName: input.contactName,
     purchaseInvoice: input.purchaseInvoice,
     generalNotes: input.generalNotes,
-    devices: input.devices.map((device) => ({
-      ...device,
-      assignmentPath: input.assignmentPath,
-      lifecycleStatus: isMobile
-        ? "in_maintenance_at_branch"
-        : (device.lifecycleStatus ?? "received_at_branch"),
-      currentLocation: "branch",
-      lockedAfterShip: device.lockedAfterShip ?? false,
-      assignedTechnicianId: null,
-      assignedTechnicianName: null,
-      maintenanceStartedAt: null,
-      maintenanceFinishedAt: null,
-    })),
+    devices: input.devices.map((device) => {
+      const localId = (device.localId || "").trim() || crypto.randomUUID();
+      const qrToken = (device.qrToken || "").trim() || localId;
+      return {
+        ...device,
+        localId,
+        qrToken,
+        qrPrintedAt: device.qrPrintedAt ?? null,
+        assignmentPath: input.assignmentPath,
+        lifecycleStatus: isMobile
+          ? "in_maintenance_at_branch"
+          : (device.lifecycleStatus ?? "received_at_branch"),
+        currentLocation: "branch",
+        lockedAfterShip: device.lockedAfterShip ?? false,
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceStartedAt: null,
+        maintenanceFinishedAt: null,
+      };
+    }),
   };
 
   const all = listMaintenanceRequests();
@@ -461,14 +476,22 @@ export function removeDeviceFromWaybill(waybillId: string, deviceCode: string, n
 
 export function findDeviceHistory(query: string) {
   const q = query.trim().toLowerCase();
+  if (!q) return [];
   const matches = listMaintenanceRequests().flatMap((req) =>
     req.devices
-      .filter(
-        (device) =>
-          device.deviceCode.toLowerCase() === q ||
-          device.serialNumber.toLowerCase() === q ||
-          device.deviceCode.toLowerCase().includes(q),
-      )
+      .filter((device) => {
+        const code = device.deviceCode.toLowerCase();
+        const serial = (device.serialNumber || "").toLowerCase();
+        const localId = (device.localId || "").toLowerCase();
+        const qrToken = (device.qrToken || "").toLowerCase();
+        return (
+          code === q ||
+          serial === q ||
+          localId === q ||
+          qrToken === q ||
+          code.includes(q)
+        );
+      })
       .map((device) => ({ request: req, device })),
   );
   return matches;

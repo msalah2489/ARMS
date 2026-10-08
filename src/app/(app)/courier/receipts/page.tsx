@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
@@ -14,6 +15,8 @@ import {
 import type { PickupReceipt, Profile } from "@/types/domain";
 
 function CourierReceiptsContent() {
+  const searchParams = useSearchParams();
+  const focusDeviceId = searchParams?.get("d")?.trim() || "";
   const [user, setUser] = useState<Profile | null>(null);
   const [receipts, setReceipts] = useState<PickupReceipt[]>([]);
   const [rejectDraft, setRejectDraft] = useState<
@@ -52,6 +55,16 @@ function CourierReceiptsContent() {
     [receipts],
   );
 
+  const focusedReceipts = useMemo(() => {
+    if (!focusDeviceId) return [] as PickupReceipt[];
+    return receipts.filter((receipt) =>
+      receipt.lines.some(
+        (line) =>
+          line.deviceLocalId === focusDeviceId || line.deviceCode === focusDeviceId,
+      ),
+    );
+  }, [receipts, focusDeviceId]);
+
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   return (
@@ -62,6 +75,14 @@ function CourierReceiptsContent() {
       />
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+      {focusDeviceId ? (
+        <p className="rounded-xl border border-aroma-200 bg-aroma-50 px-4 py-3 text-sm text-aroma-900">
+          تم فتح الصفحة من مسح جهاز ({focusDeviceId}).
+          {focusedReceipts.length
+            ? ` وُجد في ${focusedReceipts.length} نموذج مرتبط.`
+            : " لا يوجد نموذج مرتبط بهذا الجهاز ضمن عهدتك حاليًا — يمكنك مراجعة القائمة أدناه."}
+        </p>
+      ) : null}
 
       <section className="space-y-4">
         <h2 className="font-display text-2xl">بانتظار مراجعتك ({pending.length})</h2>
@@ -228,7 +249,9 @@ function CourierReceiptsContent() {
 export default function CourierReceiptsPage() {
   return (
     <RoleGuard allow="pickup_courier" permission="review_pickup_receipt">
-      <CourierReceiptsContent />
+      <Suspense fallback={<p className="text-sm text-ink-700/70">جاري التحميل…</p>}>
+        <CourierReceiptsContent />
+      </Suspense>
     </RoleGuard>
   );
 }

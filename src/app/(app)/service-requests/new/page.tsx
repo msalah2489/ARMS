@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { DeviceFormModal } from "@/components/device-form-modal";
+import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { usePreferences } from "@/components/preferences-provider";
@@ -17,6 +18,7 @@ import {
   findCustomersByName,
   saveMaintenanceRequest,
 } from "@/lib/branch-store";
+import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { readSession } from "@/lib/session";
 import type {
   BranchPriority,
@@ -40,6 +42,8 @@ function NewServiceRequestContent() {
   const [generalNotes, setGeneralNotes] = useState("");
   const [devices, setDevices] = useState<DraftRequestDevice[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [qrDevice, setQrDevice] = useState<DraftRequestDevice | null>(null);
+  const [pendingAddAnother, setPendingAddAnother] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -238,6 +242,7 @@ function NewServiceRequestContent() {
                   <th className="px-2 py-2 font-medium">السيريال</th>
                   <th className="px-2 py-2 font-medium">شكوى العميل</th>
                   <th className="px-2 py-2 font-medium">الحالة الخارجية</th>
+                  <th className="px-2 py-2 font-medium">ملصق QR</th>
                   <th className="px-2 py-2 font-medium">الملحقات</th>
                   <th className="px-2 py-2 font-medium">الإجراءات</th>
                 </tr>
@@ -245,8 +250,8 @@ function NewServiceRequestContent() {
               <tbody>
                 {devices.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
-                      لم تتم إضافة أجهزة بعد.
+                    <td colSpan={9} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
+                      لم تتم إضافة أجهزة بعد. بعد إضافة كل جهاز ستُطلب طباعة ملصق QR.
                     </td>
                   </tr>
                 ) : (
@@ -270,19 +275,41 @@ function NewServiceRequestContent() {
                       <td className="px-2 py-3 dark:text-sand-100">
                         {EXTERNAL_CONDITION_LABELS[device.externalCondition]}
                       </td>
+                      <td className="px-2 py-3">
+                        {isDeviceQrPrinted(device) ? (
+                          <span className="text-aroma-700 dark:text-aroma-200">مطبوع</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setQrDevice(ensureDeviceQrFields(device))}
+                            className="text-amber-800 underline dark:text-amber-200"
+                          >
+                            طباعة مطلوبة
+                          </button>
+                        )}
+                      </td>
                       <td className="px-2 py-3 dark:text-sand-100">
                         {device.accessoryNames.join("، ") || "—"}
                       </td>
                       <td className="px-2 py-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDevices((prev) => prev.filter((item) => item.localId !== device.localId))
-                          }
-                          className="text-rose-700 dark:text-rose-300"
-                        >
-                          حذف
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setQrDevice(ensureDeviceQrFields(device))}
+                            className="text-ink-900 underline dark:text-sand-50"
+                          >
+                            QR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDevices((prev) => prev.filter((item) => item.localId !== device.localId))
+                            }
+                            className="text-rose-700 dark:text-rose-300"
+                          >
+                            حذف
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -317,6 +344,14 @@ function NewServiceRequestContent() {
               }
               if (!devices.length) {
                 setError("أضف جهازًا واحدًا على الأقل قبل حفظ الطلب.");
+                return;
+              }
+              const missingQr = devices.find((device) => !isDeviceQrPrinted(device));
+              if (missingQr) {
+                setError(
+                  `اطبع ملصق QR للجهاز «${missingQr.deviceCode}» قبل حفظ الطلب.`,
+                );
+                setQrDevice(ensureDeviceQrFields(missingQr));
                 return;
               }
               try {
@@ -371,8 +406,31 @@ function NewServiceRequestContent() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSave={(device, addAnother) => {
-          setDevices((prev) => [...prev, device]);
-          setModalOpen(addAnother);
+          const withQr = ensureDeviceQrFields(device);
+          setDevices((prev) => [...prev, withQr]);
+          setModalOpen(false);
+          setPendingAddAnother(addAnother);
+          setQrDevice(withQr);
+        }}
+      />
+
+      <DeviceQrPrintModal
+        open={Boolean(qrDevice)}
+        device={qrDevice}
+        requirePrint
+        onPrinted={(printed) => {
+          setDevices((prev) =>
+            prev.map((item) => (item.localId === printed.localId ? printed : item)),
+          );
+          setQrDevice(null);
+          if (pendingAddAnother) {
+            setPendingAddAnother(false);
+            setModalOpen(true);
+          }
+        }}
+        onClose={() => {
+          if (qrDevice && !isDeviceQrPrinted(qrDevice)) return;
+          setQrDevice(null);
         }}
       />
     </div>

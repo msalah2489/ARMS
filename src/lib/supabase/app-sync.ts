@@ -361,6 +361,8 @@ function deviceToRow(request: MaintenanceRequestRecord, device: DraftRequestDevi
     locked_after_ship: Boolean(device.lockedAfterShip),
     accessory_names: (device.accessoryNames ?? []).join(", "),
     extra_details: device.extraDetails ?? null,
+    qr_token: device.qrToken || device.localId || null,
+    qr_printed_at: device.qrPrintedAt ?? null,
     payload: device,
     synced_at: nowIso(),
   };
@@ -412,6 +414,8 @@ function rowToDevice(row: Record<string, unknown>): DraftRequestDevice {
     lifecycleStatus: row.lifecycle_status as DraftRequestDevice["lifecycleStatus"],
     assignedTechnicianId: (row.assigned_technician_id as string | null) ?? null,
     assignedTechnicianName: (row.assigned_technician_name as string | null) ?? null,
+    qrToken: row.qr_token ? String(row.qr_token) : undefined,
+    qrPrintedAt: (row.qr_printed_at as string | null) ?? null,
     receiptNumber: "",
     receiptPhotoName: "",
   }));
@@ -435,6 +439,13 @@ function rowToDevice(row: Record<string, unknown>): DraftRequestDevice {
         ? ((row.assigned_technician_name as string | null) ?? null)
         : (fromPayload.assignedTechnicianName ?? null),
     lockedAfterShip: Boolean(row.locked_after_ship),
+    qrToken: row.qr_token
+      ? String(row.qr_token)
+      : fromPayload.qrToken || String(row.local_id ?? fromPayload.localId ?? "") || undefined,
+    qrPrintedAt:
+      row.qr_printed_at !== undefined && row.qr_printed_at !== null
+        ? String(row.qr_printed_at)
+        : (fromPayload.qrPrintedAt ?? null),
   };
 }
 
@@ -492,6 +503,8 @@ export async function pullAppMaintenanceRequests(): Promise<MaintenanceRequestRe
               fromColumn.maintenanceStartedAt ?? device.maintenanceStartedAt ?? null,
             maintenanceFinishedAt:
               fromColumn.maintenanceFinishedAt ?? device.maintenanceFinishedAt ?? null,
+            qrToken: fromColumn.qrToken || device.qrToken || device.localId,
+            qrPrintedAt: fromColumn.qrPrintedAt ?? device.qrPrintedAt ?? null,
           };
         }),
       };

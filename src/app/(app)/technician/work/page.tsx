@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RoleGuard } from "@/components/role-guard";
 import { PageHeader } from "@/components/page-header";
 import { TechnicianWorkModal } from "@/components/technician-work-modal";
 import {
   deviceStatusLabel,
   formatMaintenanceDuration,
+  listAllRequestDevices,
   subscribeMaintenanceRequestsChanged,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
@@ -31,6 +33,8 @@ import type { Profile } from "@/types/domain";
 const QUEUE_POLL_MS = 20_000;
 
 function TechnicianWorkContent() {
+  const searchParams = useSearchParams();
+  const claimHandled = useRef<string | null>(null);
   const [user, setUser] = useState<Profile | null>(null);
   const [queue, setQueue] = useState<TechnicianQueueItem[]>([]);
   const [inProgress, setInProgress] = useState<TechnicianQueueItem[]>([]);
@@ -92,6 +96,36 @@ function TechnicianWorkContent() {
       window.clearInterval(pollId);
     };
   }, []);
+
+  // Deep-link from QR scan: /technician/work/?claim=<localId>
+  useEffect(() => {
+    const claimId = searchParams?.get("claim")?.trim();
+    if (!claimId || !user) return;
+    if (claimHandled.current === claimId) return;
+    claimHandled.current = claimId;
+
+    const fromQueue =
+      getEligibleQueueForTechnician(user).find((item) => item.device.localId === claimId) ||
+      listMyInProgressDevices(user.id).find((item) => item.device.localId === claimId) ||
+      listAllRequestDevices().find((item) => item.device.localId === claimId);
+
+    if (!fromQueue) {
+      setClaimError("الجهاز غير موجود أو غير متاح لطابورك.");
+      return;
+    }
+
+    const result = startDeviceWork(fromQueue, user);
+    if (!result.ok) {
+      setClaimError(result.error || CLAIM_RACE_MESSAGE);
+      refresh(user);
+      return;
+    }
+    setClaimError(null);
+    setActionMessage(`تم فتح صيانة ${fromQueue.device.deviceCode} من المسح.`);
+    setSelected(fromQueue);
+    setModalOpen(true);
+    refresh(user);
+  }, [searchParams, user]);
 
   // Refresh elapsed duration display every 30s for in-progress work.
   useEffect(() => {
@@ -412,7 +446,9 @@ export default function TechnicianWorkPage() {
       allow={["technician", "mobile_technician"]}
       permission="view_work_queue"
     >
-      <TechnicianWorkContent />
+      <Suspense fallback={<p className="text-sm text-ink-700/70">جاري التحميل…</p>}>
+        <TechnicianWorkContent />
+      </Suspense>
     </RoleGuard>
   );
 }

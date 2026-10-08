@@ -180,6 +180,7 @@ export function listDevicesEligibleForPickupOutbound(
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
+    if (!device.qrPrintedAt) return false;
     if (reserved.has(device.localId)) return false;
     if (deviceOnOpenShippingBatch(device.localId, device.deviceCode)) return false;
     const status = normalizeLifecycleStatus(device.lifecycleStatus);

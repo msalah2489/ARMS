@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import {
@@ -11,10 +12,11 @@ import {
   normalizeLifecycleStatus,
   subscribeMaintenanceRequestsChanged,
 } from "@/lib/branch-store";
+import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { markDeliveredToCustomer } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
-import type { MaintenanceRequestRecord, Profile } from "@/types/domain";
+import type { DraftRequestDevice, MaintenanceRequestRecord, Profile } from "@/types/domain";
 
 type Row = {
   key: string;
@@ -28,6 +30,8 @@ type Row = {
   date: string;
   status: string;
   lifecycleStatus: string;
+  qrPrinted: boolean;
+  device: DraftRequestDevice;
 };
 
 function BranchReceivingContent() {
@@ -36,6 +40,10 @@ function BranchReceivingContent() {
   const [requests, setRequests] = useState<MaintenanceRequestRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrTarget, setQrTarget] = useState<{
+    requestId: string;
+    device: DraftRequestDevice;
+  } | null>(null);
 
   function refresh(session?: Profile | null) {
     const current = session ?? user;
@@ -80,6 +88,8 @@ function BranchReceivingContent() {
           date: request.receivedAt,
           status: deviceStatusLabel(device.lifecycleStatus, "branch"),
           lifecycleStatus: device.lifecycleStatus ?? "received_at_branch",
+          qrPrinted: isDeviceQrPrinted(device),
+          device,
         };
         const status = normalizeLifecycleStatus(row.lifecycleStatus);
         if (
@@ -118,6 +128,7 @@ function BranchReceivingContent() {
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   function renderTable(rows: Row[], withDeliver = false) {
+    const colSpan = withDeliver ? 8 : 7;
     return (
       <div className="arms-scroll-x mt-4">
         <table className="min-w-full text-sm">
@@ -127,6 +138,7 @@ function BranchReceivingContent() {
               <th className="px-2 py-2 font-medium">الموديل</th>
               <th className="px-2 py-2 font-medium">رقم الطلب</th>
               <th className="px-2 py-2 font-medium">الحالة</th>
+              <th className="px-2 py-2 font-medium">ملصق QR</th>
               <th className="px-2 py-2 font-medium">العميل</th>
               <th className="px-2 py-2 font-medium">التاريخ</th>
               {withDeliver ? <th className="px-2 py-2 font-medium">إجراء</th> : null}
@@ -135,7 +147,7 @@ function BranchReceivingContent() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={withDeliver ? 7 : 6} className="px-2 py-6 text-ink-700/60">
+                <td colSpan={colSpan} className="px-2 py-6 text-ink-700/60">
                   لا توجد أجهزة في هذا القسم.
                 </td>
               </tr>
@@ -153,6 +165,35 @@ function BranchReceivingContent() {
                     </Link>
                   </td>
                   <td className="px-2 py-3">{row.status}</td>
+                  <td className="px-2 py-3">
+                    {row.qrPrinted ? (
+                      <button
+                        type="button"
+                        className="text-xs text-aroma-700 underline"
+                        onClick={() =>
+                          setQrTarget({
+                            requestId: row.requestId,
+                            device: ensureDeviceQrFields(row.device),
+                          })
+                        }
+                      >
+                        مطبوع — إعادة
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
+                        onClick={() =>
+                          setQrTarget({
+                            requestId: row.requestId,
+                            device: ensureDeviceQrFields(row.device),
+                          })
+                        }
+                      >
+                        طباعة QR
+                      </button>
+                    )}
+                  </td>
                   <td className="px-2 py-3">
                     {row.contactName}
                     <span className="block text-xs text-ink-700/60">{row.mobile}</span>
@@ -209,6 +250,11 @@ function BranchReceivingContent() {
       />
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
+      {sections.atBranch.some((row) => !row.qrPrinted) ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          يوجد أجهزة بلا ملصق QR مطبوع — لن تظهر في الشحن/نماذج المندوب حتى تتم الطباعة.
+        </p>
+      ) : null}
 
       <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
         <h2 className="font-display text-xl">أجهزة في الفرع</h2>
@@ -235,6 +281,19 @@ function BranchReceivingContent() {
         <p className="mt-1 text-xs text-ink-700/60">{sections.delivered.length} جهاز</p>
         {renderTable(sections.delivered)}
       </section>
+
+      <DeviceQrPrintModal
+        open={Boolean(qrTarget)}
+        device={qrTarget?.device ?? null}
+        requestId={qrTarget?.requestId}
+        requirePrint={!qrTarget?.device.qrPrintedAt}
+        onPrinted={() => {
+          setQrTarget(null);
+          setMessage("تم تأكيد طباعة ملصق QR.");
+          refresh(user);
+        }}
+        onClose={() => setQrTarget(null)}
+      />
     </div>
   );
 }

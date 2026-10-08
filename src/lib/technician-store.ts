@@ -934,8 +934,14 @@ export function getTechnicianDashboardStats(technicianId: string, technician?: P
   };
 }
 
-export function getDeviceWorkHistory(deviceCode: string) {
-  return listTechnicianWork().filter((item) => item.deviceCode === deviceCode);
+export function getDeviceWorkHistory(deviceCodeOrLocalId: string) {
+  const q = deviceCodeOrLocalId.trim().toLowerCase();
+  if (!q) return [];
+  return listTechnicianWork().filter(
+    (item) =>
+      item.deviceCode.toLowerCase() === q ||
+      item.deviceLocalId.toLowerCase() === q,
+  );
 }
 
 export { CLAIM_RACE_MESSAGE };

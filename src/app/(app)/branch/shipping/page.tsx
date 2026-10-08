@@ -146,7 +146,7 @@ function BranchShippingContent() {
         <div className="space-y-2">
           {eligible.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-6 text-sm text-ink-700/70">
-              لا توجد أجهزة متاحة للإرسال عبر المندوب (قد تكون على بوليصة أو نموذج آخر).
+              لا توجد أجهزة متاحة للإرسال عبر المندوب. تأكد من طباعة ملصق QR لكل جهاز، وألا يكون الجهاز على بوليصة أو نموذج آخر.
             </p>
           ) : (
             eligible.map(({ device, request }) => {
