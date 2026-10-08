@@ -7,11 +7,13 @@ import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { StatusBadge } from "@/components/status-badge";
+import { branchScopeId } from "@/lib/auth";
 import { subscribeMaintenanceRequestsChanged } from "@/lib/branch-store";
 import { getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
+import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
-import type { ServiceRequest } from "@/types/domain";
+import type { ServiceRequest, ServiceRequestDeviceLifecycle } from "@/types/domain";
 
 type QuickFilter =
   | "all"
@@ -61,6 +63,40 @@ function matchesFilter(request: ServiceRequest, filter: QuickFilter) {
   }
 }
 
+function RequestLifecycleStatusCell({
+  lifecycles,
+  fallbackStatus,
+}: {
+  lifecycles?: ServiceRequestDeviceLifecycle[];
+  fallbackStatus: string;
+}) {
+  if (!lifecycles || lifecycles.length === 0) {
+    return <StatusBadge value={fallbackStatus} />;
+  }
+
+  if (lifecycles.length === 1) {
+    return <StatusBadge value={lifecycles[0].status} />;
+  }
+
+  const unique = [...new Set(lifecycles.map((item) => item.status))];
+  if (unique.length === 1) {
+    return <StatusBadge value={unique[0]} />;
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {lifecycles.map((item) => (
+        <span key={`${item.deviceCode}-${item.status}`} className="inline-flex items-center gap-1.5">
+          <span className="max-w-[7rem] truncate text-[11px] text-ink-700/55 dark:text-sand-100/55">
+            {item.deviceCode}
+          </span>
+          <StatusBadge value={item.status} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function ServiceRequestsPage() {
   const { t, locale } = usePreferences();
   const searchParams = useSearchParams();
@@ -78,7 +114,8 @@ export default function ServiceRequestsPage() {
     let cancelled = false;
     const load = (opts?: { quiet?: boolean }) => {
       if (!opts?.quiet) setLoading(true);
-      void getServiceRequests(locale).then((rows) => {
+      const scope = branchScopeId(readSession());
+      void getServiceRequests(locale, scope).then((rows) => {
         if (cancelled) return;
         setRequests(rows);
         setLoading(false);
@@ -167,7 +204,11 @@ export default function ServiceRequestsPage() {
             request.branchName,
             String(request.deviceCount ?? 0),
             <StatusBadge key="p" value={request.priority} />,
-            <StatusBadge key="s" value={request.status} />,
+            <RequestLifecycleStatusCell
+              key="s"
+              lifecycles={request.deviceLifecycles}
+              fallbackStatus={request.status}
+            />,
             formatDate(request.statusAt ?? request.requestedAt, locale),
             request.assignedTechnician ?? t("common.unassigned"),
           ])}

@@ -96,6 +96,15 @@ export function isBranchRole(role: AppRole) {
   return normalized === "branch";
 }
 
+/** Branch employees only see their ops branch; managers/admins get null (all branches). */
+export function branchScopeId(user: {
+  role: AppRole;
+  opsBranchId?: string | null;
+} | null): string | null {
+  if (!user || !isBranchRole(user.role)) return null;
+  return user.opsBranchId?.trim() || null;
+}
+
 export function isTechnicianRole(role: AppRole) {
   const normalized = normalizeRole(role);
   return normalized === "technician" || normalized === "mobile_technician";

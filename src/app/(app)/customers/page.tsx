@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
+import { branchScopeId } from "@/lib/auth";
 import { getCustomers } from "@/lib/data";
+import { readSession } from "@/lib/session";
 import type { Customer } from "@/types/domain";
 
 export default function CustomersPage() {
@@ -14,7 +16,8 @@ export default function CustomersPage() {
 
   useEffect(() => {
     setLoading(true);
-    void getCustomers(locale).then((rows) => {
+    const scope = branchScopeId(readSession());
+    void getCustomers(locale, scope).then((rows) => {
       setCustomers(rows);
       setLoading(false);
     });
