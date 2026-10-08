@@ -1356,6 +1356,9 @@ export function listShippingStatusInconsistencies(): ShippingStatusInconsistency
 
   for (const { request, device } of listAllRequestDevices()) {
     const status = normalizeLifecycleStatus(device.lifecycleStatus);
+    // «منتهي» keeps lockedAfterShip on purpose after customer delivery — not an inconsistency.
+    if (status === "delivered_to_customer" || status === "closed") continue;
+
     const locked = Boolean(device.lockedAfterShip);
     const onOpen = Boolean(findOpenBatchForDevice(device));
     const key = `${device.localId}::orphan`;
