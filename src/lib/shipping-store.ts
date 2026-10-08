@@ -1,4 +1,5 @@
 import {
+  deviceStatusLabel,
   listAllRequestDevices,
   listMaintenanceRequests,
   locationForLifecycleStatus,
@@ -109,6 +110,56 @@ export function normalizeDeviceCodeKey(code: string | null | undefined) {
     .trim()
     .toUpperCase()
     .replace(/O/g, "0");
+}
+
+/** Carrier identity for uniqueness checks (trim + case-insensitive). */
+export function normalizeCarrierKey(carrier: string | null | undefined) {
+  return (carrier ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+/** Waybill / bill number for uniqueness checks (trim + case-insensitive). */
+export function normalizeShipmentNumberKey(number: string | null | undefined) {
+  return (number ?? "").trim().toUpperCase();
+}
+
+export const DUPLICATE_SHIPMENT_NUMBER_ERROR =
+  "رقم البوليصة مستخدم مسبقاً لنفس شركة الشحن.";
+
+/**
+ * Same carrier + same bill number is always forbidden (including received/cancelled).
+ * Different carriers may reuse the same bill number.
+ */
+export function findBatchWithShipmentNumber(input: {
+  shipmentNumber: string;
+  carrier: string;
+  excludeBatchId?: string;
+}): ShippingBatch | null {
+  const shipmentKey = normalizeShipmentNumberKey(input.shipmentNumber);
+  const carrierKey = normalizeCarrierKey(input.carrier);
+  if (!shipmentKey || !carrierKey) return null;
+
+  return (
+    readAllBatches().find(
+      (batch) =>
+        batch.id !== input.excludeBatchId &&
+        normalizeShipmentNumberKey(batch.shipmentNumber) === shipmentKey &&
+        normalizeCarrierKey(batch.carrier) === carrierKey,
+    ) ?? null
+  );
+}
+
+function assertUniqueShipmentNumber(input: {
+  shipmentNumber: string;
+  carrier: string;
+  excludeBatchId?: string;
+}): { ok: true } | { ok: false; error: string } {
+  if (findBatchWithShipmentNumber(input)) {
+    return { ok: false, error: DUPLICATE_SHIPMENT_NUMBER_ERROR };
+  }
+  return { ok: true };
 }
 
 function openBatchActiveItems(excludeBatchId?: string) {
@@ -227,6 +278,75 @@ export function listDevicesEligibleForReturn(opsBranchId: string): TechnicianQue
   });
 }
 
+export type ReturnSiblingGapDevice = {
+  localId: string;
+  deviceCode: string;
+  modelName: string;
+  serialNumber: string;
+  lifecycleStatus: DeviceLifecycleStatus | string;
+  statusLabel: string;
+  /** True when the device can be added to this return bill right now. */
+  eligibleForReturn: boolean;
+};
+
+export type ReturnSiblingGapGroup = {
+  requestId: string;
+  requestNumber: string;
+  missingDevices: ReturnSiblingGapDevice[];
+};
+
+/**
+ * When creating a return bill, find sibling devices on the same multi-device
+ * request(s) that were not included in the current selection.
+ */
+export function findMissingReturnSiblings(input: {
+  opsBranchId: string;
+  selectedDeviceLocalIds: string[];
+}): ReturnSiblingGapGroup[] {
+  const selectedIds = new Set(input.selectedDeviceLocalIds.filter(Boolean));
+  if (selectedIds.size === 0) return [];
+
+  const all = listAllRequestDevices();
+  const selectedItems = all.filter((item) => selectedIds.has(item.device.localId));
+  if (selectedItems.length === 0) return [];
+
+  const requestIds = new Set(selectedItems.map((item) => item.request.id));
+  const eligibleIds = new Set(
+    listDevicesEligibleForReturn(input.opsBranchId).map((item) => item.device.localId),
+  );
+
+  const groups: ReturnSiblingGapGroup[] = [];
+  for (const requestId of requestIds) {
+    const siblings = all.filter((item) => item.request.id === requestId);
+    if (siblings.length < 2) continue;
+
+    const missing = siblings.filter((item) => !selectedIds.has(item.device.localId));
+    if (missing.length === 0) continue;
+
+    const request = siblings[0]?.request;
+    if (!request) continue;
+
+    groups.push({
+      requestId: request.id,
+      requestNumber: request.requestNumber,
+      missingDevices: missing.map(({ device }) => {
+        const status = normalizeLifecycleStatus(device.lifecycleStatus);
+        return {
+          localId: device.localId,
+          deviceCode: device.deviceCode,
+          modelName: device.modelName,
+          serialNumber: device.serialNumber ?? "",
+          lifecycleStatus: status,
+          statusLabel: deviceStatusLabel(status, "technician"),
+          eligibleForReturn: eligibleIds.has(device.localId),
+        };
+      }),
+    });
+  }
+
+  return groups.sort((a, b) => a.requestNumber.localeCompare(b.requestNumber, "ar"));
+}
+
 export function createShippingBatch(input: {
   user: Profile;
   shipmentNumber: string;
@@ -248,6 +368,11 @@ export function createShippingBatch(input: {
   if (!input.shipmentNumber.trim() || !input.carrier.trim()) {
     return { ok: false, error: "رقم البوليصة وشركة الشحن إلزاميان." };
   }
+  const uniqueCheck = assertUniqueShipmentNumber({
+    shipmentNumber: input.shipmentNumber,
+    carrier: input.carrier,
+  });
+  if (!uniqueCheck.ok) return uniqueCheck;
   if (!input.deviceLocalIds.length) {
     return { ok: false, error: "اختر جهازًا واحدًا على الأقل." };
   }
@@ -349,6 +474,11 @@ export function createReturnShippingBatch(input: {
   if (!input.shipmentNumber.trim() || !input.carrier.trim()) {
     return { ok: false, error: "رقم البوليصة وشركة الشحن إلزاميان." };
   }
+  const uniqueCheck = assertUniqueShipmentNumber({
+    shipmentNumber: input.shipmentNumber,
+    carrier: input.carrier,
+  });
+  if (!uniqueCheck.ok) return uniqueCheck;
   if (!input.deviceLocalIds.length) {
     return { ok: false, error: "اختر جهازًا واحدًا على الأقل." };
   }
