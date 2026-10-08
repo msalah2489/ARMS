@@ -105,6 +105,13 @@ const TECHNICIAN_NAV: NavItem[] = [
     permission: "view_work_queue",
   },
   {
+    href: "/technician/reports",
+    labelKey: "nav.technicianReports",
+    icon: ClipboardList,
+    roles: ["technician", "mobile_technician"],
+    permission: "view_work_queue",
+  },
+  {
     href: "/settings",
     labelKey: "nav.settings",
     icon: Settings,

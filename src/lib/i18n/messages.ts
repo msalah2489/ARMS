@@ -40,6 +40,7 @@ const messagesAr = {
   "nav.account": "حسابي",
   "nav.settings": "الإعدادات",
   "nav.technicianWork": "عمل الفني",
+  "nav.technicianReports": "تقارير",
 
   "dashboard.welcome": "مرحبًا، {name}",
   "dashboard.loading": "جاري التحميل…",
@@ -330,6 +331,7 @@ const messagesEn: Record<MessageKey, string> = {
   "nav.account": "My account",
   "nav.settings": "Settings",
   "nav.technicianWork": "Technician work",
+  "nav.technicianReports": "Reports",
 
   "dashboard.welcome": "Welcome, {name}",
   "dashboard.loading": "Loading…",
