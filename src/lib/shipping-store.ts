@@ -1015,6 +1015,22 @@ export function listBranchesReadyToShip(): BranchReadyToShipSummary[] {
     );
 }
 
+/** Branches that currently have devices at the center eligible for return. */
+export function listBranchesReadyForReturn(): BranchReadyToShipSummary[] {
+  return listOpsBranches()
+    .map((branch) => ({
+      branchId: branch.id,
+      branchName: branch.name,
+      readyCount: listDevicesEligibleForReturn(branch.id).length,
+    }))
+    .filter((item) => item.readyCount > 0)
+    .sort(
+      (a, b) =>
+        b.readyCount - a.readyCount ||
+        a.branchName.localeCompare(b.branchName, "ar"),
+    );
+}
+
 /** All ops branches with ready-to-ship counts, ready branches first. */
 export function listOpsBranchesWithReadyCounts(): Array<{
   id: string;

@@ -4,6 +4,7 @@ import {
   updateDevicesLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
+import { listBranchOptions } from "@/lib/branches-store";
 import { isDemoMode, normalizeRole } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { pushAppPickupReceipts } from "@/lib/supabase/app-sync";
@@ -204,6 +205,28 @@ export function listDevicesEligibleForPickupReturn(
     if (deviceOnOpenShippingBatch(device.localId, device.deviceCode)) return false;
     return normalizeLifecycleStatus(device.lifecycleStatus) === "ready_to_return";
   });
+}
+
+export type BranchReadyForPickupReturnSummary = {
+  branchId: string;
+  branchName: string;
+  readyCount: number;
+};
+
+/** Branches with ≥1 device eligible for center→branch courier return. */
+export function listBranchesReadyForPickupReturn(): BranchReadyForPickupReturnSummary[] {
+  return listBranchOptions()
+    .map((branch) => ({
+      branchId: branch.id,
+      branchName: branch.name,
+      readyCount: listDevicesEligibleForPickupReturn(branch.id).length,
+    }))
+    .filter((item) => item.readyCount > 0)
+    .sort(
+      (a, b) =>
+        b.readyCount - a.readyCount ||
+        a.branchName.localeCompare(b.branchName, "ar"),
+    );
 }
 
 function canCreateReceipt(user: Profile, direction: PickupReceiptDirection) {

@@ -16,6 +16,7 @@ import {
   createShippingBatch,
   findBatchWithShipmentNumber,
   findMissingReturnSiblings,
+  listBranchesReadyForReturn,
   listBranchesReadyToShip,
   listDevicesEligibleForReturn,
   listDevicesEligibleForShipment,
@@ -26,6 +27,12 @@ import {
   type BranchReadyToShipSummary,
   type ReturnSiblingGapGroup,
 } from "@/lib/shipping-store";
+import {
+  createPickupReceipt,
+  listDevicesEligibleForPickupReturn,
+  listPickupCouriers,
+} from "@/lib/pickup-receipt-store";
+import { hasPermission } from "@/lib/permissions";
 import {
   MANAGER_DECISION_LABELS,
   getDeviceHoldSummary,
@@ -42,6 +49,8 @@ import {
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
 
+type ReturnMethod = "shipping" | "courier";
+
 function MaintenanceShippingContent() {
   const [user, setUser] = useState<Profile | null>(null);
   const [batches, setBatches] = useState<ShippingBatch[]>([]);
@@ -50,9 +59,12 @@ function MaintenanceShippingContent() {
   );
   const [mobileAtBranch, setMobileAtBranch] = useState(() => listMobilePathDevicesAtBranch());
   const [readyBranches, setReadyBranches] = useState<BranchReadyToShipSummary[]>([]);
+  const [returnReadyBranches, setReturnReadyBranches] = useState<BranchReadyToShipSummary[]>([]);
   const [branches, setBranches] = useState(() => listOpsBranchesWithReadyCounts());
   const [branchId, setBranchId] = useState("");
   const [returnBranchId, setReturnBranchId] = useState("");
+  const [returnMethod, setReturnMethod] = useState<ReturnMethod>("shipping");
+  const [returnCourierId, setReturnCourierId] = useState("");
   const [shipmentNumber, setShipmentNumber] = useState("");
   const [returnShipmentNumber, setReturnShipmentNumber] = useState("");
   const [carrier, setCarrier] = useState("SMSA");
@@ -70,9 +82,15 @@ function MaintenanceShippingContent() {
   const [siblingModalOpen, setSiblingModalOpen] = useState(false);
 
   const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches, readyBranches]);
-  const returnEligible = useMemo(
-    () => listDevicesEligibleForReturn(returnBranchId),
-    [returnBranchId, batches, pendingManager],
+  const returnEligible = useMemo(() => {
+    if (!returnBranchId) return [];
+    return returnMethod === "courier"
+      ? listDevicesEligibleForPickupReturn(returnBranchId)
+      : listDevicesEligibleForReturn(returnBranchId);
+  }, [returnBranchId, returnMethod, batches, pendingManager, returnReadyBranches]);
+  const returnCouriers = useMemo(
+    () => listPickupCouriers({ includeTechnicians: true }),
+    [batches, returnReadyBranches],
   );
   const shippingInconsistencies = useMemo(
     () => listShippingStatusInconsistencies(),
@@ -84,6 +102,7 @@ function MaintenanceShippingContent() {
     setPendingManager(listAwaitingManagerDecisionDevices());
     setMobileAtBranch(listMobilePathDevicesAtBranch());
     setReadyBranches(listBranchesReadyToShip());
+    setReturnReadyBranches(listBranchesReadyForReturn());
     setBranches(listOpsBranchesWithReadyCounts());
   }
 
@@ -97,7 +116,15 @@ function MaintenanceShippingContent() {
         listOpsBranchesWithReadyCounts()[0]?.id ??
         "";
       setBranchId((current) => current || preferred);
-      setReturnBranchId((current) => current || preferred);
+      const returnPreferred = listBranchesReadyForReturn()[0]?.branchId ?? "";
+      setReturnBranchId((current) => {
+        if (current && listBranchesReadyForReturn().some((b) => b.branchId === current)) {
+          return current;
+        }
+        return returnPreferred;
+      });
+      const firstCourier = listPickupCouriers({ includeTechnicians: true })[0];
+      setReturnCourierId((current) => current || firstCourier?.id || "");
     }
 
     load();
@@ -108,8 +135,12 @@ function MaintenanceShippingContent() {
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   const branchName = branches.find((item) => item.id === branchId)?.name ?? "فرع";
-  const returnBranchName = branches.find((item) => item.id === returnBranchId)?.name ?? "فرع";
+  const returnBranchName =
+    returnReadyBranches.find((item) => item.branchId === returnBranchId)?.branchName ?? "فرع";
   const readyDeviceTotal = readyBranches.reduce((sum, item) => sum + item.readyCount, 0);
+  const returnDeviceTotal = returnReadyBranches.reduce((sum, item) => sum + item.readyCount, 0);
+  const canCreateCourierReturn = hasPermission(user, "create_pickup_receipt");
+  const returnCourier = returnCouriers.find((c) => c.id === returnCourierId);
 
   function submitReturnBill(deviceLocalIds: string[]) {
     if (!user) return;
@@ -138,9 +169,57 @@ function MaintenanceShippingContent() {
     refresh();
   }
 
+  function submitCourierReturn(deviceLocalIds: string[]) {
+    if (!user) return;
+    setError(null);
+    setMessage(null);
+    if (!returnCourier) {
+      setError("اختر مندوب الاستلام أو الفني الناقل.");
+      return;
+    }
+    if (!returnBranchId) {
+      setError("اختر الفرع الوجهة.");
+      return;
+    }
+    if (!deviceLocalIds.length) {
+      setError("اختر جهازًا واحدًا على الأقل.");
+      return;
+    }
+    const result = createPickupReceipt({
+      user,
+      direction: "center_to_branch",
+      opsBranchId: returnBranchId,
+      opsBranchName: returnBranchName,
+      assignedCourierId: returnCourier.id,
+      assignedCourierName: returnCourier.fullName,
+      assignedCarrierRole: returnCourier.role,
+      deviceLocalIds,
+      notes: returnNotes,
+      submit: true,
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setMessage(
+      `تم إنشاء نموذج الإرجاع مع المندوب ${result.receipt.receiptNumber} وإرساله للمندوب.`,
+    );
+    setReturnSelected([]);
+    setReturnNotes("");
+    refresh();
+  }
+
   function beginCreateReturnBill() {
     setError(null);
     setMessage(null);
+    if (!returnSelected.length) {
+      setError("اختر جهازًا واحدًا على الأقل.");
+      return;
+    }
+    if (returnMethod === "courier") {
+      submitCourierReturn(returnSelected);
+      return;
+    }
     if (!returnShipmentNumber.trim() || !returnCarrier.trim()) {
       setError("رقم البوليصة وشركة الشحن إلزاميان.");
       return;
@@ -152,10 +231,6 @@ function MaintenanceShippingContent() {
       })
     ) {
       setError(DUPLICATE_SHIPMENT_NUMBER_ERROR);
-      return;
-    }
-    if (!returnSelected.length) {
-      setError("اختر جهازًا واحدًا على الأقل.");
       return;
     }
     const gaps = findMissingReturnSiblings({
@@ -428,94 +503,205 @@ function MaintenanceShippingContent() {
         </button>
       </ExpandableSection>
 
-      <ExpandableSection title="2) بوليصة إرجاع إلى الفرع" defaultOpen={false}>
+      <ExpandableSection title="2) إرجاع الأجهزة إلى الفرع" defaultOpen={false}>
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-          أجهزة جاهزة للإرجاع تخص فرعًا واحدًا؛ الوجهة = نفس الفرع الوارد منه.
+          أجهزة جاهزة للإرجاع تخص فرعًا واحدًا. اختر طريقة الإرجاع: بوليصة شحن أو إرجاع مع
+          مندوب الاستلام.
         </p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block text-sm">
-            الفرع الوجهة
-            <select
-              value={returnBranchId}
-              onChange={(e) => {
-                setReturnBranchId(e.target.value);
+
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="طريقة الإرجاع">
+          <button
+            type="button"
+            onClick={() => {
+              setReturnMethod("shipping");
+              setReturnSelected([]);
+            }}
+            className={[
+              "rounded-full border px-4 py-2 text-sm transition",
+              returnMethod === "shipping"
+                ? "border-aroma-500 bg-aroma-600 text-white"
+                : "border-ink-900/15 bg-white text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50",
+            ].join(" ")}
+          >
+            بوليصة شحن
+          </button>
+          {canCreateCourierReturn ? (
+            <button
+              type="button"
+              onClick={() => {
+                setReturnMethod("courier");
                 setReturnSelected([]);
               }}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+              className={[
+                "rounded-full border px-4 py-2 text-sm transition",
+                returnMethod === "courier"
+                  ? "border-aroma-500 bg-aroma-600 text-white"
+                  : "border-ink-900/15 bg-white text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50",
+              ].join(" ")}
             >
-              {[...branches]
-                .sort((a, b) => a.name.localeCompare(b.name, "ar"))
-                .map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            رقم البوليصة *
-            <input
-              value={returnShipmentNumber}
-              onChange={(e) => setReturnShipmentNumber(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            شركة الشحن *
-            <input
-              value={returnCarrier}
-              onChange={(e) => setReturnCarrier(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            ملاحظات
-            <input
-              value={returnNotes}
-              onChange={(e) => setReturnNotes(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
-            />
-          </label>
+              إرجاع مع المندوب
+            </button>
+          ) : null}
         </div>
 
-        <h3 className="mt-6 text-sm font-medium">جاهز للإرجاع → {returnBranchName}</h3>
-        <div className="mt-2 space-y-2">
-          {returnEligible.length === 0 ? (
-            <p className="text-sm text-ink-700/60">لا توجد أجهزة جاهزة للإرجاع لهذا الفرع.</p>
+        <div className="mt-4 rounded-2xl border border-sky-300/70 bg-sky-50/80 px-4 py-3 dark:border-sky-500/30 dark:bg-sky-950/20">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-medium text-ink-800 dark:text-sand-100">
+              فروع لديها أجهزة جاهزة للإرجاع من مركز الصيانة
+            </p>
+            <p className="text-xs text-ink-700/65 dark:text-sand-100/65">
+              {returnReadyBranches.length === 0
+                ? "لا توجد أجهزة جاهزة للإرجاع حاليًا"
+                : `${returnReadyBranches.length} فرع · ${returnDeviceTotal} جهاز`}
+            </p>
+          </div>
+          {returnReadyBranches.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {returnReadyBranches.map((branch) => {
+                const selectedBranch = branch.branchId === returnBranchId;
+                return (
+                  <button
+                    key={branch.branchId}
+                    type="button"
+                    onClick={() => {
+                      setReturnBranchId(branch.branchId);
+                      setReturnSelected([]);
+                    }}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-sm transition",
+                      selectedBranch
+                        ? "border-aroma-500 bg-aroma-600 text-white"
+                        : "border-ink-900/15 bg-white text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400",
+                    ].join(" ")}
+                  >
+                    {branch.branchName}
+                    <span className="ms-2 font-display text-base">{branch.readyCount}</span>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
-            returnEligible.map(({ request, device }) => (
-              <label
-                key={device.localId}
-                className="flex items-start gap-3 rounded-xl border border-ink-900/10 px-3 py-3 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={returnSelected.includes(device.localId)}
-                  onChange={(e) =>
-                    setReturnSelected((prev) =>
-                      e.target.checked
-                        ? [...prev, device.localId]
-                        : prev.filter((id) => id !== device.localId),
-                    )
-                  }
-                  className="mt-1"
-                />
-                <span>
-                  <span className="font-medium">{device.deviceCode}</span> · {device.modelName} ·{" "}
-                  {request.requestNumber}
-                </span>
-              </label>
-            ))
+            <p className="mt-3 rounded-xl border border-dashed border-ink-900/15 bg-white/70 px-3 py-4 text-sm text-ink-700/70 dark:border-white/15 dark:bg-ink-900/40 dark:text-sand-100/70">
+              لا توجد فروع لديها أجهزة جاهزة للإرجاع في المركز الآن. تظهر هنا فقط الفروع التي
+              لديها جهاز واحد على الأقل بحالة «جاهز للإرجاع».
+            </p>
           )}
         </div>
 
-        <button
-          type="button"
-          className="mt-4 rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
-          onClick={beginCreateReturnBill}
-        >
-          إنشاء بوليصة الإرجاع
-        </button>
+        {returnReadyBranches.length > 0 ? (
+          <>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block text-sm">
+                الفرع الوجهة
+                <select
+                  value={returnBranchId}
+                  onChange={(e) => {
+                    setReturnBranchId(e.target.value);
+                    setReturnSelected([]);
+                  }}
+                  className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                >
+                  {returnReadyBranches.map((branch) => (
+                    <option key={branch.branchId} value={branch.branchId}>
+                      {branch.branchName} ({branch.readyCount} جاهز)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {returnMethod === "shipping" ? (
+                <>
+                  <label className="block text-sm">
+                    رقم البوليصة *
+                    <input
+                      value={returnShipmentNumber}
+                      onChange={(e) => setReturnShipmentNumber(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    شركة الشحن *
+                    <input
+                      value={returnCarrier}
+                      onChange={(e) => setReturnCarrier(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="block text-sm">
+                  مندوب الاستلام / الفني الناقل *
+                  <select
+                    value={returnCourierId}
+                    onChange={(e) => setReturnCourierId(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                  >
+                    {returnCouriers.length === 0 ? (
+                      <option value="">لا يوجد مندوبون — أنشئ حساباً بدور مندوب الاستلام</option>
+                    ) : (
+                      returnCouriers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.fullName} ({c.role === "pickup_courier" ? "مندوب" : "فني"})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+              )}
+              <label className="block text-sm">
+                ملاحظات
+                <input
+                  value={returnNotes}
+                  onChange={(e) => setReturnNotes(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <h3 className="mt-6 text-sm font-medium">
+              {returnMethod === "courier" ? "إرجاع مع المندوب" : "بوليصة شحن"} →{" "}
+              {returnBranchName}
+            </h3>
+            <div className="mt-2 space-y-2">
+              {returnEligible.length === 0 ? (
+                <p className="text-sm text-ink-700/60">لا توجد أجهزة جاهزة للإرجاع لهذا الفرع.</p>
+              ) : (
+                returnEligible.map(({ request, device }) => (
+                  <label
+                    key={device.localId}
+                    className="flex items-start gap-3 rounded-xl border border-ink-900/10 px-3 py-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={returnSelected.includes(device.localId)}
+                      onChange={(e) =>
+                        setReturnSelected((prev) =>
+                          e.target.checked
+                            ? [...prev, device.localId]
+                            : prev.filter((id) => id !== device.localId),
+                        )
+                      }
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-medium">{device.deviceCode}</span> · {device.modelName} ·{" "}
+                      {request.requestNumber}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="mt-4 rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
+              onClick={beginCreateReturnBill}
+            >
+              {returnMethod === "courier"
+                ? "إنشاء نموذج إرجاع للمندوب"
+                : "إنشاء بوليصة الإرجاع"}
+            </button>
+          </>
+        ) : null}
       </ExpandableSection>
 
       <ReturnSiblingWarningModal
@@ -758,7 +944,12 @@ export default function MaintenanceShippingPage() {
         "manager",
         "supervisor",
       ]}
-      permission={["receive_inbound_waybill", "create_return_waybill", "manager_decisions"]}
+      permission={[
+        "receive_inbound_waybill",
+        "create_return_waybill",
+        "manager_decisions",
+        "create_pickup_receipt",
+      ]}
     >
       <MaintenanceShippingContent />
     </RoleGuard>
