@@ -283,30 +283,65 @@ function MaintenanceShippingContent() {
 
       {canRepairShippingStatus(user) && shippingInconsistencies.length > 0 ? (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-50/60 px-4 py-3 text-sm dark:border-amber-400/30 dark:bg-amber-950/30">
-          <p className="dark:text-sand-50">
+          <p className="font-medium dark:text-sand-50">
             يوجد {shippingInconsistencies.length} تناقض بين حالة جهاز وبوليصة نشطة.
           </p>
-          <button
-            type="button"
-            className="mt-2 text-aroma-800 underline dark:text-aroma-200"
-            onClick={() => {
-              const result = repairInconsistentShippingStatuses({ user });
-              if (!result.ok) {
-                setError(result.error);
-                setMessage(null);
-                return;
-              }
-              setError(null);
-              setMessage(
-                result.fixed === 0
-                  ? "لا توجد تناقضات لإصلاحها."
-                  : `تم إصلاح ${result.fixed} جهاز/أجهزة.\n${result.details.join("\n")}`,
-              );
-              refresh();
-            }}
-          >
-            إصلاح حالات الشحن غير المتسقة الآن
-          </button>
+          <ul className="mt-3 space-y-2">
+            {shippingInconsistencies.map((issue) => (
+              <li
+                key={`${issue.deviceLocalId}-${issue.issue}`}
+                className="rounded-xl border border-amber-600/20 bg-white/70 px-3 py-2 dark:border-amber-300/20 dark:bg-ink-950/40"
+              >
+                <p className="font-medium dark:text-sand-50">
+                  {issue.deviceCode}
+                  <span className="text-xs font-normal text-ink-700/60 dark:text-sand-100/60">
+                    {" "}
+                    · {issue.opsBranchName}
+                  </span>
+                </p>
+                <p className="mt-1 text-ink-800/85 dark:text-sand-100/85">{issue.issue}</p>
+                <p className="mt-1 text-xs text-ink-700/65 dark:text-sand-100/65">
+                  الآن: {deviceStatusLabel(issue.currentStatus, "technician")}
+                  {issue.currentLocked ? " · مقفول بعد الشحن" : " · غير مقفول"}
+                  {" → "}
+                  المقترح: {deviceStatusLabel(issue.suggestedStatus, "technician")}
+                  {issue.suggestedLocked ? " · قفل" : " · بدون قفل"}
+                  {issue.batchShipmentNumber
+                    ? ` · بوليصة ${issue.batchShipmentNumber}`
+                    : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="text-aroma-800 underline dark:text-aroma-200"
+              onClick={() => {
+                const result = repairInconsistentShippingStatuses({ user });
+                if (!result.ok) {
+                  setError(result.error);
+                  setMessage(null);
+                  return;
+                }
+                setError(null);
+                setMessage(
+                  result.fixed === 0
+                    ? "لا توجد تناقضات لإصلاحها."
+                    : `تم إصلاح ${result.fixed} جهاز/أجهزة.\n${result.details.join("\n")}`,
+                );
+                refresh();
+              }}
+            >
+              إصلاح حالات الشحن غير المتسقة الآن
+            </button>
+            <Link
+              href="/admin/shipping-repair"
+              className="text-ink-700/70 underline dark:text-sand-100/70"
+            >
+              إصلاح يدوي مفصّل
+            </Link>
+          </div>
         </div>
       ) : null}
 
