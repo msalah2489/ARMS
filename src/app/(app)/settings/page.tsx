@@ -27,6 +27,7 @@ export default function SettingsPage() {
   const { t, locale, theme, setLocale, setTheme } = usePreferences();
   const [user, setUser] = useState<Profile | null>(null);
   const [managedId, setManagedId] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
   const [mobile, setMobile] = useState("");
   const [gender, setGender] = useState<UserGender | "">("");
   const [photo, setPhoto] = useState<ImageValue | null>(null);
@@ -46,6 +47,7 @@ export default function SettingsPage() {
       writeSession(profile);
       setUser(profile);
       setManagedId(managed.id);
+      setUsername(managed.username);
       setMobile(managed.mobile);
       setGender(managed.gender ?? "");
       setPhoto(
@@ -57,6 +59,7 @@ export default function SettingsPage() {
     }
 
     setUser(session);
+    setUsername(session.username ?? "");
     setMobile(session.mobile ?? "");
     setGender(session.gender ?? "");
     setPhoto(
@@ -205,6 +208,19 @@ export default function SettingsPage() {
               </div>
             </fieldset>
             <label className="block text-sm md:col-span-2 dark:text-sand-100">
+              {t("account.usernameEditable")}
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                dir="ltr"
+                className={inputClass}
+              />
+              <span className="mt-1 block text-xs text-ink-700/50 dark:text-sand-100/50">
+                {t("account.usernameHint")}
+              </span>
+            </label>
+            <label className="block text-sm md:col-span-2 dark:text-sand-100">
               {t("account.mobileRequired")}
               <input
                 value={mobile}
@@ -254,6 +270,7 @@ export default function SettingsPage() {
                   return;
                 }
                 const result = await updateManagedUserSelf(managedId, {
+                  username,
                   mobile,
                   currentPassword: newPassword ? currentPassword : undefined,
                   newPassword: newPassword || undefined,
@@ -268,6 +285,7 @@ export default function SettingsPage() {
                 const nextSession = managedUserToProfile(result.user);
                 writeSession(nextSession);
                 setUser(nextSession);
+                setUsername(result.user.username);
                 setGender(result.user.gender ?? "");
                 setPhoto(
                   result.user.photoDataUrl

@@ -676,10 +676,11 @@ export async function setManagedUserActive(
   });
 }
 
-/** Employee self-service: mobile, password, and optional photo. No branch/role/username. */
+/** Employee self-service: username, mobile, password, and optional photo. No branch/role. */
 export async function updateManagedUserSelf(
   id: string,
   input: {
+    username?: string;
     mobile: string;
     currentPassword?: string;
     newPassword?: string;
@@ -694,6 +695,25 @@ export async function updateManagedUserSelf(
   if (!existing) return { ok: false, error: "المستخدم غير موجود." };
   if (existing.isArchived) return { ok: false, error: "الحساب مؤرشف. راجع مدير النظام." };
   if (!existing.isActive) return { ok: false, error: "الحساب معطّل. راجع مدير النظام." };
+
+  const username =
+    input.username !== undefined
+      ? input.username.trim().toLowerCase()
+      : existing.username.trim().toLowerCase();
+  if (!username) return { ok: false, error: "اسم المستخدم إلزامي." };
+  if (!isValidUsername(username)) {
+    return {
+      ok: false,
+      error: "اسم المستخدم يجب أن يكون ٣–٣٢ حرفًا (حروف إنجليزية أو أرقام أو . _ -).",
+    };
+  }
+  if (
+    all.some(
+      (user) => user.id !== id && user.username.toLowerCase() === username,
+    )
+  ) {
+    return { ok: false, error: "اسم المستخدم مستخدم لحساب آخر." };
+  }
 
   const mobile = input.mobile.trim();
   if (!mobile) return { ok: false, error: "رقم الجوال إلزامي." };
@@ -724,6 +744,7 @@ export async function updateManagedUserSelf(
       : existing.photoDataUrl ?? null;
   const next: ManagedUser = {
     ...existing,
+    username,
     mobile,
     password,
     gender:
