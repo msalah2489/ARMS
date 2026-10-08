@@ -1,5 +1,6 @@
 "use client";
 
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -16,16 +17,62 @@ import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type { TechnicianQueueItem } from "@/lib/branch-store";
 import type { Profile } from "@/types/domain";
 
-type BarcodeDetectorLike = {
-  detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
-};
+function waitForVideoElement(
+  getEl: () => HTMLVideoElement | null,
+  attempts = 20,
+): Promise<HTMLVideoElement | null> {
+  return new Promise((resolve) => {
+    let left = attempts;
+    const tick = () => {
+      const el = getEl();
+      if (el) {
+        resolve(el);
+        return;
+      }
+      left -= 1;
+      if (left <= 0) {
+        resolve(null);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
+function cameraErrorMessage(err: unknown): { text: string; fatal: boolean } {
+  const name =
+    err && typeof err === "object" && "name" in err ? String((err as { name: unknown }).name) : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return {
+      text: "تم رفض إذن الكاميرا. اسمح بالوصول من إعدادات المتصفح ثم اضغط «إعادة المحاولة».",
+      fatal: false,
+    };
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return {
+      text: "لم يتم العثور على كاميرا على هذا الجهاز — الصق الكود يدويًا.",
+      fatal: true,
+    };
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return {
+      text: "الكاميرا مشغولة بتطبيق آخر. أغلقه ثم أعد المحاولة، أو الصق الكود يدويًا.",
+      fatal: false,
+    };
+  }
+  return {
+    text: "تعذر فتح الكاميرا. الصق كود الجهاز أو رابط QR يدويًا، أو أعد المحاولة.",
+    fatal: false,
+  };
+}
 
 function ScanPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanLoopRef = useRef<number | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const handledRef = useRef(false);
 
   const [user, setUser] = useState<Profile | null>(null);
   const [query, setQuery] = useState("");
@@ -34,17 +81,23 @@ function ScanPageContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [cameraSupported, setCameraSupported] = useState(true);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraAvailable, setCameraAvailable] = useState(true);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   function stopCamera() {
-    if (scanLoopRef.current != null) {
-      window.clearInterval(scanLoopRef.current);
-      scanLoopRef.current = null;
+    try {
+      controlsRef.current?.stop();
+    } catch {
+      /* ignore */
     }
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    controlsRef.current = null;
+    handledRef.current = false;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraOn(false);
+    setCameraStarting(false);
   }
 
   function applyResolve(matches: TechnicianQueueItem[], session: Profile) {
@@ -120,54 +173,91 @@ function ScanPageContent() {
   async function startCamera() {
     setError(null);
     setMessage(null);
+    setPermissionDenied(false);
+    stopCamera();
+
+    if (typeof window !== "undefined" && window.location.protocol === "file:") {
+      setCameraAvailable(false);
+      setError(
+        "لا يمكن استخدام الكاميرا عند فتح الصفحة كملف محلي (file://). افتح الموقع عبر HTTPS أو localhost.",
+      );
+      return;
+    }
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setCameraAvailable(false);
+      setError("الكاميرا تحتاج سياقًا آمنًا (HTTPS أو localhost).");
+      return;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraSupported(false);
+      setCameraAvailable(false);
       setError("الكاميرا غير متاحة على هذا الجهاز — الصق الكود يدويًا.");
       return;
     }
 
+    setCameraStarting(true);
+    setCameraOn(true);
+
+    const video = await waitForVideoElement(() => videoRef.current);
+    if (!video) {
+      setCameraStarting(false);
+      setCameraOn(false);
+      setError("تعذر تجهيز معاينة الكاميرا. أعد المحاولة أو الصق الكود يدويًا.");
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
+      const reader = new BrowserQRCodeReader(undefined, {
+        delayBetweenScanAttempts: 250,
+        delayBetweenScanSuccess: 800,
       });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+
+      handledRef.current = false;
+      const controls = await reader.decodeFromConstraints(
+        {
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
+        video,
+        (result, _err, ctrl) => {
+          if (!result || handledRef.current) return;
+          const raw = result.getText()?.trim();
+          if (!raw) return;
+          handledRef.current = true;
+          try {
+            ctrl.stop();
+          } catch {
+            /* ignore */
+          }
+          stopCamera();
+          runSearch(raw);
+        },
+      );
+
+      controlsRef.current = controls;
+      setCameraStarting(false);
+      setMessage("وجّه الكاميرا نحو ملصق QR…");
+    } catch (err) {
+      stopCamera();
+      const { text, fatal } = cameraErrorMessage(err);
+      const name =
+        err && typeof err === "object" && "name" in err
+          ? String((err as { name: unknown }).name)
+          : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setPermissionDenied(true);
       }
-      setCameraOn(true);
-
-      const Detector = (
-        window as unknown as { BarcodeDetector?: new (opts?: { formats: string[] }) => BarcodeDetectorLike }
-      ).BarcodeDetector;
-
-      if (!Detector) {
-        setMessage("المتصفح لا يدعم قراءة QR تلقائيًا — صوّر الملصق أو الصق الرابط/الكود أدناه.");
-        return;
-      }
-
-      const detector = new Detector({ formats: ["qr_code"] });
-      scanLoopRef.current = window.setInterval(() => {
-        const video = videoRef.current;
-        if (!video || video.readyState < 2) return;
-        void detector
-          .detect(video)
-          .then((codes) => {
-            const raw = codes[0]?.rawValue?.trim();
-            if (!raw) return;
-            stopCamera();
-            runSearch(raw);
-          })
-          .catch(() => {
-            /* ignore frame errors */
-          });
-      }, 700);
-    } catch {
-      setCameraSupported(false);
-      setError("تعذر فتح الكاميرا. الصق كود الجهاز أو رابط QR يدويًا.");
+      if (fatal) setCameraAvailable(false);
+      setError(text);
     }
   }
+
+  const showCameraButton = cameraAvailable;
 
   return (
     <div>
@@ -195,20 +285,36 @@ function ScanPageContent() {
         >
           عرض / توجيه
         </button>
-        {cameraSupported ? (
+        {showCameraButton ? (
           <button
             type="button"
+            disabled={cameraStarting}
             onClick={() => (cameraOn ? stopCamera() : void startCamera())}
-            className="rounded-full border border-ink-900/20 px-5 py-2 text-sm dark:border-white/20"
+            className="rounded-full border border-ink-900/20 px-5 py-2 text-sm disabled:opacity-60 dark:border-white/20"
           >
-            {cameraOn ? "إيقاف الكاميرا" : "فتح الكاميرا"}
+            {cameraStarting
+              ? "جاري فتح الكاميرا…"
+              : cameraOn
+                ? "إيقاف الكاميرا"
+                : permissionDenied
+                  ? "إعادة المحاولة"
+                  : "فتح الكاميرا"}
           </button>
         ) : null}
       </form>
 
       {cameraOn ? (
         <div className="mt-4 overflow-hidden rounded-2xl border border-ink-900/10 bg-ink-950">
-          <video ref={videoRef} className="mx-auto max-h-72 w-full object-cover" muted playsInline />
+          <video
+            ref={videoRef}
+            className="mx-auto max-h-72 w-full object-cover"
+            muted
+            playsInline
+            autoPlay
+          />
+          {cameraStarting ? (
+            <p className="px-4 py-3 text-center text-sm text-sand-100/80">جاري طلب إذن الكاميرا…</p>
+          ) : null}
         </div>
       ) : null}
 
