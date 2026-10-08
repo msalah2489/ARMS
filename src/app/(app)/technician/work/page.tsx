@@ -134,6 +134,14 @@ function TechnicianWorkContent() {
     return () => window.clearInterval(id);
   }, [inProgress.length]);
 
+  useEffect(() => {
+    if (searchParams?.get("focus")?.trim() !== "mine") return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("tech-focus-mine")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, inProgress.length]);
+
   const isMobile = useMemo(
     () => (user ? normalizeRole(user.role) === "mobile_technician" : false),
     [user],
@@ -193,10 +201,14 @@ function TechnicianWorkContent() {
         </p>
       ) : null}
 
-      {inProgress.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="font-display text-xl">استئناف العمل</h2>
-          {inProgress.map((item) => (
+      <section id="tech-focus-mine" className="space-y-3 scroll-mt-20">
+        <h2 className="font-display text-xl">استئناف العمل — عملي</h2>
+        {inProgress.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-6 text-sm text-ink-700/70">
+            لا توجد أجهزة قيد التنفيذ لديك — اسحب جهازاً من طابور الانتظار.
+          </p>
+        ) : (
+          inProgress.map((item) => (
             <div
               key={`ip-${item.request.id}-${item.device.localId}`}
               className="rounded-2xl border border-amber-200 bg-white p-4 shadow-panel"
@@ -237,9 +249,9 @@ function TechnicianWorkContent() {
                 </button>
               </div>
             </div>
-          ))}
-        </section>
-      ) : null}
+          ))
+        )}
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-display text-xl">طابور الانتظار</h2>

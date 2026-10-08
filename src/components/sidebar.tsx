@@ -2,12 +2,12 @@
 
 import { LogOut } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ArmsLogo } from "@/components/arms-logo";
 import { usePreferences } from "@/components/preferences-provider";
 import { ROLE_LABELS } from "@/lib/auth";
-import { navForUser } from "@/lib/nav";
+import { isNavHrefActive, navForUser } from "@/lib/nav";
 import { signOut } from "@/lib/session";
 import type { Profile } from "@/types/domain";
 
@@ -21,8 +21,10 @@ type SidebarProps = {
 export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = usePreferences();
   const items = navForUser(user);
+  const search = searchParams?.toString() ? `?${searchParams.toString()}` : "";
   const isRail = variant === "rail";
   const asideRef = useRef<HTMLElement>(null);
   const [railExpanded, setRailExpanded] = useState(false);
@@ -117,7 +119,7 @@ export function Sidebar({ user, variant = "rail", onNavigate }: SidebarProps) {
           const Icon = item.icon;
           const label = t(item.labelKey);
           const path = pathname ?? "";
-          const active = path === item.href || path.startsWith(item.href + "/");
+          const active = isNavHrefActive(path, search, item.href);
           return (
             <Link
               key={item.href}

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>موظف الفرع — عمل اليوم (محاكاة)</title>
+  <style>
+    :root {
+      --sand: #f7f3ec;
+      --sand-deep: #ebe4d8;
+      --cream: #fffdf9;
+      --ink: #1c1917;
+      --ink-soft: #57534e;
+      --olive: #5c6b4a;
+      --olive-soft: #e8ede3;
+      --terra: #c45c3a;
+      --terra-soft: #f8e8e2;
+      --ready: #3d6b4f;
+      --ready-soft: #e3efe8;
+      --shipping: #5c6b4a;
+      --line: #ddd5c8;
+      --shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
+      --radius: 14px;
+      --font: "Segoe UI", "Tahoma", "Arial", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: linear-gradient(160deg, #e8e0d4 0%, #d4cdc2 100%);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 32px 20px 48px;
+      line-height: 1.45;
+    }
+
+    .page-title {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .page-title h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .page-title p {
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+      margin-top: 6px;
+    }
+
+    .gallery {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 36px;
+      justify-content: center;
+      align-items: flex-start;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .label {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--ink-soft);
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    /* ——— Phone shell ——— */
+    .phone {
+      width: 360px;
+      background: var(--sand);
+      border-radius: 28px;
+      border: 2px solid #c4bbb0;
+      box-shadow: 0 18px 40px rgba(28, 25, 23, 0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 720px;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 18px 4px;
+      font-size: 0.72rem;
+      color: var(--ink-soft);
+    }
+
+    .phone-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 8px 18px 14px;
+      gap: 12px;
+    }
+    .phone-header .titles h2 {
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .phone-header .titles .branch {
+      font-size: 0.88rem;
+      color: var(--ink-soft);
+      margin-top: 2px;
+    }
+    .scan-btn {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border: 1.5px solid var(--line);
+      background: var(--cream);
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      cursor: default;
+    }
+    .scan-btn svg { width: 22px; height: 22px; }
+
+    .phone-body {
+      flex: 1;
+      padding: 4px 16px 16px;
+      overflow: auto;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .action-card {
+      background: var(--cream);
+      border: 1.5px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+    .action-card .icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      background: var(--sand-deep);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: var(--olive);
+    }
+    .action-card .icon svg { width: 22px; height: 22px; }
+    .action-card .text {
+      flex: 1;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .badge {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--terra);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+    }
+
+    .section {
+      margin-top: 22px;
+    }
+    .section h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+
+    .device-list {
+      background: var(--cream);
+      border: 1.5px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .device-row:last-child { border-bottom: none; }
+    .device-row .name {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .chip.received { background: var(--sand-deep); color: var(--ink-soft); }
+    .chip.shipping { background: var(--olive-soft); color: var(--shipping); }
+    .chip.ready { background: var(--ready-soft); color: var(--ready); }
+
+    .bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border-top: 1.5px solid var(--line);
+      background: var(--cream);
+      padding: 8px 4px 14px;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.65rem;
+      color: var(--ink-soft);
+      font-weight: 600;
+    }
+    .nav-item.active { color: var(--olive); }
+    .nav-item .dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: transparent;
+      display: grid;
+      place-items: center;
+    }
+    .nav-item.active .dot { background: var(--olive-soft); }
+    .nav-item svg { width: 18px; height: 18px; }
+
+    /* ——— Desktop shell ——— */
+    .desktop {
+      width: 720px;
+      max-width: 100%;
+      background: var(--sand);
+      border-radius: 16px;
+      border: 2px solid #c4bbb0;
+      box-shadow: 0 18px 40px rgba(28, 25, 23, 0.16);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 168px;
+      min-height: 480px;
+      position: relative;
+    }
+
+    .desktop-main {
+      padding: 22px 24px 28px;
+      border-left: 1.5px solid var(--line);
+    }
+
+    .desktop-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .desktop-header h2 {
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+    .desktop-header .branch {
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+      margin-top: 2px;
+    }
+
+    .desktop-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .desktop-actions .action-card {
+      flex-direction: column;
+      align-items: flex-start;
+      min-height: 110px;
+      padding: 16px;
+    }
+    .desktop-actions .action-card .text {
+      font-size: 0.95rem;
+      margin-top: 4px;
+    }
+    .desktop-actions .badge {
+      top: 12px;
+      left: 12px;
+    }
+
+    .sidebar {
+      background: var(--cream);
+      padding: 18px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .brand {
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      padding: 6px 10px 16px;
+      color: var(--ink);
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 8px;
+    }
+    .side-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--ink-soft);
+    }
+    .side-item.active {
+      background: var(--olive-soft);
+      color: var(--olive);
+    }
+    .side-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .annotation {
+      position: absolute;
+      bottom: -36px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--ink);
+      color: #f7f3ec;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .annotation::before {
+      content: "";
+      position: absolute;
+      top: -6px;
+      right: 28%;
+      width: 12px;
+      height: 12px;
+      background: var(--ink);
+      transform: rotate(45deg);
+    }
+
+    .wrap-desktop {
+      position: relative;
+      padding-bottom: 44px;
+    }
+
+    @media (max-width: 900px) {
+      .desktop { width: 100%; grid-template-columns: 1fr 140px; }
+      .desktop-actions { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-title">
+    <h1>موظف الفرع — عمل اليوم</h1>
+    <p>محاكاة واجهة مقترحة (عربي RTL) — للمراجعة قبل التنفيذ</p>
+    <p style="margin-top:10px">
+      <a href="arms-prototype/index.html" style="color:#5c6b4a;font-weight:700">جرّب النموذج التفاعلي الكامل ←</a>
+    </p>
+  </div>
+
+  <div class="gallery">
+    <!-- Mobile -->
+    <div>
+      <div class="label">شاشة الجوال</div>
+      <div class="phone" aria-label="محاكاة شاشة عمل اليوم للجوال">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●● 100%</span>
+        </div>
+        <header class="phone-header">
+          <div class="titles">
+            <h2>عمل اليوم</h2>
+            <div class="branch">فرع الصحافة</div>
+          </div>
+          <button type="button" class="scan-btn" title="مسح QR" aria-label="مسح QR">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/>
+              <rect x="7" y="7" width="4" height="4" rx="0.5"/>
+              <rect x="13" y="7" width="4" height="4" rx="0.5"/>
+              <rect x="7" y="13" width="4" height="4" rx="0.5"/>
+              <path d="M13 13h2v2h-2zm3 0h1v1h-1zm0 3h1v1h-1zm-3 0h2v1h-2z"/>
+            </svg>
+          </button>
+        </header>
+
+        <div class="phone-body">
+          <div class="actions">
+            <div class="action-card">
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4"/>
+                  <path d="M5 19h14"/>
+                </svg>
+              </div>
+              <div class="text">استلام من العميل</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">4</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 7h11v8H3z"/>
+                  <path d="M14 10h4l3 3v2h-7"/>
+                  <circle cx="7" cy="17" r="1.5"/>
+                  <circle cx="17" cy="17" r="1.5"/>
+                </svg>
+              </div>
+              <div class="text">إرسال للصيانة</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">3</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 21V9m0 0l4 4m-4-4l-4 4"/>
+                  <path d="M5 5h14"/>
+                </svg>
+              </div>
+              <div class="text">استلام من الصيانة</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">2</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M8 12h8m0 0l-3-3m3 3l-3 3"/>
+                  <rect x="3" y="5" width="7" height="14" rx="1.5"/>
+                  <rect x="14" y="5" width="7" height="14" rx="1.5"/>
+                </svg>
+              </div>
+              <div class="text">تسليم للعميل</div>
+            </div>
+          </div>
+
+          <section class="section">
+            <h3>أجهزة فرعي الآن</h3>
+            <div class="device-list">
+              <div class="device-row">
+                <span class="name">iPhone 14</span>
+                <span class="chip received">مستلم بالفرع</span>
+              </div>
+              <div class="device-row">
+                <span class="name">Galaxy S23</span>
+                <span class="chip shipping">جاري الشحن</span>
+              </div>
+              <div class="device-row">
+                <span class="name">MacBook Air</span>
+                <span class="chip ready">جاهز للتسليم</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <nav class="bottom-nav" aria-label="التنقل السفلي">
+          <div class="nav-item active">
+            <div class="dot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-5H10v5H5a1 1 0 0 1-1-1z"/></svg>
+            </div>
+            عمل اليوم
+          </div>
+          <div class="nav-item">
+            <div class="dot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+            </div>
+            طلباتي
+          </div>
+          <div class="nav-item">
+            <div class="dot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M10 17h4"/></svg>
+            </div>
+            أجهزتي
+          </div>
+          <div class="nav-item">
+            <div class="dot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2z"/></svg>
+            </div>
+            مسح
+          </div>
+          <div class="nav-item">
+            <div class="dot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 19a7 7 0 0 1 14 0"/></svg>
+            </div>
+            حسابي
+          </div>
+        </nav>
+      </div>
+    </div>
+
+    <!-- Desktop + sidebar annotation -->
+    <div class="wrap-desktop">
+      <div class="label">سطح المكتب + شريط جانبي مبسّط</div>
+      <div class="desktop" aria-label="محاكاة شاشة عمل اليوم لسطح المكتب">
+        <main class="desktop-main">
+          <header class="desktop-header">
+            <div>
+              <h2>عمل اليوم</h2>
+              <div class="branch">فرع الصحافة</div>
+            </div>
+            <button type="button" class="scan-btn" title="مسح QR" aria-label="مسح QR">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/>
+                <rect x="7" y="7" width="4" height="4" rx="0.5"/>
+                <rect x="13" y="7" width="4" height="4" rx="0.5"/>
+                <rect x="7" y="13" width="4" height="4" rx="0.5"/>
+                <path d="M13 13h2v2h-2zm3 0h1v1h-1zm0 3h1v1h-1zm-3 0h2v1h-2z"/>
+              </svg>
+            </button>
+          </header>
+
+          <div class="desktop-actions">
+            <div class="action-card">
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M5 19h14"/>
+                </svg>
+              </div>
+              <div class="text">استلام من العميل</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">4</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7"/><circle cx="7" cy="17" r="1.5"/><circle cx="17" cy="17" r="1.5"/>
+                </svg>
+              </div>
+              <div class="text">إرسال للصيانة</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">3</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 21V9m0 0l4 4m-4-4l-4 4"/><path d="M5 5h14"/>
+                </svg>
+              </div>
+              <div class="text">استلام من الصيانة</div>
+            </div>
+            <div class="action-card">
+              <span class="badge">2</span>
+              <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M8 12h8m0 0l-3-3m3 3l-3 3"/><rect x="3" y="5" width="7" height="14" rx="1.5"/><rect x="14" y="5" width="7" height="14" rx="1.5"/>
+                </svg>
+              </div>
+              <div class="text">تسليم للعميل</div>
+            </div>
+          </div>
+
+          <section class="section" style="margin-top:0">
+            <h3>أجهزة فرعي الآن</h3>
+            <div class="device-list">
+              <div class="device-row">
+                <span class="name">iPhone 14</span>
+                <span class="chip received">مستلم بالفرع</span>
+              </div>
+              <div class="device-row">
+                <span class="name">Galaxy S23</span>
+                <span class="chip shipping">جاري الشحن</span>
+              </div>
+              <div class="device-row">
+                <span class="name">MacBook Air</span>
+                <span class="chip ready">جاهز للتسليم</span>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="sidebar" aria-label="شريط جانبي">
+          <div class="brand">ARMS</div>
+          <div class="side-item active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-5H10v5H5a1 1 0 0 1-1-1z"/></svg>
+            عمل اليوم
+          </div>
+          <div class="side-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+            طلباتي
+          </div>
+          <div class="side-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M10 17h4"/></svg>
+            أجهزتي
+          </div>
+          <div class="side-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/></svg>
+            مسح
+          </div>
+          <div class="side-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 19a7 7 0 0 1 14 0"/></svg>
+            حسابي
+          </div>
+        </aside>
+      </div>
+      <div class="annotation">شريط جانبي مبسّط — 5 عناصر فقط</div>
+    </div>
+  </div>
+</body>
+</html>

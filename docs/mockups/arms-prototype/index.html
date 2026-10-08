@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ARMS — نموذج تفاعلي تجريبي</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="demo-banner">
+    هذا نموذج تجريبي — ليس النظام الحقيقي · بيانات وهمية قابلة للتعديل محلياً
+  </div>
+
+  <div class="top-bar">
+    <div class="brand-block">
+      <div class="logo">ARMS</div>
+      <div class="meta" id="roleMeta">موظف فرع · فرع الصحافة</div>
+    </div>
+    <div class="role-switch">
+      <label for="roleSelect">الدور</label>
+      <select id="roleSelect" aria-label="تبديل الدور"></select>
+      <button type="button" class="btn-ghost" id="btnResetTop" title="إعادة التعيين">إعادة بيانات</button>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav" id="sideNav" aria-label="التنقل الجانبي"></nav>
+    <main class="main-panel" id="mainPanel" aria-live="polite"></main>
+  </div>
+
+  <nav class="bottom-nav" id="bottomNav" aria-label="التنقل السفلي"></nav>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

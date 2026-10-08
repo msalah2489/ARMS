@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
 import { deviceStatusLabel } from "@/lib/branch-store";
@@ -39,6 +40,7 @@ type ReturnDraft = Record<
 >;
 
 function BranchShippingContent() {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<Profile | null>(null);
   const [batches, setBatches] = useState<ShippingBatch[]>([]);
   const [receipts, setReceipts] = useState<PickupReceipt[]>([]);
@@ -88,6 +90,24 @@ function BranchShippingContent() {
     void hydrateOpsFromSupabase().then(() => load());
   }, []);
 
+  useEffect(() => {
+    const focus = searchParams?.get("focus")?.trim();
+    if (!focus) return;
+    const id =
+      focus === "send"
+        ? "branch-ship-send"
+        : focus === "return"
+          ? returnReceipts.length > 0
+            ? "branch-ship-return-courier"
+            : "branch-ship-return"
+          : null;
+    if (!id) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, batches, returnReceipts]);
+
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   const outbound = batches.filter((batch) => batch.direction === "to_service");
@@ -108,7 +128,7 @@ function BranchShippingContent() {
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
 
-      <section className="space-y-4">
+      <section id="branch-ship-send" className="space-y-4 scroll-mt-20">
         <h2 className="font-display text-2xl">نموذج استلام لمندوب الاستلام</h2>
         <p className="text-sm text-ink-700/70">
           للأجهزة غير المدرجة في بوليصة شحن نشطة — هذا المسار الوحيد للإرسال عبر المندوب.
@@ -346,7 +366,7 @@ function BranchShippingContent() {
       )}
 
       {returnReceipts.length > 0 ? (
-        <section className="space-y-4">
+        <section id="branch-ship-return-courier" className="space-y-4 scroll-mt-20">
           <h2 className="font-display text-2xl">مرتجع عبر المندوب — تأكيد الاستلام</h2>
           {returnReceipts.map((receipt) => {
             const lines = receipt.lines.filter((l) => l.status === "approved");
@@ -548,7 +568,7 @@ function BranchShippingContent() {
         )}
       </section>
 
-      <section className="space-y-4">
+      <section id="branch-ship-return" className="space-y-4 scroll-mt-20">
         <h2 className="font-display text-2xl">بوالص الإرجاع من الصيانة</h2>
         {returns.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-ink-900/15 bg-white px-4 py-8 text-sm text-ink-700/70">
@@ -707,7 +727,9 @@ function BranchShippingContent() {
 export default function BranchShippingPage() {
   return (
     <RoleGuard allow="branch" permission={["branch_shipping", "create_pickup_receipt"]}>
-      <BranchShippingContent />
+      <Suspense fallback={<p className="text-sm text-ink-700/70">جاري التحميل…</p>}>
+        <BranchShippingContent />
+      </Suspense>
     </RoleGuard>
   );
 }

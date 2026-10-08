@@ -4,11 +4,11 @@ import type { MessageKey } from "@/lib/i18n/messages";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import {
   ClipboardList,
+  ClipboardSignature,
   Cpu,
-  FilePlus2,
+  Home,
   LayoutDashboard,
   Package,
-  PackageCheck,
   QrCode,
   Settings,
   Store,
@@ -16,7 +16,6 @@ import {
   Truck,
   Users,
   Wrench,
-  ClipboardSignature,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,35 +28,28 @@ export type NavItem = {
   permission?: PermissionKey | PermissionKey[];
 };
 
-/** Branch account tabs only */
+/** Branch: عمل اليوم · طلباتي · أجهزتي · مسح · حسابي */
 const BRANCH_NAV: NavItem[] = [
   {
     href: "/dashboard",
-    labelKey: "nav.dashboard",
-    icon: LayoutDashboard,
+    labelKey: "nav.workToday",
+    icon: Home,
     roles: ["branch", "branch_employee"],
     permission: "login",
   },
   {
-    href: "/service-requests/new",
-    labelKey: "nav.newRequest",
-    icon: FilePlus2,
+    href: "/service-requests",
+    labelKey: "nav.myRequests",
+    icon: ClipboardList,
     roles: ["branch", "branch_employee"],
-    permission: "create_edit_request",
+    permission: "view_requests",
   },
   {
-    href: "/branch/receiving",
-    labelKey: "nav.branchReceiving",
-    icon: PackageCheck,
+    href: "/devices",
+    labelKey: "nav.myDevices",
+    icon: Cpu,
     roles: ["branch", "branch_employee"],
-    permission: ["receive_from_customer", "receive_return_from_service", "deliver_to_customer"],
-  },
-  {
-    href: "/branch/shipping",
-    labelKey: "nav.branchShipping",
-    icon: Truck,
-    roles: ["branch", "branch_employee"],
-    permission: ["branch_shipping", "create_pickup_receipt"],
+    permission: "view_requests",
   },
   {
     href: "/scan",
@@ -67,41 +59,27 @@ const BRANCH_NAV: NavItem[] = [
     permission: "login",
   },
   {
-    href: "/reports",
-    labelKey: "nav.reports",
-    icon: ClipboardList,
-    roles: ["branch", "branch_employee"],
-    permission: "view_reports",
-  },
-  {
     href: "/settings",
-    labelKey: "nav.settings",
+    labelKey: "nav.account",
     icon: Settings,
     roles: ["branch", "branch_employee"],
     permission: "edit_own_profile",
   },
 ];
 
-/** Technician account tabs only */
+/** Technician: طابور · عملي · تسليم مندوب · حسابي */
 const TECHNICIAN_NAV: NavItem[] = [
   {
-    href: "/dashboard",
-    labelKey: "nav.dashboard",
-    icon: LayoutDashboard,
-    roles: ["technician", "mobile_technician"],
-    permission: "login",
-  },
-  {
-    href: "/scan",
-    labelKey: "nav.scan",
-    icon: QrCode,
-    roles: ["technician", "mobile_technician"],
-    permission: "login",
-  },
-  {
     href: "/technician/work",
-    labelKey: "nav.technicianWork",
+    labelKey: "nav.techQueue",
     icon: Wrench,
+    roles: ["technician", "mobile_technician"],
+    permission: "view_work_queue",
+  },
+  {
+    href: "/technician/work?focus=mine",
+    labelKey: "nav.techMine",
+    icon: Cpu,
     roles: ["technician", "mobile_technician"],
     permission: "view_work_queue",
   },
@@ -113,37 +91,16 @@ const TECHNICIAN_NAV: NavItem[] = [
     permission: "request_courier_handover",
   },
   {
-    href: "/technician/reports",
-    labelKey: "nav.technicianReports",
-    icon: ClipboardList,
-    roles: ["technician", "mobile_technician"],
-    permission: "view_work_queue",
-  },
-  {
     href: "/settings",
-    labelKey: "nav.settings",
+    labelKey: "nav.account",
     icon: Settings,
     roles: ["technician", "mobile_technician"],
     permission: "edit_own_profile",
   },
 ];
 
-/** Pickup courier (مندوب الاستلام) */
+/** Pickup courier: نماذج · حسابي */
 const COURIER_NAV: NavItem[] = [
-  {
-    href: "/dashboard",
-    labelKey: "nav.dashboard",
-    icon: LayoutDashboard,
-    roles: ["pickup_courier"],
-    permission: "login",
-  },
-  {
-    href: "/scan",
-    labelKey: "nav.scan",
-    icon: QrCode,
-    roles: ["pickup_courier"],
-    permission: "login",
-  },
   {
     href: "/courier/receipts",
     labelKey: "nav.courierReceipts",
@@ -152,69 +109,35 @@ const COURIER_NAV: NavItem[] = [
     permission: "review_pickup_receipt",
   },
   {
+    href: "/scan",
+    labelKey: "nav.scan",
+    icon: QrCode,
+    roles: ["pickup_courier"],
+    permission: "login",
+  },
+  {
     href: "/settings",
-    labelKey: "nav.settings",
+    labelKey: "nav.account",
     icon: Settings,
     roles: ["pickup_courier"],
     permission: "edit_own_profile",
   },
 ];
 
-/** Admin / managers / supervisors */
-const ADMIN_NAV: NavItem[] = [
+/** Maintenance manager / supervisor: لوحة · شحن · اعتماد مندوب · حسابي */
+const MAINTENANCE_HUB_NAV: NavItem[] = [
   {
     href: "/dashboard",
-    labelKey: "nav.dashboard",
+    labelKey: "nav.decisionBoard",
     icon: LayoutDashboard,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+    roles: ["maintenance_manager", "maintenance_supervisor", "supervisor"],
     permission: "login",
   },
   {
-    href: "/service-requests",
-    labelKey: "nav.serviceRequests",
-    icon: ClipboardList,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
-    permission: "view_requests",
-  },
-  {
-    href: "/devices",
-    labelKey: "nav.devices",
-    icon: Cpu,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
-    permission: "view_devices",
-  },
-  {
-    href: "/scan",
-    labelKey: "nav.scan",
-    icon: QrCode,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
-    permission: "view_devices",
-  },
-  {
-    href: "/customers",
-    labelKey: "nav.customers",
-    icon: Users,
-    roles: ["system_admin", "manager", "maintenance_manager"],
-    permission: "view_requests",
-  },
-  {
-    href: "/branches",
-    labelKey: "nav.branches",
-    icon: Store,
-    roles: ["system_admin", "manager", "maintenance_manager"],
-    permission: "view_requests",
-  },
-  {
     href: "/maintenance/shipping",
-    labelKey: "nav.maintenanceShipping",
+    labelKey: "nav.shippingShort",
     icon: Truck,
-    roles: [
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "system_admin",
-      "manager",
-      "supervisor",
-    ],
+    roles: ["maintenance_manager", "maintenance_supervisor", "supervisor"],
     permission: [
       "receive_inbound_waybill",
       "create_return_waybill",
@@ -227,13 +150,80 @@ const ADMIN_NAV: NavItem[] = [
     href: "/maintenance/courier-handover",
     labelKey: "nav.courierHandoverApprove",
     icon: ClipboardSignature,
-    roles: [
-      "maintenance_manager",
-      "maintenance_supervisor",
-      "system_admin",
-      "manager",
-      "supervisor",
+    roles: ["maintenance_manager", "maintenance_supervisor", "supervisor"],
+    permission: ["approve_courier_handover", "create_pickup_receipt"],
+  },
+  {
+    href: "/settings",
+    labelKey: "nav.account",
+    icon: Settings,
+    roles: ["maintenance_manager", "maintenance_supervisor", "supervisor"],
+    permission: "edit_own_profile",
+  },
+];
+
+/** System admin / legacy manager — full ops nav */
+const ADMIN_NAV: NavItem[] = [
+  {
+    href: "/dashboard",
+    labelKey: "nav.dashboard",
+    icon: LayoutDashboard,
+    roles: ["system_admin", "manager"],
+    permission: "login",
+  },
+  {
+    href: "/service-requests",
+    labelKey: "nav.serviceRequests",
+    icon: ClipboardList,
+    roles: ["system_admin", "manager"],
+    permission: "view_requests",
+  },
+  {
+    href: "/devices",
+    labelKey: "nav.devices",
+    icon: Cpu,
+    roles: ["system_admin", "manager"],
+    permission: "view_devices",
+  },
+  {
+    href: "/scan",
+    labelKey: "nav.scan",
+    icon: QrCode,
+    roles: ["system_admin", "manager"],
+    permission: "view_devices",
+  },
+  {
+    href: "/customers",
+    labelKey: "nav.customers",
+    icon: Users,
+    roles: ["system_admin", "manager"],
+    permission: "view_requests",
+  },
+  {
+    href: "/branches",
+    labelKey: "nav.branches",
+    icon: Store,
+    roles: ["system_admin", "manager"],
+    permission: "view_requests",
+  },
+  {
+    href: "/maintenance/shipping",
+    labelKey: "nav.maintenanceShipping",
+    icon: Truck,
+    roles: ["system_admin", "manager"],
+    permission: [
+      "receive_inbound_waybill",
+      "create_return_waybill",
+      "manager_decisions",
+      "approve_courier_handover",
+      "create_pickup_receipt",
     ],
+  },
+  {
+    href: "/maintenance/courier-handover",
+    labelKey: "nav.courierHandoverApprove",
+    icon: ClipboardSignature,
+    roles: ["system_admin", "manager"],
     permission: ["approve_courier_handover", "create_pickup_receipt"],
   },
   {
@@ -261,29 +251,28 @@ const ADMIN_NAV: NavItem[] = [
     href: "/admin/shipping-repair",
     labelKey: "nav.shippingRepair",
     icon: Truck,
-    roles: ["system_admin", "manager", "maintenance_manager"],
-    // Shown by role; page actions still require repair_shipping_status (or admin role).
+    roles: ["system_admin", "manager"],
     permission: "login",
   },
   {
     href: "/spare-parts",
     labelKey: "nav.spareParts",
     icon: Package,
-    roles: ["system_admin", "manager", "maintenance_manager"],
+    roles: ["system_admin", "manager"],
     permission: "view_inventory",
   },
   {
     href: "/reports",
     labelKey: "nav.reports",
     icon: ClipboardList,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+    roles: ["system_admin", "manager"],
     permission: "view_reports",
   },
   {
     href: "/settings",
     labelKey: "nav.settings",
     icon: Settings,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+    roles: ["system_admin", "manager"],
     permission: ["edit_own_profile", "system_settings"],
   },
 ];
@@ -292,6 +281,7 @@ export const NAV_ITEMS: NavItem[] = [
   ...BRANCH_NAV,
   ...TECHNICIAN_NAV,
   ...COURIER_NAV,
+  ...MAINTENANCE_HUB_NAV,
   ...ADMIN_NAV,
 ];
 
@@ -320,6 +310,14 @@ export function navForRole(role: AppRole) {
     return COURIER_NAV;
   }
 
+  if (
+    normalized === "maintenance_manager" ||
+    normalized === "maintenance_supervisor" ||
+    normalized === "supervisor"
+  ) {
+    return MAINTENANCE_HUB_NAV;
+  }
+
   return ADMIN_NAV.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));
 }
 
@@ -327,4 +325,45 @@ export function navForRole(role: AppRole) {
 export function navForUser(user: Pick<Profile, "role" | "permissions">) {
   const base = navForRole(user.role);
   return base.filter((item) => itemAllowedByPermission(item, user));
+}
+
+/** Whether a nav href is active for the current location (supports ?query on href). */
+export function isNavHrefActive(pathname: string, search: string, href: string): boolean {
+  const path = pathname || "";
+  const q = search.startsWith("?") ? search.slice(1) : search;
+  const [hrefPath, hrefQuery = ""] = href.split("?");
+  const pathMatches = path === hrefPath || path.startsWith(`${hrefPath}/`);
+  if (!pathMatches) return false;
+
+  if (hrefQuery) {
+    const params = new URLSearchParams(q);
+    const wanted = new URLSearchParams(hrefQuery);
+    for (const [key, value] of wanted.entries()) {
+      if (params.get(key) !== value) return false;
+    }
+    return true;
+  }
+
+  // Path-only item: inactive when another sibling uses the same path with a focus query
+  // that is currently set (e.g. /technician/work vs ?focus=mine).
+  if (hrefPath === "/technician/work") {
+    const focus = new URLSearchParams(q).get("focus");
+    if (focus === "mine") return false;
+  }
+
+  return true;
+}
+
+/** Roles that use the mobile bottom tab bar (cycle prototype UX). */
+export function usesRoleBottomNav(role: AppRole): boolean {
+  const normalized = normalizeRole(role);
+  return (
+    normalized === "branch" ||
+    normalized === "technician" ||
+    normalized === "mobile_technician" ||
+    normalized === "pickup_courier" ||
+    normalized === "maintenance_manager" ||
+    normalized === "maintenance_supervisor" ||
+    normalized === "supervisor"
+  );
 }

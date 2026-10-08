@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
@@ -66,6 +66,24 @@ function BranchReceivingContent() {
     if (!created) return;
     setMessage(`تم حفظ الطلب ${created} بنجاح.`);
   }, [searchParams]);
+
+  useEffect(() => {
+    const focus = searchParams?.get("focus")?.trim();
+    if (!focus) return;
+    const id =
+      focus === "deliver"
+        ? "branch-focus-deliver"
+        : focus === "return"
+          ? "branch-focus-return"
+          : focus === "at_branch"
+            ? "branch-focus-at-branch"
+            : null;
+    if (!id) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, requests]);
 
   const sections = useMemo(() => {
     const atBranch: Row[] = [];
@@ -256,7 +274,10 @@ function BranchReceivingContent() {
         </p>
       ) : null}
 
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+      <section
+        id="branch-focus-at-branch"
+        className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel"
+      >
         <h2 className="font-display text-xl">أجهزة في الفرع</h2>
         <p className="mt-1 text-xs text-ink-700/60">{sections.atBranch.length} جهاز</p>
         {renderTable(sections.atBranch)}
@@ -266,13 +287,19 @@ function BranchReceivingContent() {
         <p className="mt-1 text-xs text-ink-700/60">{sections.inService.length} جهاز</p>
         {renderTable(sections.inService)}
       </section>
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
+      <section
+        id="branch-focus-return"
+        className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel"
+      >
         <h2 className="font-display text-xl">أجهزة فى الطريق الى الفرع</h2>
         <p className="mt-1 text-xs text-ink-700/60">{sections.returning.length} جهاز</p>
         {renderTable(sections.returning)}
       </section>
-      <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-        <h2 className="font-display text-xl">بانتظار العميل</h2>
+      <section
+        id="branch-focus-deliver"
+        className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel"
+      >
+        <h2 className="font-display text-xl">بانتظار العميل — تسليم للعميل</h2>
         <p className="mt-1 text-xs text-ink-700/60">{sections.readyForCustomer.length} جهاز</p>
         {renderTable(sections.readyForCustomer, true)}
       </section>
@@ -304,7 +331,9 @@ export default function BranchReceivingPage() {
       allow="branch"
       permission={["receive_from_customer", "receive_return_from_service", "deliver_to_customer"]}
     >
-      <BranchReceivingContent />
+      <Suspense fallback={<p className="text-sm text-ink-700/70">جاري التحميل…</p>}>
+        <BranchReceivingContent />
+      </Suspense>
     </RoleGuard>
   );
 }

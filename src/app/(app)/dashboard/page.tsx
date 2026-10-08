@@ -1,6 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ArrowDownToLine,
+  ClipboardSignature,
+  PackageCheck,
+  RefreshCw,
+  Truck,
+  Wrench,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -11,6 +19,7 @@ import {
   isPickupCourierRole,
   isSystemAdminRole,
   isTechnicianRole,
+  normalizeRole,
 } from "@/lib/auth";
 import {
   listPickupReceipts,
@@ -20,8 +29,13 @@ import {
   deviceStatusLabel,
   listAllRequestDevices,
   listMaintenanceRequests,
+  normalizeLifecycleStatus,
   subscribeMaintenanceRequestsChanged,
 } from "@/lib/branch-store";
+import {
+  getBranchWorkTodayCounts,
+  type BranchWorkTodayCounts,
+} from "@/lib/branch-work-today";
 import {
   getDashboardAttentionCounts,
   getDashboardOpsShippingAttention,
@@ -30,7 +44,10 @@ import {
 } from "@/lib/dashboard-attention";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
-import { getTechnicianDashboardStats } from "@/lib/technician-store";
+import {
+  getTechnicianDashboardStats,
+  listMyInProgressDevices,
+} from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { formatDate } from "@/lib/utils";
@@ -40,6 +57,7 @@ export default function DashboardPage() {
   const { t } = usePreferences();
   const [user, setUser] = useState<Profile | null>(null);
   const [branchRequests, setBranchRequests] = useState<MaintenanceRequestRecord[]>([]);
+  const [workToday, setWorkToday] = useState<BranchWorkTodayCounts | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [attention, setAttention] = useState<DashboardAttentionCounts | null>(null);
@@ -48,6 +66,7 @@ export default function DashboardPage() {
   const [techStats, setTechStats] = useState<ReturnType<typeof getTechnicianDashboardStats> | null>(
     null,
   );
+  const [techInProgress, setTechInProgress] = useState(0);
 
   useEffect(() => {
     function load() {
@@ -57,11 +76,16 @@ export default function DashboardPage() {
 
       if (isBranchRole(session.role)) {
         setBranchRequests(listMaintenanceRequests(session.opsBranchId));
+        setWorkToday(getBranchWorkTodayCounts(session.opsBranchId));
         setAttention(getDashboardAttentionCounts(session.opsBranchId));
         setShippingAttention(null);
       } else {
+        setWorkToday(null);
         setAttention(getDashboardAttentionCounts());
-        if (isMaintenanceManagerRole(session.role)) {
+        if (
+          isMaintenanceManagerRole(session.role) ||
+          normalizeRole(session.role) === "maintenance_supervisor"
+        ) {
           setShippingAttention(getDashboardOpsShippingAttention());
         } else {
           setShippingAttention(null);
@@ -70,6 +94,7 @@ export default function DashboardPage() {
 
       if (isTechnicianRole(session.role)) {
         setTechStats(getTechnicianDashboardStats(session.id, session));
+        setTechInProgress(listMyInProgressDevices(session.id).length);
       }
 
       void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
@@ -98,17 +123,24 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader
-          title={welcome}
-          description="لوحة مندوب الاستلام — نماذج بانتظار المراجعة والأجهزة لديك"
-          action={
-            <Link
-              href="/courier/receipts"
-              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
-            >
-              نماذج الاستلام
-            </Link>
-          }
+          title={t("workToday.hubCourierTitle")}
+          description={t("workToday.hubCourierHint")}
         />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <HubActionCard
+            href="/courier/receipts"
+            title="مراجعة النماذج"
+            hint={`${pending.length} بانتظار موافقتك أو الرفض الجزئي`}
+            badge={pending.length}
+            icon={<ClipboardSignature className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/scan"
+            title="مسح جهاز"
+            hint="للتحقق أثناء الاستلام"
+            icon={<PackageCheck className="h-5 w-5" />}
+          />
+        </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <DashboardColumn title="بانتظار المراجعة">
             <StatRow label="نماذج معلّقة" value={pending.length} />
@@ -134,72 +166,45 @@ export default function DashboardPage() {
   }
 
   if (isTechnicianRole(user.role)) {
-    const todayDevices = listAllRequestDevices().filter((item) =>
-      item.request.receivedAt.startsWith(new Date().toISOString().slice(0, 10)),
-    );
-
     return (
       <div>
         <PageHeader
-          title={welcome}
-          description={t("dashboard.techDescription")}
-          action={
-            <Link
-              href="/technician/work"
-              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
-            >
-              {t("dashboard.techWork")}
-            </Link>
-          }
+          title={t("workToday.hubTechTitle")}
+          description={t("workToday.hubTechHint")}
         />
-        <AttentionWidgets
-          counts={attention}
-          t={t}
-          urgentHref="/service-requests?focus=urgent_today"
-          pendingHref="/service-requests?focus=on_hold"
-          awaitingHref="/devices?focus=awaiting_customer"
-        />
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <HubActionCard
+            href="/technician/work"
+            title={t("nav.techQueue")}
+            hint={`${techStats?.availableDevices ?? 0} جهاز في الطابور`}
+            badge={techStats?.availableDevices ?? 0}
+            icon={<Wrench className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/technician/work?focus=mine"
+            title={t("nav.techMine")}
+            hint={`${techInProgress} قيد التنفيذ`}
+            badge={techInProgress}
+            icon={<PackageCheck className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/technician/courier-handover"
+            title={t("nav.courierHandover")}
+            hint="طلب تسليم أجهزة للمندوب بعد الجاهزية"
+            icon={<ClipboardSignature className="h-5 w-5" />}
+          />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <DashboardColumn title={t("dashboard.col.workload")}>
-            <StatRow label={t("dashboard.availableRequests")} value={techStats?.availableRequests ?? 0} />
             <StatRow label={t("dashboard.availableDevices")} value={techStats?.availableDevices ?? 0} />
+            <StatRow label={t("dashboard.readyToReturn")} value={techStats?.readyToReturn ?? 0} />
           </DashboardColumn>
           <DashboardColumn title={t("dashboard.col.readiness")}>
-            <StatRow
-              label={t("dashboard.readyToReturn")}
-              value={techStats?.readyToReturn ?? techStats?.readyToSend ?? 0}
-            />
+            <StatRow label={t("nav.techMine")} value={techInProgress} />
             <StatRow
               label={t("dashboard.awaitingManager")}
               value={techStats?.awaitingManager ?? techStats?.excluded ?? 0}
             />
-          </DashboardColumn>
-          <DashboardColumn title={t("dashboard.col.todayRequests")}>
-            {todayDevices.length === 0 ? (
-              <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                {t("dashboard.noTodayRequests")}
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {todayDevices.map(({ request, device }) => (
-                  <li
-                    key={`${request.id}-${device.localId}`}
-                    className="rounded-xl border border-ink-900/10 px-3 py-2 dark:border-white/10"
-                  >
-                    <Link
-                      href={`/service-requests/detail/?id=${encodeURIComponent(request.id)}`}
-                      className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 transition hover:text-aroma-800 hover:decoration-aroma-600 dark:text-aroma-200 dark:decoration-aroma-500/80 dark:hover:text-aroma-100 dark:hover:decoration-aroma-300"
-                    >
-                      {request.requestNumber}
-                    </Link>
-                    <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                      {request.contactName} · {request.opsBranchName} · {device.deviceTypeName} ·{" "}
-                      {deviceStatusLabel(device.lifecycleStatus, "technician")}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
           </DashboardColumn>
         </div>
       </div>
@@ -207,33 +212,144 @@ export default function DashboardPage() {
   }
 
   if (isBranchRole(user.role)) {
-    const openCount = branchRequests.length;
-    const deviceCount = branchRequests.reduce((sum, item) => sum + item.devices.length, 0);
-    const urgentCount = branchRequests.filter((item) => item.priority === "urgent").length;
     const branchName = user.opsBranchName || t("dashboard.branchFallback");
+    const counts = workToday ?? getBranchWorkTodayCounts(user.opsBranchId);
+    const branchNow = listAllRequestDevices().filter((item) => {
+      if (user.opsBranchId && item.request.opsBranchId !== user.opsBranchId) return false;
+      const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+      return [
+        "received_at_branch",
+        "awaiting_customer",
+        "in_transit_to_service",
+        "in_return_transit",
+        "excluded_from_shipment",
+        "in_maintenance_at_branch",
+        "maintenance_failed",
+      ].includes(status);
+    });
 
     return (
       <div>
         <PageHeader
-          title={welcome}
-          description={t("dashboard.branchDescription").replace("{branch}", branchName)}
+          title={t("workToday.title")}
+          description={t("workToday.subtitle").replace("{branch}", branchName)}
           action={
-            <>
-              <Link
-                href="/branch/receiving"
-                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
-              >
-                {t("dashboard.goReceiving")}
-              </Link>
-              <Link
-                href="/service-requests/new"
-                className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
-              >
-                {t("dashboard.createRequest")}
-              </Link>
-            </>
+            <Link
+              href="/scan"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-ink-900/15 bg-white text-ink-900 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+              aria-label={t("nav.scan")}
+              title={t("nav.scan")}
+            >
+              <PackageCheck className="h-5 w-5" />
+            </Link>
           }
         />
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <HubActionCard
+            href="/service-requests/new"
+            title={t("workToday.receiveCustomer")}
+            hint={t("workToday.receiveCustomerHint")}
+            icon={<ArrowDownToLine className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/branch/shipping?focus=send"
+            title={t("workToday.sendMaintenance")}
+            hint={t("workToday.sendMaintenanceHint")}
+            badge={counts.eligibleToSend || counts.readyToSend}
+            icon={<Truck className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/branch/shipping?focus=return"
+            title={t("workToday.receiveMaintenance")}
+            hint={t("workToday.receiveMaintenanceHint")}
+            badge={counts.returningFromService}
+            icon={<RefreshCw className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/branch/receiving?focus=deliver"
+            title={t("workToday.deliverCustomer")}
+            hint={t("workToday.deliverCustomerHint")}
+            badge={counts.awaitingCustomer}
+            icon={<PackageCheck className="h-5 w-5" />}
+          />
+        </div>
+
+        <section className="mt-6 rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/15 dark:bg-ink-800">
+          <h2 className="font-display text-xl dark:text-sand-50">{t("workToday.branchNow")}</h2>
+          {branchNow.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-700/70 dark:text-sand-100/70">
+              {t("workToday.emptyBranch")}
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-ink-900/5 dark:divide-white/10">
+              {branchNow.slice(0, 12).map(({ request, device }) => (
+                <li
+                  key={`${request.id}-${device.localId}`}
+                  className="flex flex-wrap items-center justify-between gap-2 py-3"
+                >
+                  <div>
+                    <p className="font-medium dark:text-sand-50">
+                      {device.modelName || device.deviceTypeName} · {device.deviceCode}
+                    </p>
+                    <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                      {request.requestNumber} · {request.contactName}
+                    </p>
+                  </div>
+                  <span className="rounded-lg bg-sand-50 px-2.5 py-1 text-xs font-semibold text-ink-700 dark:bg-ink-950/50 dark:text-sand-100">
+                    {deviceStatusLabel(device.lifecycleStatus, "branch")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {branchRequests.length > 0 ? (
+            <p className="mt-3 text-xs text-ink-700/55 dark:text-sand-100/55">
+              {counts.openRequests} طلب · {counts.activeDevices} جهاز نشط —{" "}
+              <Link href="/service-requests" className="underline">
+                {t("nav.myRequests")}
+              </Link>
+            </p>
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
+  const isMaintHub =
+    normalizeRole(user.role) === "maintenance_manager" ||
+    normalizeRole(user.role) === "maintenance_supervisor";
+
+  if (isMaintHub) {
+    const holdCount = attention?.pendingSupervisor ?? 0;
+    return (
+      <div>
+        <PageHeader
+          title={t("workToday.hubManagerTitle")}
+          description={t("workToday.hubManagerHint")}
+        />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <HubActionCard
+            href="/maintenance/shipping"
+            title={t("nav.shippingShort")}
+            hint="استلام وارد وإنشاء إرجاع للفرع"
+            badge={shippingAttention?.openBatchTotal ?? 0}
+            icon={<Truck className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/maintenance/courier-handover"
+            title={t("nav.courierHandoverApprove")}
+            hint="اعتماد تسليم المندوب لمركز الصيانة"
+            icon={<ClipboardSignature className="h-5 w-5" />}
+          />
+          <HubActionCard
+            href="/service-requests?focus=on_hold"
+            title="قرارات معلّقة"
+            hint="أجهزة بانتظار قرار المشرف/المدير"
+            badge={holdCount}
+            icon={<Wrench className="h-5 w-5" />}
+          />
+        </div>
         <AttentionWidgets
           counts={attention}
           t={t}
@@ -241,61 +357,9 @@ export default function DashboardPage() {
           pendingHref="/service-requests?focus=on_hold"
           awaitingHref="/devices?focus=awaiting_customer"
         />
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <DashboardColumn title={t("dashboard.col.branchSummary")}>
-            <StatRow label={t("dashboard.branchRequests")} value={openCount} />
-            <StatRow label={t("dashboard.receivedDevices")} value={deviceCount} />
-            <StatRow label={t("dashboard.urgentRequests")} value={urgentCount} />
-          </DashboardColumn>
-          <DashboardColumn title={t("dashboard.col.branchRequests")}>
-            {branchRequests.length === 0 ? (
-              <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                {t("dashboard.noBranchRequests")}
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {branchRequests.map((request) => (
-                  <li
-                    key={request.id}
-                    className="rounded-xl border border-ink-900/10 px-3 py-2 dark:border-white/10"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <Link
-                          href={`/service-requests/detail/?id=${encodeURIComponent(request.id)}`}
-                          className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 transition hover:text-aroma-800 hover:decoration-aroma-600 dark:text-aroma-200 dark:decoration-aroma-500/80 dark:hover:text-aroma-100 dark:hover:decoration-aroma-300"
-                        >
-                          {request.requestNumber}
-                        </Link>
-                        <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                          {request.contactName} · {request.customerMobile} ·{" "}
-                          {t("dashboard.deviceCount").replace(
-                            "{count}",
-                            String(request.devices.length),
-                          )}
-                        </p>
-                        <p className="mt-1 text-xs text-ink-700/60 dark:text-sand-100/60">
-                          {request.devices
-                            .map(
-                              (device) =>
-                                `${device.deviceCode}: ${deviceStatusLabel(device.lifecycleStatus, "branch")}`,
-                            )
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <div className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                        {request.priority === "urgent"
-                          ? t("dashboard.urgent")
-                          : t("dashboard.normal")}{" "}
-                        · {formatDate(request.receivedAt)}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </DashboardColumn>
-        </div>
+        {shippingAttention ? (
+          <ShippingAttentionWidgets attention={shippingAttention} t={t} />
+        ) : null}
       </div>
     );
   }
@@ -392,6 +456,41 @@ export default function DashboardPage() {
         </DashboardColumn>
       </div>
     </div>
+  );
+}
+
+function HubActionCard({
+  href,
+  title,
+  hint,
+  badge,
+  icon,
+}: {
+  href: string;
+  title: string;
+  hint: string;
+  badge?: number;
+  icon: ReactNode;
+}) {
+  const showBadge = typeof badge === "number" && badge > 0;
+  return (
+    <Link
+      href={href}
+      className="relative flex items-center gap-3 rounded-2xl border border-ink-900/10 bg-white px-4 py-4 shadow-panel transition hover:border-aroma-400 dark:border-white/15 dark:bg-ink-800 dark:hover:border-aroma-400"
+    >
+      {showBadge ? (
+        <span className="absolute start-3 top-3 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[0.7rem] font-bold text-white">
+          {badge}
+        </span>
+      ) : null}
+      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sand-100 text-ink-800 dark:bg-ink-950 dark:text-sand-100">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-semibold text-ink-900 dark:text-sand-50">{title}</span>
+        <span className="mt-0.5 block text-xs text-ink-700/65 dark:text-sand-100/65">{hint}</span>
+      </span>
+    </Link>
   );
 }
 

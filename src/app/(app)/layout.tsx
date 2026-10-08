@@ -1,13 +1,15 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { AuthGate } from "@/components/auth-gate";
+import { RoleBottomNav } from "@/components/role-bottom-nav";
 import { Sidebar } from "@/components/sidebar";
 import { SyncStatusBanner } from "@/components/sync-status-banner";
 import { usePreferences } from "@/components/preferences-provider";
+import { usesRoleBottomNav } from "@/lib/nav";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { migrateExistingShippingToReceived } from "@/lib/shipping-store";
 
@@ -48,7 +50,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Desktop rail: icons by default; expands over content on hover/focus */}
           <div className="sticky top-0 z-30 hidden h-screen w-16 shrink-0 md:block">
             <div className="absolute inset-y-0 start-0 z-30 h-full">
-              <Sidebar user={user} variant="rail" />
+              <Suspense fallback={null}>
+                <Sidebar user={user} variant="rail" />
+              </Suspense>
             </div>
           </div>
 
@@ -93,15 +97,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <span className="sr-only">{t("common.closeMenu")}</span>
                     </button>
                   </div>
-                  <Sidebar user={user} variant="drawer" onNavigate={() => setMenuOpen(false)} />
+                  <Suspense fallback={null}>
+                    <Sidebar user={user} variant="drawer" onNavigate={() => setMenuOpen(false)} />
+                  </Suspense>
                 </div>
               </div>
             ) : null}
 
             <SyncStatusBanner />
-            <main className="flex-1 px-3 py-4 text-ink-900 dark:text-sand-50 sm:px-4 sm:py-6 md:px-8">
+            <main
+              className={[
+                "flex-1 px-3 py-4 text-ink-900 dark:text-sand-50 sm:px-4 sm:py-6 md:px-8",
+                usesRoleBottomNav(user.role) ? "pb-24 md:pb-6" : "",
+              ].join(" ")}
+            >
               {children}
             </main>
+            <Suspense fallback={null}>
+              <RoleBottomNav user={user} />
+            </Suspense>
           </div>
         </div>
       )}

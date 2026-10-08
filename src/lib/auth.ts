@@ -134,13 +134,13 @@ export function isSystemAdminRole(role: AppRole) {
 /** Most relevant first screen after login (or when bounced from a forbidden page). */
 export function homePathForRole(role: AppRole): string {
   const normalized = normalizeRole(role);
-  if (normalized === "branch") return "/branch/receiving";
+  if (normalized === "branch") return "/dashboard";
   if (normalized === "technician" || normalized === "mobile_technician") {
     return "/technician/work";
   }
   if (normalized === "pickup_courier") return "/courier/receipts";
   if (normalized === "maintenance_manager" || normalized === "maintenance_supervisor") {
-    return "/maintenance/shipping";
+    return "/dashboard";
   }
   return "/dashboard";
 }
