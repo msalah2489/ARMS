@@ -4,14 +4,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ExpandableSection } from "@/components/expandable-section";
 import { PageHeader } from "@/components/page-header";
+import { ReturnSiblingWarningModal } from "@/components/return-sibling-warning-modal";
 import { RoleGuard } from "@/components/role-guard";
 import { readSession } from "@/lib/session";
 import {
+  DUPLICATE_SHIPMENT_NUMBER_ERROR,
   SHIPPING_BATCH_STATUS_LABELS,
   canRepairShippingStatus,
   confirmReceivedAtService,
   createReturnShippingBatch,
   createShippingBatch,
+  findBatchWithShipmentNumber,
+  findMissingReturnSiblings,
   listBranchesReadyToShip,
   listDevicesEligibleForReturn,
   listDevicesEligibleForShipment,
@@ -20,6 +24,7 @@ import {
   listShippingStatusInconsistencies,
   repairInconsistentShippingStatuses,
   type BranchReadyToShipSummary,
+  type ReturnSiblingGapGroup,
 } from "@/lib/shipping-store";
 import {
   MANAGER_DECISION_LABELS,
@@ -61,6 +66,8 @@ function MaintenanceShippingContent() {
   >({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [siblingGaps, setSiblingGaps] = useState<ReturnSiblingGapGroup[]>([]);
+  const [siblingModalOpen, setSiblingModalOpen] = useState(false);
 
   const eligible = useMemo(() => listDevicesEligibleForShipment(branchId), [branchId, batches, readyBranches]);
   const returnEligible = useMemo(
@@ -103,6 +110,65 @@ function MaintenanceShippingContent() {
   const branchName = branches.find((item) => item.id === branchId)?.name ?? "فرع";
   const returnBranchName = branches.find((item) => item.id === returnBranchId)?.name ?? "فرع";
   const readyDeviceTotal = readyBranches.reduce((sum, item) => sum + item.readyCount, 0);
+
+  function submitReturnBill(deviceLocalIds: string[]) {
+    if (!user) return;
+    setError(null);
+    setMessage(null);
+    const result = createReturnShippingBatch({
+      user,
+      shipmentNumber: returnShipmentNumber,
+      carrier: returnCarrier,
+      opsBranchId: returnBranchId,
+      destinationName: returnBranchName,
+      deviceLocalIds,
+      notes: returnNotes,
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setMessage(
+      `تم إنشاء بوليصة الإرجاع ${result.batch.batchNumber}. الحالة: فى الطريق الى الفرع.`,
+    );
+    setReturnShipmentNumber("");
+    setReturnSelected([]);
+    setSiblingModalOpen(false);
+    setSiblingGaps([]);
+    refresh();
+  }
+
+  function beginCreateReturnBill() {
+    setError(null);
+    setMessage(null);
+    if (!returnShipmentNumber.trim() || !returnCarrier.trim()) {
+      setError("رقم البوليصة وشركة الشحن إلزاميان.");
+      return;
+    }
+    if (
+      findBatchWithShipmentNumber({
+        shipmentNumber: returnShipmentNumber,
+        carrier: returnCarrier,
+      })
+    ) {
+      setError(DUPLICATE_SHIPMENT_NUMBER_ERROR);
+      return;
+    }
+    if (!returnSelected.length) {
+      setError("اختر جهازًا واحدًا على الأقل.");
+      return;
+    }
+    const gaps = findMissingReturnSiblings({
+      opsBranchId: returnBranchId,
+      selectedDeviceLocalIds: returnSelected,
+    });
+    if (gaps.length > 0) {
+      setSiblingGaps(gaps);
+      setSiblingModalOpen(true);
+      return;
+    }
+    submitReturnBill(returnSelected);
+  }
 
   return (
     <div className="space-y-6">
@@ -330,6 +396,15 @@ function MaintenanceShippingContent() {
           onClick={() => {
             setError(null);
             setMessage(null);
+            if (
+              findBatchWithShipmentNumber({
+                shipmentNumber,
+                carrier,
+              })
+            ) {
+              setError(DUPLICATE_SHIPMENT_NUMBER_ERROR);
+              return;
+            }
             const result = createShippingBatch({
               user,
               shipmentNumber,
@@ -437,33 +512,26 @@ function MaintenanceShippingContent() {
         <button
           type="button"
           className="mt-4 rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white"
-          onClick={() => {
-            setError(null);
-            setMessage(null);
-            const result = createReturnShippingBatch({
-              user,
-              shipmentNumber: returnShipmentNumber,
-              carrier: returnCarrier,
-              opsBranchId: returnBranchId,
-              destinationName: returnBranchName,
-              deviceLocalIds: returnSelected,
-              notes: returnNotes,
-            });
-            if (!result.ok) {
-              setError(result.error);
-              return;
-            }
-            setMessage(
-              `تم إنشاء بوليصة الإرجاع ${result.batch.batchNumber}. الحالة: فى الطريق الى الفرع.`,
-            );
-            setReturnShipmentNumber("");
-            setReturnSelected([]);
-            refresh();
-          }}
+          onClick={beginCreateReturnBill}
         >
           إنشاء بوليصة الإرجاع
         </button>
       </ExpandableSection>
+
+      <ReturnSiblingWarningModal
+        open={siblingModalOpen}
+        groups={siblingGaps}
+        onClose={() => {
+          setSiblingModalOpen(false);
+          setSiblingGaps([]);
+        }}
+        onContinueWithout={() => submitReturnBill(returnSelected)}
+        onAddAndContinue={(extraIds) => {
+          const merged = Array.from(new Set([...returnSelected, ...extraIds]));
+          setReturnSelected(merged);
+          submitReturnBill(merged);
+        }}
+      />
 
       <ExpandableSection
         title={`أجهزة معلقة (${pendingManager.length})`}
