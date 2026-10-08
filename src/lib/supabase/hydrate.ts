@@ -12,6 +12,10 @@ import {
   type DeviceCatalogState,
 } from "@/lib/catalog-store";
 import {
+  applyRemotePickupReceipts,
+  replacePickupReceipts,
+} from "@/lib/pickup-receipt-store";
+import {
   applyRemoteShippingState,
   replaceShippingState,
 } from "@/lib/shipping-store";
@@ -35,6 +39,7 @@ import {
   pullAppBranches,
   pullAppCatalog,
   pullAppMaintenanceRequests,
+  pullAppPickupReceipts,
   pullAppShippingBatches,
   pullAppSpareInventory,
   pullAppTechnicianWork,
@@ -167,6 +172,7 @@ async function runHydratePull(): Promise<boolean> {
       remoteWork,
       remoteSpare,
       remoteWaybills,
+      remotePickupReceipts,
     ] = await Promise.all([
       pullAppBranches(),
       pullAppMaintenanceRequests(),
@@ -177,6 +183,7 @@ async function runHydratePull(): Promise<boolean> {
       pullAppTechnicianWork(),
       pullAppSpareInventory(),
       pullAppWaybills(),
+      pullAppPickupReceipts(),
     ]);
 
     reconcilePayload({
@@ -283,6 +290,16 @@ async function runHydratePull(): Promise<boolean> {
       remoteValue: remoteWaybills,
       emptyValue: [],
       apply: applyRemoteWaybills,
+    });
+
+    reconcilePayload({
+      remoteHas: remotePickupReceipts.length > 0,
+      remoteValue: remotePickupReceipts,
+      emptyValue: [],
+      apply: (value) => {
+        if (value.length > 0) applyRemotePickupReceipts(value);
+        else replacePickupReceipts([]);
+      },
     });
 
     markBootstrapConfirmed();

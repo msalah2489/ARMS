@@ -8,9 +8,14 @@ import {
   ROLE_LABELS,
   isBranchRole,
   isMaintenanceManagerRole,
+  isPickupCourierRole,
   isSystemAdminRole,
   isTechnicianRole,
 } from "@/lib/auth";
+import {
+  listPickupReceipts,
+  PICKUP_RECEIPT_STATUS_LABELS,
+} from "@/lib/pickup-receipt-store";
 import {
   deviceStatusLabel,
   listAllRequestDevices,
@@ -84,6 +89,49 @@ export default function DashboardPage() {
 
   const firstName = user.fullName.split(" ")[0];
   const welcome = t("dashboard.welcome").replace("{name}", firstName);
+
+  if (isPickupCourierRole(user.role)) {
+    const mine = listPickupReceipts({ courierId: user.id });
+    const pending = mine.filter((r) => r.status === "pending_courier");
+    const held = mine.filter((r) => r.status === "approved" || r.status === "pending_supervisor");
+
+    return (
+      <div>
+        <PageHeader
+          title={welcome}
+          description="لوحة مندوب الاستلام — نماذج بانتظار المراجعة والأجهزة لديك"
+          action={
+            <Link
+              href="/courier/receipts"
+              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+            >
+              نماذج الاستلام
+            </Link>
+          }
+        />
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <DashboardColumn title="بانتظار المراجعة">
+            <StatRow label="نماذج معلّقة" value={pending.length} />
+            {pending.length === 0 ? (
+              <p className="mt-2 text-sm text-ink-700/70">لا توجد نماذج جديدة.</p>
+            ) : (
+              <ul className="mt-2 space-y-2 text-sm">
+                {pending.slice(0, 6).map((r) => (
+                  <li key={r.id} className="rounded-xl border border-ink-900/10 px-3 py-2">
+                    {r.receiptNumber} · {r.opsBranchName} ·{" "}
+                    {PICKUP_RECEIPT_STATUS_LABELS[r.status]}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DashboardColumn>
+          <DashboardColumn title="لدى المندوب">
+            <StatRow label="نماذج معتمدة / قيد التسليم" value={held.length} />
+          </DashboardColumn>
+        </div>
+      </div>
+    );
+  }
 
   if (isTechnicianRole(user.role)) {
     const todayDevices = listAllRequestDevices().filter((item) =>

@@ -241,12 +241,43 @@ export function getShippingBatch(id: string) {
   return listShippingBatches().find((batch) => batch.id === id) ?? null;
 }
 
+function deviceOnOpenPickupReceiptLocal(deviceLocalId: string): boolean {
+  // Inline read avoids circular import with pickup-receipt-store.
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem("arms_pickup_receipts_v1");
+    if (!raw) return false;
+    const receipts = JSON.parse(raw) as Array<{
+      id: string;
+      status: string;
+      lines: Array<{ deviceLocalId: string; status: string }>;
+    }>;
+    const open = new Set([
+      "draft",
+      "pending_courier",
+      "partially_rejected",
+      "approved",
+      "pending_supervisor",
+    ]);
+    return receipts.some(
+      (receipt) =>
+        open.has(receipt.status) &&
+        receipt.lines.some(
+          (line) => line.deviceLocalId === deviceLocalId && line.status !== "rejected",
+        ),
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Devices at branch eligible for outbound shipment (one branch only). */
 export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQueueItem[] {
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
     if (deviceOnOpenOutboundBatch(device)) return false;
+    if (deviceOnOpenPickupReceiptLocal(device.localId)) return false;
     const status = normalizeLifecycleStatus(device.lifecycleStatus);
     return (
       status === "received_at_branch" ||
@@ -274,6 +305,7 @@ export function listDevicesEligibleForReturn(opsBranchId: string): TechnicianQue
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
     if (deviceOnOpenOutboundBatch(device)) return false;
+    if (deviceOnOpenPickupReceiptLocal(device.localId)) return false;
     return normalizeLifecycleStatus(device.lifecycleStatus) === "ready_to_return";
   });
 }

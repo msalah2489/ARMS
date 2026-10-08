@@ -8,6 +8,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   technician: "فني",
   maintenance_supervisor: "مشرف صيانة",
   mobile_technician: "فني متنقل",
+  pickup_courier: "مندوب الاستلام",
   manager: "مدير نظام",
   supervisor: "مشرف صيانة",
   branch_employee: "فرع",
@@ -62,6 +63,12 @@ export const DEMO_USERS: Array<{
     opsBranchId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
     opsBranchName: "فرع الرياض",
   },
+  {
+    email: "courier@arms.local",
+    password: "demo",
+    fullName: "فهد مندوب الاستلام",
+    role: "pickup_courier",
+  },
 ];
 
 /**
@@ -110,6 +117,10 @@ export function isTechnicianRole(role: AppRole) {
   return normalized === "technician" || normalized === "mobile_technician";
 }
 
+export function isPickupCourierRole(role: AppRole) {
+  return normalizeRole(role) === "pickup_courier";
+}
+
 export function isMaintenanceManagerRole(role: AppRole) {
   const normalized = normalizeRole(role);
   return normalized === "maintenance_manager" || normalized === "system_admin";
@@ -127,6 +138,7 @@ export function homePathForRole(role: AppRole): string {
   if (normalized === "technician" || normalized === "mobile_technician") {
     return "/technician/work";
   }
+  if (normalized === "pickup_courier") return "/courier/receipts";
   if (normalized === "maintenance_manager" || normalized === "maintenance_supervisor") {
     return "/maintenance/shipping";
   }

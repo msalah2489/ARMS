@@ -5,6 +5,8 @@ export type AppRole =
   | "technician"
   | "maintenance_supervisor"
   | "mobile_technician"
+  /** مندوب الاستلام — courier handheld receipt forms */
+  | "pickup_courier"
   // legacy roles still present in older data
   | "manager"
   | "supervisor"
@@ -171,7 +173,8 @@ export type AssignableUserRole =
   | "maintenance_supervisor"
   | "branch"
   | "technician"
-  | "mobile_technician";
+  | "mobile_technician"
+  | "pickup_courier";
 
 export type ManagedUser = {
   id: string;
@@ -487,4 +490,70 @@ export type WaybillRecord = {
   opsBranchId: string;
   deviceCodes: string[];
   removedDeviceCodes: Array<{ deviceCode: string; note: string }>;
+};
+
+/** Direction of a pickup-courier receipt form (نموذج استلام) */
+export type PickupReceiptDirection = "branch_to_center" | "center_to_branch";
+
+/**
+ * Receipt form lifecycle:
+ * draft → pending_courier → (partially_rejected → edit → pending_courier)* → approved
+ * → pending_supervisor (outbound handover) → received_at_center
+ * → received_at_branch (return confirm) | cancelled
+ */
+export type PickupReceiptStatus =
+  | "draft"
+  | "pending_courier"
+  | "partially_rejected"
+  | "approved"
+  | "pending_supervisor"
+  | "received_at_center"
+  | "received_at_branch"
+  | "cancelled";
+
+export type PickupReceiptLineStatus = "included" | "rejected" | "approved";
+
+export type PickupReceiptLine = {
+  id: string;
+  deviceLocalId: string;
+  deviceCode: string;
+  modelName: string;
+  color: string;
+  requestId: string;
+  requestNumber: string;
+  status: PickupReceiptLineStatus;
+  rejectReason?: string | null;
+};
+
+export type PickupReceipt = {
+  id: string;
+  receiptNumber: string;
+  direction: PickupReceiptDirection;
+  opsBranchId: string;
+  opsBranchName: string;
+  createdBy: string;
+  createdByName: string;
+  assignedCourierId: string;
+  assignedCourierName: string;
+  /** When return is carried by a technician instead of pickup_courier */
+  assignedCarrierRole?: AppRole | string | null;
+  status: PickupReceiptStatus;
+  createdAt: string;
+  submittedAt?: string | null;
+  courierReviewedAt?: string | null;
+  courierReviewedBy?: string | null;
+  courierReviewedByName?: string | null;
+  notes?: string;
+  /** Technician requested تسليم للصيانة */
+  handoverRequestedBy?: string | null;
+  handoverRequestedByName?: string | null;
+  handoverRequestedAt?: string | null;
+  handoverApprovedBy?: string | null;
+  handoverApprovedByName?: string | null;
+  handoverApprovedAt?: string | null;
+  /** Branch confirmed return delivery */
+  branchReceivedAt?: string | null;
+  branchReceivedBy?: string | null;
+  branchReceivedByName?: string | null;
+  lines: PickupReceiptLine[];
 };

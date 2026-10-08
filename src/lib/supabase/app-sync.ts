@@ -12,6 +12,7 @@ import type {
   ManagedUser,
   MaintenanceRequestRecord,
   OpsBranchRecord,
+  PickupReceipt,
   ShippingBatch,
   ShippingBatchItem,
   SpareInventoryBalance,
@@ -1116,6 +1117,86 @@ export async function pushAppWaybills(waybills: WaybillRecord[]): Promise<SyncRe
     const message = error instanceof Error ? error.message : String(error);
     console.error("[arms] pushAppWaybills", error);
     reportError("app_waybills", error);
+    return { ok: false, error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pickup receipts (نموذج استلام مندوب)
+// ---------------------------------------------------------------------------
+
+function pickupReceiptToRow(receipt: PickupReceipt) {
+  return {
+    id: receipt.id,
+    receipt_number: receipt.receiptNumber,
+    direction: receipt.direction,
+    ops_branch_id: receipt.opsBranchId,
+    ops_branch_name: receipt.opsBranchName,
+    created_by: receipt.createdBy,
+    created_by_name: receipt.createdByName,
+    assigned_courier_id: receipt.assignedCourierId,
+    assigned_courier_name: receipt.assignedCourierName,
+    status: receipt.status,
+    created_at: receipt.createdAt,
+    submitted_at: receipt.submittedAt ?? null,
+    courier_reviewed_at: receipt.courierReviewedAt ?? null,
+    line_count: receipt.lines?.length ?? 0,
+    notes: receipt.notes ?? null,
+    payload: receipt,
+    synced_at: nowIso(),
+  };
+}
+
+export async function pullAppPickupReceipts(): Promise<PickupReceipt[]> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") return [];
+  const supabase = createClient();
+  const { data, error } = await supabase.from("app_pickup_receipts").select("*");
+  if (error) {
+    // Table may not exist until migration 021 — treat as empty.
+    if (/does not exist|PGRST|42P01|schema cache/i.test(error.message ?? "")) {
+      reportError("app_pickup_receipts", error);
+      return [];
+    }
+    throw error;
+  }
+  return (data ?? []).map((row) => {
+    const rec = row as Record<string, unknown>;
+    const fromPayload = asRecord(rec.payload) as PickupReceipt | null;
+    if (fromPayload?.id && Array.isArray(fromPayload.lines)) {
+      return fromPayload;
+    }
+    return {
+      id: String(rec.id ?? ""),
+      receiptNumber: String(rec.receipt_number ?? ""),
+      direction: (rec.direction as PickupReceipt["direction"]) ?? "branch_to_center",
+      opsBranchId: String(rec.ops_branch_id ?? ""),
+      opsBranchName: String(rec.ops_branch_name ?? ""),
+      createdBy: String(rec.created_by ?? ""),
+      createdByName: String(rec.created_by_name ?? ""),
+      assignedCourierId: String(rec.assigned_courier_id ?? ""),
+      assignedCourierName: String(rec.assigned_courier_name ?? ""),
+      status: (rec.status as PickupReceipt["status"]) ?? "draft",
+      createdAt: String(rec.created_at ?? nowIso()),
+      submittedAt: (rec.submitted_at as string | null) ?? null,
+      courierReviewedAt: (rec.courier_reviewed_at as string | null) ?? null,
+      notes: rec.notes ? String(rec.notes) : undefined,
+      lines: [],
+    };
+  });
+}
+
+export async function pushAppPickupReceipts(receipts: PickupReceipt[]): Promise<SyncResult> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+  try {
+    await deleteAll("app_pickup_receipts");
+    await insertRows("app_pickup_receipts", receipts.map(pickupReceiptToRow));
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[arms] pushAppPickupReceipts", error);
+    reportError("app_pickup_receipts", error);
     return { ok: false, error: message };
   }
 }

@@ -16,6 +16,7 @@ import {
   Truck,
   Users,
   Wrench,
+  ClipboardSignature,
   type LucideIcon,
 } from "lucide-react";
 
@@ -56,7 +57,7 @@ const BRANCH_NAV: NavItem[] = [
     labelKey: "nav.branchShipping",
     icon: Truck,
     roles: ["branch", "branch_employee"],
-    permission: "branch_shipping",
+    permission: ["branch_shipping", "create_pickup_receipt"],
   },
   {
     href: "/scan",
@@ -105,6 +106,13 @@ const TECHNICIAN_NAV: NavItem[] = [
     permission: "view_work_queue",
   },
   {
+    href: "/technician/courier-handover",
+    labelKey: "nav.courierHandover",
+    icon: ClipboardSignature,
+    roles: ["technician", "mobile_technician"],
+    permission: "request_courier_handover",
+  },
+  {
     href: "/technician/reports",
     labelKey: "nav.technicianReports",
     icon: ClipboardList,
@@ -116,6 +124,31 @@ const TECHNICIAN_NAV: NavItem[] = [
     labelKey: "nav.settings",
     icon: Settings,
     roles: ["technician", "mobile_technician"],
+    permission: "edit_own_profile",
+  },
+];
+
+/** Pickup courier (مندوب الاستلام) */
+const COURIER_NAV: NavItem[] = [
+  {
+    href: "/dashboard",
+    labelKey: "nav.dashboard",
+    icon: LayoutDashboard,
+    roles: ["pickup_courier"],
+    permission: "login",
+  },
+  {
+    href: "/courier/receipts",
+    labelKey: "nav.courierReceipts",
+    icon: ClipboardSignature,
+    roles: ["pickup_courier"],
+    permission: "review_pickup_receipt",
+  },
+  {
+    href: "/settings",
+    labelKey: "nav.settings",
+    icon: Settings,
+    roles: ["pickup_courier"],
     permission: "edit_own_profile",
   },
 ];
@@ -168,7 +201,26 @@ const ADMIN_NAV: NavItem[] = [
       "manager",
       "supervisor",
     ],
-    permission: ["receive_inbound_waybill", "create_return_waybill", "manager_decisions"],
+    permission: [
+      "receive_inbound_waybill",
+      "create_return_waybill",
+      "manager_decisions",
+      "approve_courier_handover",
+      "create_pickup_receipt",
+    ],
+  },
+  {
+    href: "/maintenance/courier-handover",
+    labelKey: "nav.courierHandoverApprove",
+    icon: ClipboardSignature,
+    roles: [
+      "maintenance_manager",
+      "maintenance_supervisor",
+      "system_admin",
+      "manager",
+      "supervisor",
+    ],
+    permission: ["approve_courier_handover", "create_pickup_receipt"],
   },
   {
     href: "/admin/catalog",
@@ -222,7 +274,12 @@ const ADMIN_NAV: NavItem[] = [
   },
 ];
 
-export const NAV_ITEMS: NavItem[] = [...BRANCH_NAV, ...TECHNICIAN_NAV, ...ADMIN_NAV];
+export const NAV_ITEMS: NavItem[] = [
+  ...BRANCH_NAV,
+  ...TECHNICIAN_NAV,
+  ...COURIER_NAV,
+  ...ADMIN_NAV,
+];
 
 function itemAllowedByPermission(
   item: NavItem,
@@ -243,6 +300,10 @@ export function navForRole(role: AppRole) {
 
   if (normalized === "technician" || normalized === "mobile_technician") {
     return TECHNICIAN_NAV;
+  }
+
+  if (normalized === "pickup_courier") {
+    return COURIER_NAV;
   }
 
   return ADMIN_NAV.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));

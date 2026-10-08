@@ -41,6 +41,9 @@ const messagesAr = {
   "nav.settings": "الإعدادات",
   "nav.technicianWork": "عمل الفني",
   "nav.technicianReports": "تقارير",
+  "nav.courierReceipts": "نماذج الاستلام",
+  "nav.courierHandover": "تسليم للصيانة (مندوب)",
+  "nav.courierHandoverApprove": "اعتماد تسليم المندوب",
 
   "dashboard.welcome": "مرحبًا، {name}",
   "dashboard.loading": "جاري التحميل…",
@@ -345,6 +348,9 @@ const messagesEn: Record<MessageKey, string> = {
   "nav.settings": "Settings",
   "nav.technicianWork": "Technician work",
   "nav.technicianReports": "Reports",
+  "nav.courierReceipts": "Pickup receipts",
+  "nav.courierHandover": "Handover to maintenance",
+  "nav.courierHandoverApprove": "Approve courier handover",
 
   "dashboard.welcome": "Welcome, {name}",
   "dashboard.loading": "Loading…",

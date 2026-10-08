@@ -624,6 +624,7 @@ export const ASSIGNMENT_PATH_LABELS_EN: Record<MaintenanceAssignmentPath, string
 export const DEVICE_LOCATION_LABELS: Record<string, string> = {
   branch: "الفرع",
   in_transit_to_service: "في الطريق إلى الصيانة",
+  with_courier: "لدى مندوب الاستلام",
   service_center: "مركز الصيانة",
   in_return_transit: "في الطريق إلى الفرع",
   customer: "العميل",

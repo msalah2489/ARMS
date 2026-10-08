@@ -12,6 +12,10 @@ export type PermissionKey =
   | "receive_return_from_service"
   | "deliver_to_customer"
   | "branch_shipping"
+  | "create_pickup_receipt"
+  | "review_pickup_receipt"
+  | "request_courier_handover"
+  | "approve_courier_handover"
   | "receive_inbound_waybill"
   | "create_return_waybill"
   | "manager_decisions"
@@ -59,6 +63,10 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   receive_return_from_service: "استلام مرتجع من الصيانة",
   deliver_to_customer: "تسليم للعميل",
   branch_shipping: "شحن الفرع",
+  create_pickup_receipt: "إنشاء نموذج استلام للمندوب",
+  review_pickup_receipt: "مراجعة نموذج استلام (مندوب)",
+  request_courier_handover: "طلب تسليم للصيانة من المندوب",
+  approve_courier_handover: "اعتماد تسليم المندوب للصيانة",
   receive_inbound_waybill: "استلام بوليصة واردة",
   create_return_waybill: "إنشاء بوليصة إرجاع",
   manager_decisions: "قرارات المدير",
@@ -102,12 +110,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "receive_return_from_service",
       "deliver_to_customer",
       "branch_shipping",
+      "create_pickup_receipt",
     ],
   },
   {
     id: "service_center",
     labelAr: "مركز الصيانة",
-    keys: ["receive_inbound_waybill", "create_return_waybill", "manager_decisions"],
+    keys: [
+      "receive_inbound_waybill",
+      "create_return_waybill",
+      "manager_decisions",
+      "approve_courier_handover",
+    ],
   },
   {
     id: "technician",
@@ -118,6 +132,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "return_to_manager",
       "deduct_spares",
       "mobile_tech_branch",
+      "request_courier_handover",
+      "review_pickup_receipt",
     ],
   },
   {
@@ -174,6 +190,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "receive_inbound_waybill",
     "create_return_waybill",
     "manager_decisions",
+    "approve_courier_handover",
+    "create_pickup_receipt",
     "view_inventory",
     "receive_spares",
     "consume_spares",
@@ -189,6 +207,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "create_ship_to_center",
     "receive_inbound_waybill",
     "create_return_waybill",
+    "approve_courier_handover",
+    "create_pickup_receipt",
     "view_reports",
   ]),
 
@@ -200,6 +220,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "receive_return_from_service",
     "deliver_to_customer",
     "branch_shipping",
+    "create_pickup_receipt",
     "view_reports",
   ]),
 
@@ -209,6 +230,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "run_maintenance",
     "return_to_manager",
     "deduct_spares",
+    "request_courier_handover",
+    "review_pickup_receipt",
+    "create_pickup_receipt",
   ]),
 
   mobile_technician: uniq([
@@ -219,6 +243,13 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "deduct_spares",
     "mobile_tech_branch",
     "create_edit_request",
+    "view_requests",
+  ]),
+
+  pickup_courier: uniq([
+    ...GENERAL,
+    "review_pickup_receipt",
+    "view_devices",
     "view_requests",
   ]),
 };
