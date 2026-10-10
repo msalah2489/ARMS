@@ -19,6 +19,7 @@ import {
   deleteModelSparePart,
   getCatalog,
   getModelColors,
+  modelHasColoredParts,
   normalizeModelColors,
   resetCatalogToSeed,
   suggestAccessoryNames,
@@ -50,6 +51,8 @@ function CatalogAdminContent() {
   const [modelBrandId, setModelBrandId] = useState("");
   const [modelImage, setModelImage] = useState<ImageValue | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
+  /** Color of the table row that opened details (null = show all model colors). */
+  const [selectedModelColor, setSelectedModelColor] = useState<string | null>(null);
   const [accessoryName, setAccessoryName] = useState("");
   const [accessoryColor, setAccessoryColor] = useState("");
   const [spareName, setSpareName] = useState("");
@@ -164,6 +167,24 @@ function CatalogAdminContent() {
     return true;
   }
 
+  /** After multi-color save: offer to review accessory/spare colors if any are set. */
+  function maybePromptReviewPartColors(modelId: string, colors: string[]) {
+    if (colors.length < 2) return;
+    const model = getCatalog().models.find((item) => item.id === modelId);
+    if (!model || !modelHasColoredParts(model)) return;
+    const confirmed = window.confirm(
+      "لهذا الموديل قطع غيار أو ملحقات لها ألوان محددة. هل ترغب في مراجعة أو تعديل ألوانها الآن؟",
+    );
+    if (!confirmed) return;
+    setSelectedModelId(modelId);
+    setSelectedModelColor(null);
+    window.setTimeout(() => {
+      document
+        .getElementById("catalog-model-details")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "types", label: "تصنيفات الأجهزة" },
     { id: "brands", label: "البراندات" },
@@ -182,6 +203,7 @@ function CatalogAdminContent() {
             onClick={() => {
               resetCatalogToSeed();
               setSelectedModelId("");
+              setSelectedModelColor(null);
               setEditingTypeId(null);
               setEditingBrandId(null);
               setEditingModelId(null);
@@ -483,24 +505,26 @@ function CatalogAdminContent() {
                   setMessage(null);
                   return;
                 }
-                if (
-                  run(
-                    () =>
-                      addModel({
-                        name: modelName,
-                        deviceTypeId: modelTypeId,
-                        brandId: modelBrandId,
-                        colors,
-                        imageDataUrl: modelImage.dataUrl,
-                      }),
-                    "تمت إضافة الموديل.",
-                  )
-                ) {
-                  setModelName("");
-                  setModelColors([]);
-                  setModelColorDraft("");
-                  setModelImage(null);
+                setError(null);
+                setMessage(null);
+                const result = addModel({
+                  name: modelName,
+                  deviceTypeId: modelTypeId,
+                  brandId: modelBrandId,
+                  colors,
+                  imageDataUrl: modelImage.dataUrl,
+                });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
                 }
+                setMessage("تمت إضافة الموديل.");
+                refresh();
+                setModelName("");
+                setModelColors([]);
+                setModelColorDraft("");
+                setModelImage(null);
+                maybePromptReviewPartColors(result.id, colors);
               }}
             >
               إضافة موديل
@@ -531,259 +555,276 @@ function CatalogAdminContent() {
                       </td>
                     </tr>
                   ) : (
-                    catalog.models.map((model) => {
+                    catalog.models.flatMap((model) => {
                       const typeName =
                         catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ??
                         "—";
                       const brandLabel =
                         catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
+                      const modelColorList = getModelColors(model);
+                      const colorEntries: Array<string | null> = modelColorList.length
+                        ? modelColorList
+                        : [null];
                       const isEditing = editingModelId === model.id;
 
-                      return (
-                        <tr
-                          key={model.id}
-                          className={`border-b border-ink-900/5 dark:border-white/5 ${
-                            selectedModelId === model.id ? "bg-aroma-50/40 dark:bg-aroma-900/20" : ""
-                          }`}
-                        >
-                          {isEditing ? (
-                            <>
-                              <td className="align-top px-2 py-3">
-                                <ImagePickerField
-                                  label="صورة"
-                                  required
-                                  value={editModelImage}
-                                  onChange={setEditModelImage}
-                                  className="min-w-[7.5rem] text-xs"
-                                />
-                              </td>
-                              <td className="align-top px-2 py-3">
-                                <input
-                                  value={editModelName}
-                                  onChange={(e) => setEditModelName(e.target.value)}
-                                  placeholder="اسم الموديل *"
-                                  aria-label="اسم الموديل"
-                                  className="w-full min-w-[7rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
-                                />
-                              </td>
-                              <td className="align-top px-2 py-3">
-                                <div className="min-w-[8rem] space-y-1.5">
-                                  <div className="flex gap-1">
-                                    <input
-                                      value={editModelColorDraft}
-                                      onChange={(e) => setEditModelColorDraft(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
+                      return colorEntries.flatMap((rowColor, colorIndex) => {
+                        const isFirst = colorIndex === 0;
+                        if (isEditing && !isFirst) return [];
+
+                        return [
+                          <tr
+                            key={`${model.id}::${rowColor ?? "__none__"}`}
+                            className={`border-b border-ink-900/5 dark:border-white/5 ${
+                              selectedModelId === model.id
+                                ? "bg-aroma-50/40 dark:bg-aroma-900/20"
+                                : ""
+                            }`}
+                          >
+                            {isEditing ? (
+                              <>
+                                <td className="align-top px-2 py-3">
+                                  <ImagePickerField
+                                    label="صورة"
+                                    required
+                                    value={editModelImage}
+                                    onChange={setEditModelImage}
+                                    className="min-w-[7.5rem] text-xs"
+                                  />
+                                </td>
+                                <td className="align-top px-2 py-3">
+                                  <input
+                                    value={editModelName}
+                                    onChange={(e) => setEditModelName(e.target.value)}
+                                    placeholder="اسم الموديل *"
+                                    aria-label="اسم الموديل"
+                                    className="w-full min-w-[7rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                  />
+                                </td>
+                                <td className="align-top px-2 py-3">
+                                  <div className="min-w-[8rem] space-y-1.5">
+                                    <div className="flex gap-1">
+                                      <input
+                                        value={editModelColorDraft}
+                                        onChange={(e) => setEditModelColorDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            addColorToList(
+                                              editModelColors,
+                                              editModelColorDraft,
+                                              setEditModelColors,
+                                              setEditModelColorDraft,
+                                            );
+                                          }
+                                        }}
+                                        placeholder="أبيض، أسود"
+                                        aria-label="ألوان الموديل"
+                                        className="w-full rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                      />
+                                      <button
+                                        type="button"
+                                        className="shrink-0 rounded-lg border border-ink-900/15 px-2 text-xs dark:border-white/15"
+                                        onClick={() =>
                                           addColorToList(
                                             editModelColors,
                                             editModelColorDraft,
                                             setEditModelColors,
                                             setEditModelColorDraft,
-                                          );
-                                        }
-                                      }}
-                                      placeholder="أبيض، أسود"
-                                      aria-label="ألوان الموديل"
-                                      className="w-full rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
-                                    />
-                                    <button
-                                      type="button"
-                                      className="shrink-0 rounded-lg border border-ink-900/15 px-2 text-xs dark:border-white/15"
-                                      onClick={() =>
-                                        addColorToList(
-                                          editModelColors,
-                                          editModelColorDraft,
-                                          setEditModelColors,
-                                          setEditModelColorDraft,
-                                        )
-                                      }
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {editModelColors.map((color) => (
-                                      <button
-                                        key={color}
-                                        type="button"
-                                        onClick={() =>
-                                          removeColorFromList(
-                                            editModelColors,
-                                            color,
-                                            setEditModelColors,
                                           )
                                         }
-                                        className="rounded-full bg-ink-900/5 px-2 py-0.5 text-[11px] dark:bg-white/10"
                                       >
-                                        {color} ×
+                                        +
                                       </button>
-                                    ))}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {editModelColors.map((color) => (
+                                        <button
+                                          key={color}
+                                          type="button"
+                                          onClick={() =>
+                                            removeColorFromList(
+                                              editModelColors,
+                                              color,
+                                              setEditModelColors,
+                                            )
+                                          }
+                                          className="rounded-full bg-ink-900/5 px-2 py-0.5 text-[11px] dark:bg-white/10"
+                                        >
+                                          {color} ×
+                                        </button>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="align-top px-2 py-3">
-                                <select
-                                  value={editModelTypeId}
-                                  onChange={(e) => setEditModelTypeId(e.target.value)}
-                                  aria-label="التصنيف"
-                                  className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
-                                >
-                                  {catalog.deviceTypes.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="align-top px-2 py-3">
-                                <select
-                                  value={editModelBrandId}
-                                  onChange={(e) => setEditModelBrandId(e.target.value)}
-                                  aria-label="البراند"
-                                  className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
-                                >
-                                  {catalog.brands.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
-                                {model.accessories.length}
-                              </td>
-                              <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
-                                {model.spareParts.length}
-                              </td>
-                              <td className="align-top px-2 py-3">
-                                <div className="flex flex-col gap-2">
-                                  <button
-                                    type="button"
-                                    className="text-start text-aroma-700 dark:text-aroma-200"
-                                    onClick={() => {
-                                      const colors = resolveColors(
-                                        editModelColors,
-                                        editModelColorDraft,
-                                      );
-                                      if (!colors.length) {
-                                        setError("اكتب لون الجهاز مرة واحدة على الأقل (لون واحد يكفي).");
-                                        setMessage(null);
-                                        return;
-                                      }
-                                      if (!editModelImage?.dataUrl) {
-                                        setError("صورة الموديل إلزامية.");
-                                        setMessage(null);
-                                        return;
-                                      }
-                                      if (
-                                        run(
-                                          () =>
-                                            updateModel({
-                                              id: model.id,
-                                              name: editModelName,
-                                              deviceTypeId: editModelTypeId,
-                                              brandId: editModelBrandId,
-                                              colors,
-                                              imageDataUrl: editModelImage.dataUrl,
-                                            }),
-                                          "تم تعديل الموديل.",
-                                        )
-                                      ) {
+                                </td>
+                                <td className="align-top px-2 py-3">
+                                  <select
+                                    value={editModelTypeId}
+                                    onChange={(e) => setEditModelTypeId(e.target.value)}
+                                    aria-label="التصنيف"
+                                    className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                  >
+                                    {catalog.deviceTypes.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="align-top px-2 py-3">
+                                  <select
+                                    value={editModelBrandId}
+                                    onChange={(e) => setEditModelBrandId(e.target.value)}
+                                    aria-label="البراند"
+                                    className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                  >
+                                    {catalog.brands.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
+                                  {model.accessories.length}
+                                </td>
+                                <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
+                                  {model.spareParts.length}
+                                </td>
+                                <td className="align-top px-2 py-3">
+                                  <div className="flex flex-col gap-2">
+                                    <button
+                                      type="button"
+                                      className="text-start text-aroma-700 dark:text-aroma-200"
+                                      onClick={() => {
+                                        const colors = resolveColors(
+                                          editModelColors,
+                                          editModelColorDraft,
+                                        );
+                                        if (!colors.length) {
+                                          setError(
+                                            "اكتب لون الجهاز مرة واحدة على الأقل (لون واحد يكفي).",
+                                          );
+                                          setMessage(null);
+                                          return;
+                                        }
+                                        if (!editModelImage?.dataUrl) {
+                                          setError("صورة الموديل إلزامية.");
+                                          setMessage(null);
+                                          return;
+                                        }
+                                        if (
+                                          run(
+                                            () =>
+                                              updateModel({
+                                                id: model.id,
+                                                name: editModelName,
+                                                deviceTypeId: editModelTypeId,
+                                                brandId: editModelBrandId,
+                                                colors,
+                                                imageDataUrl: editModelImage.dataUrl,
+                                              }),
+                                            "تم تعديل الموديل.",
+                                          )
+                                        ) {
+                                          setEditingModelId(null);
+                                          setEditModelImage(null);
+                                          setEditModelColors([]);
+                                          setEditModelColorDraft("");
+                                          maybePromptReviewPartColors(model.id, colors);
+                                        }
+                                      }}
+                                    >
+                                      حفظ التعديل
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-start text-ink-700/60 dark:text-sand-100/60"
+                                      onClick={() => {
                                         setEditingModelId(null);
                                         setEditModelImage(null);
                                         setEditModelColors([]);
                                         setEditModelColorDraft("");
-                                      }
-                                    }}
-                                  >
-                                    حفظ التعديل
-                                  </button>
+                                      }}
+                                    >
+                                      إلغاء
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="px-2 py-3">
+                                  {model.imageDataUrl ? (
+                                    <ClickableImage
+                                      src={model.imageDataUrl}
+                                      alt={model.name}
+                                      size="sm"
+                                    />
+                                  ) : (
+                                    <ImagePlaceholder size="sm" />
+                                  )}
+                                </td>
+                                <td className="px-2 py-3">
                                   <button
                                     type="button"
-                                    className="text-start text-ink-700/60 dark:text-sand-100/60"
+                                    className="text-right font-medium text-aroma-700 dark:text-aroma-200"
                                     onClick={() => {
-                                      setEditingModelId(null);
-                                      setEditModelImage(null);
-                                      setEditModelColors([]);
-                                      setEditModelColorDraft("");
-                                    }}
-                                  >
-                                    إلغاء
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="px-2 py-3">
-                                {model.imageDataUrl ? (
-                                  <ClickableImage
-                                    src={model.imageDataUrl}
-                                    alt={model.name}
-                                    size="sm"
-                                  />
-                                ) : (
-                                  <ImagePlaceholder size="sm" />
-                                )}
-                              </td>
-                              <td className="px-2 py-3">
-                                <button
-                                  type="button"
-                                  className="text-right font-medium text-aroma-700 dark:text-aroma-200"
-                                  onClick={() => setSelectedModelId(model.id)}
-                                >
-                                  {model.name}
-                                </button>
-                              </td>
-                              <td className="px-2 py-3">
-                                {getModelColors(model).length
-                                  ? getModelColors(model).join(" · ")
-                                  : "—"}
-                              </td>
-                              <td className="px-2 py-3">{typeName}</td>
-                              <td className="px-2 py-3">{brandLabel}</td>
-                              <td className="px-2 py-3">{model.accessories.length}</td>
-                              <td className="px-2 py-3">{model.spareParts.length}</td>
-                              <td className="px-2 py-3">
-                                <div className="flex flex-wrap gap-3">
-                                  <button
-                                    type="button"
-                                    className="text-ink-900 dark:text-sand-50"
-                                    onClick={() => {
-                                      setEditingModelId(model.id);
-                                      setEditModelName(model.name);
-                                      setEditModelColors(getModelColors(model));
-                                      setEditModelColorDraft("");
-                                      setEditModelTypeId(model.deviceTypeId);
-                                      setEditModelBrandId(model.brandId);
-                                      setEditModelImage(
-                                        model.imageDataUrl
-                                          ? { name: model.name, dataUrl: model.imageDataUrl }
-                                          : null,
-                                      );
                                       setSelectedModelId(model.id);
+                                      setSelectedModelColor(rowColor);
                                     }}
                                   >
-                                    تعديل
+                                    {model.name}
                                   </button>
-                                  <button
-                                    type="button"
-                                    className="text-rose-700 dark:text-rose-300"
-                                    onClick={() => {
-                                      run(() => deleteModel(model.id), "تم حذف الموديل.");
-                                      if (selectedModelId === model.id) setSelectedModelId("");
-                                      if (editingModelId === model.id) setEditingModelId(null);
-                                    }}
-                                  >
-                                    حذف
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      );
+                                </td>
+                                <td className="px-2 py-3">{rowColor ?? "—"}</td>
+                                <td className="px-2 py-3">{typeName}</td>
+                                <td className="px-2 py-3">{brandLabel}</td>
+                                <td className="px-2 py-3">{model.accessories.length}</td>
+                                <td className="px-2 py-3">{model.spareParts.length}</td>
+                                <td className="px-2 py-3">
+                                  <div className="flex flex-wrap gap-3">
+                                    <button
+                                      type="button"
+                                      className="text-ink-900 dark:text-sand-50"
+                                      onClick={() => {
+                                        setEditingModelId(model.id);
+                                        setEditModelName(model.name);
+                                        setEditModelColors(getModelColors(model));
+                                        setEditModelColorDraft("");
+                                        setEditModelTypeId(model.deviceTypeId);
+                                        setEditModelBrandId(model.brandId);
+                                        setEditModelImage(
+                                          model.imageDataUrl
+                                            ? { name: model.name, dataUrl: model.imageDataUrl }
+                                            : null,
+                                        );
+                                        setSelectedModelId(model.id);
+                                        setSelectedModelColor(rowColor);
+                                      }}
+                                    >
+                                      تعديل
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-rose-700 dark:text-rose-300"
+                                      onClick={() => {
+                                        run(() => deleteModel(model.id), "تم حذف الموديل.");
+                                        if (selectedModelId === model.id) {
+                                          setSelectedModelId("");
+                                          setSelectedModelColor(null);
+                                        }
+                                        if (editingModelId === model.id) setEditingModelId(null);
+                                      }}
+                                    >
+                                      حذف
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>,
+                        ];
+                      });
                     })
                   )}
                 </tbody>
@@ -792,8 +833,25 @@ function CatalogAdminContent() {
           </section>
 
           {selectedModel ? (
-            <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel">
-              <h2 className="font-display text-xl">تفاصيل: {selectedModel.name}</h2>
+            <section
+              id="catalog-model-details"
+              className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel"
+            >
+              <h2 className="font-display text-xl">
+                تفاصيل: {selectedModel.name}
+                {(() => {
+                  const colors = getModelColors(selectedModel);
+                  const colorLabel =
+                    selectedModelColor?.trim() ||
+                    (colors.length ? colors.join(" · ") : "");
+                  return colorLabel ? (
+                    <span className="font-sans text-base font-normal text-ink-700/70 dark:text-sand-100/70">
+                      {" "}
+                      — {colorLabel}
+                    </span>
+                  ) : null;
+                })()}
+              </h2>
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <div>

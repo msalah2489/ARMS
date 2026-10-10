@@ -72,6 +72,17 @@ export function getModelColors(model: Pick<ModelItem, "colors" | "color"> | null
   return normalizeModelColors(model);
 }
 
+/** True if any accessory or spare part on the model has a non-empty color. */
+export function modelHasColoredParts(
+  model: Pick<ModelItem, "accessories" | "spareParts"> | null | undefined,
+): boolean {
+  if (!model) return false;
+  return (
+    model.accessories.some((item) => Boolean(item.color?.trim())) ||
+    model.spareParts.some((item) => Boolean(item.color?.trim()))
+  );
+}
+
 function normalizeModel(model: ModelItem): ModelItem {
   const image = model.imageDataUrl?.trim();
   const colors = normalizeModelColors(model);
@@ -274,7 +285,7 @@ export function addModel(input: {
   brandId: string;
   colors: string[];
   imageDataUrl: string;
-}): { ok: true } | { ok: false; error: string } {
+}): { ok: true; id: string } | { ok: false; error: string } {
   const name = input.name.trim();
   const colors = normalizeModelColors({ colors: input.colors });
   const imageDataUrl = input.imageDataUrl.trim();
@@ -291,8 +302,9 @@ export function addModel(input: {
   if (!catalog.brands.some((item) => item.id === input.brandId)) {
     return { ok: false, error: "البراند غير موجود." };
   }
+  const id = crypto.randomUUID();
   catalog.models.push({
-    id: crypto.randomUUID(),
+    id,
     name,
     deviceTypeId: input.deviceTypeId,
     brandId: input.brandId,
@@ -302,7 +314,7 @@ export function addModel(input: {
     spareParts: [],
   });
   saveCatalog(catalog);
-  return { ok: true };
+  return { ok: true, id };
 }
 
 export function deleteModel(id: string): { ok: true } | { ok: false; error: string } {
