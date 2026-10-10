@@ -960,7 +960,7 @@ export async function pullAppSpareInventory(): Promise<SpareInventoryState> {
 
   const balances: SpareInventoryBalance[] = (balRes.data ?? []).map((row) => {
     const r = row as Record<string, unknown>;
-    return payloadOf<SpareInventoryBalance>(r, () => ({
+    const fromPayload = payloadOf<SpareInventoryBalance>(r, () => ({
       id: String(r.id ?? ""),
       modelId: String(r.model_id ?? ""),
       modelName: String(r.model_name ?? ""),
@@ -968,8 +968,19 @@ export async function pullAppSpareInventory(): Promise<SpareInventoryState> {
       partName: String(r.part_name ?? ""),
       color: r.color ? String(r.color) : undefined,
       quantity: Number(r.quantity ?? 0),
+      minimumQuantity: 2,
       updatedAt: String(r.updated_at ?? nowIso()),
     }));
+    // minimumQuantity lives in JSON payload when remote column is absent.
+    const min = Number(
+      (fromPayload as SpareInventoryBalance).minimumQuantity ??
+        (r as { minimum_quantity?: unknown }).minimum_quantity ??
+        2,
+    );
+    return {
+      ...fromPayload,
+      minimumQuantity: Number.isFinite(min) && min >= 0 ? Math.floor(min) : 2,
+    };
   });
 
   const receipts: SpareReceiveReceipt[] = receiptsMissing

@@ -14,6 +14,7 @@ import {
   partLabel,
   receiptTotalQty,
   receiveSpareParts,
+  updateBalanceMinimumQuantity,
 } from "@/lib/spare-inventory-store";
 import type {
   Profile,
@@ -348,11 +349,13 @@ function SpareInventoryContent() {
                   <th className="px-3 py-2 font-medium">القطعة</th>
                   <th className="px-3 py-2 font-medium">اللون</th>
                   <th className="px-3 py-2 font-medium">الكمية</th>
+                  <th className="px-3 py-2 font-medium">الحد الأدنى</th>
                 </tr>
               </thead>
               <tbody>
                 {balances.map((row) => {
                   const image = partImageFor(row.modelId, row.partId);
+                  const isLow = row.quantity <= (row.minimumQuantity ?? 2);
                   return (
                     <tr key={row.id} className="border-b border-ink-900/5 dark:border-white/5">
                       <td className="px-3 py-2">
@@ -366,9 +369,33 @@ function SpareInventoryContent() {
                       <td className="px-3 py-2">{row.partName}</td>
                       <td className="px-3 py-2">{row.color || "—"}</td>
                       <td
-                        className={`px-3 py-2 font-medium ${row.quantity <= 0 ? "text-rose-700" : ""}`}
+                        className={`px-3 py-2 font-medium ${
+                          isLow ? "text-rose-700 dark:text-rose-300" : ""
+                        }`}
                       >
                         {row.quantity}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          defaultValue={row.minimumQuantity ?? 2}
+                          className="w-20 rounded-xl border border-ink-900/15 bg-white px-2 py-1 dark:border-white/15 dark:bg-ink-950"
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === row.minimumQuantity) return;
+                            const result = updateBalanceMinimumQuantity(row.id, next);
+                            if (!result.ok) {
+                              setError(result.error);
+                              e.target.value = String(row.minimumQuantity ?? 2);
+                              return;
+                            }
+                            setError(null);
+                            setMessage(`تم تحديث الحد الأدنى لـ «${row.partName}».`);
+                            refresh();
+                          }}
+                        />
                       </td>
                     </tr>
                   );

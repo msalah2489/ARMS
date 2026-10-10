@@ -309,7 +309,23 @@ export type SpareInventoryBalance = {
   partName: string;
   color?: string;
   quantity: number;
+  /** Alert when quantity is at or below this threshold (default 2). */
+  minimumQuantity: number;
   updatedAt: string;
+};
+
+/** Lightweight stock of replaced / swapped customer devices held at service. */
+export type ReplacedDeviceStockItem = {
+  id: string;
+  deviceTypeName: string;
+  modelName?: string;
+  serialOrCode?: string;
+  quantity: number;
+  notes?: string;
+  updatedAt: string;
+  createdAt: string;
+  createdById?: string;
+  createdByName?: string;
 };
 
 export type SpareReceiveLine = {

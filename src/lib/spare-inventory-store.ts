@@ -14,6 +14,18 @@ const BALANCE_KEY = "arms_spare_inventory_v1";
 const RECEIPTS_KEY = "arms_spare_receipts_v1";
 const MOVEMENTS_KEY = "arms_spare_movements_v1";
 
+/** Default low-stock threshold for new balances. */
+export const DEFAULT_MINIMUM_QUANTITY = 2;
+
+function normalizeBalance(raw: SpareInventoryBalance): SpareInventoryBalance {
+  const min = Number(raw.minimumQuantity);
+  return {
+    ...raw,
+    minimumQuantity:
+      Number.isFinite(min) && min >= 0 ? Math.floor(min) : DEFAULT_MINIMUM_QUANTITY,
+  };
+}
+
 export type SpareInventoryState = {
   balances: SpareInventoryBalance[];
   receipts: SpareReceiveReceipt[];
@@ -41,7 +53,7 @@ function schedulePersist() {
 
 export function getSpareInventoryLocal(): SpareInventoryState {
   return {
-    balances: readJson<SpareInventoryBalance[]>(BALANCE_KEY, []),
+    balances: listInventoryBalances(),
     receipts: readJson<SpareReceiveReceipt[]>(RECEIPTS_KEY, []).map(normalizeReceipt),
     movements: readJson<SpareStockMovement[]>(MOVEMENTS_KEY, []),
   };
@@ -49,7 +61,10 @@ export function getSpareInventoryLocal(): SpareInventoryState {
 
 export function replaceSpareInventory(state: SpareInventoryState) {
   if (typeof window === "undefined") return;
-  writeJson(BALANCE_KEY, state.balances ?? []);
+  writeJson(
+    BALANCE_KEY,
+    (state.balances ?? []).map((row) => normalizeBalance(row as SpareInventoryBalance)),
+  );
   writeJson(RECEIPTS_KEY, state.receipts ?? []);
   writeJson(MOVEMENTS_KEY, state.movements ?? []);
 }
@@ -62,14 +77,39 @@ export function applyRemoteSpareInventory(state: SpareInventoryState) {
   });
 }
 
+/** Update the low-stock threshold for one balance row. */
+export function updateBalanceMinimumQuantity(
+  balanceId: string,
+  minimumQuantity: number,
+): { ok: true; balance: SpareInventoryBalance } | { ok: false; error: string } {
+  const qty = Number(minimumQuantity);
+  if (!Number.isFinite(qty) || qty < 0 || !Number.isInteger(qty)) {
+    return { ok: false, error: "الحد الأدنى يجب أن يكون رقمًا صحيحًا ≥ 0." };
+  }
+  const all = listInventoryBalances();
+  const existing = all.find((item) => item.id === balanceId);
+  if (!existing) return { ok: false, error: "رصيد المخزون غير موجود." };
+  const balance: SpareInventoryBalance = {
+    ...existing,
+    minimumQuantity: qty,
+    updatedAt: new Date().toISOString(),
+  };
+  writeJson(
+    BALANCE_KEY,
+    all.map((item) => (item.id === balanceId ? balance : item)),
+  );
+  schedulePersist();
+  return { ok: true, balance };
+}
+
 export function balanceIdFor(modelId: string, partId: string) {
   return `${modelId}::${partId}`;
 }
 
 export function listInventoryBalances(): SpareInventoryBalance[] {
-  return readJson<SpareInventoryBalance[]>(BALANCE_KEY, []).sort((a, b) =>
-    a.modelName.localeCompare(b.modelName, "ar"),
-  );
+  return readJson<SpareInventoryBalance[]>(BALANCE_KEY, [])
+    .map(normalizeBalance)
+    .sort((a, b) => a.modelName.localeCompare(b.modelName, "ar"));
 }
 
 function normalizeReceipt(receipt: SpareReceiveReceipt): SpareReceiveReceipt {
@@ -140,6 +180,7 @@ function upsertBalance(input: {
     partName: input.partName,
     color: input.color || existing?.color,
     quantity: nextQty,
+    minimumQuantity: existing?.minimumQuantity ?? DEFAULT_MINIMUM_QUANTITY,
     updatedAt: new Date().toISOString(),
   };
 

@@ -1,13 +1,15 @@
 import {
+  getBranchDailyWorkCounts as getBranchWorkCountsFromQueues,
+  type BranchDailyWorkCounts,
+} from "@/lib/dashboard-work-queues";
+import {
   listAllRequestDevices,
   listMaintenanceRequests,
   normalizeLifecycleStatus,
 } from "@/lib/branch-store";
-import { listApprovedReturnReceiptsForBranch } from "@/lib/pickup-receipt-store";
 import {
   listBranchesReadyToShip,
   listCarriersWithOpenBatches,
-  listDevicesAwaitingBranchOutboundAction,
   type BranchReadyToShipSummary,
   type CarrierOpenBatchesSummary,
 } from "@/lib/shipping-store";
@@ -18,49 +20,12 @@ export type DashboardAttentionCounts = {
   awaitingCustomer: number;
 };
 
-/** Daily work queues for branch employee home screen. */
-export type BranchDailyWorkCounts = {
-  /** Devices returning to this branch (in transit / with courier return). */
-  incomingFromService: number;
-  /** Maintained devices at branch waiting for customer pickup. */
-  awaitingCustomer: number;
-  /**
-   * Devices needing branch outbound action: eligible to send, or already on a
-   * ready/draft outbound waybill awaiting handoff confirmation.
-   */
-  readyToSend: number;
-};
+/** @deprecated Prefer BranchDailyWorkCounts from dashboard-work-queues — re-exported for callers. */
+export type { BranchDailyWorkCounts };
 
+/** Daily work queues for branch employee home screen (5 exclusive cards). */
 export function getBranchDailyWorkCounts(opsBranchId: string): BranchDailyWorkCounts {
-  const devices = listAllRequestDevices().filter(
-    (item) => item.request.opsBranchId === opsBranchId,
-  );
-
-  const incomingDeviceIds = new Set(
-    devices
-      .filter(
-        (item) =>
-          normalizeLifecycleStatus(item.device.lifecycleStatus) === "in_return_transit",
-      )
-      .map((item) => item.device.localId),
-  );
-
-  for (const receipt of listApprovedReturnReceiptsForBranch(opsBranchId)) {
-    for (const line of receipt.lines) {
-      if (line.status === "approved" || line.status === "included") {
-        incomingDeviceIds.add(line.deviceLocalId);
-      }
-    }
-  }
-
-  return {
-    incomingFromService: incomingDeviceIds.size,
-    awaitingCustomer: devices.filter(
-      (item) =>
-        normalizeLifecycleStatus(item.device.lifecycleStatus) === "awaiting_customer",
-    ).length,
-    readyToSend: listDevicesAwaitingBranchOutboundAction(opsBranchId).length,
-  };
+  return getBranchWorkCountsFromQueues(opsBranchId);
 }
 
 export type DashboardOpsShippingAttention = {

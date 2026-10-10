@@ -284,7 +284,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     ).length,
     lowStockParts:
       inventory.length > 0
-        ? inventory.filter((item) => item.quantity <= 2).length
+        ? inventory.filter((item) => {
+            const min =
+              typeof item.minimumQuantity === "number" &&
+              Number.isFinite(item.minimumQuantity)
+                ? item.minimumQuantity
+                : 2;
+            return item.quantity <= min;
+          }).length
         : parts.filter((item) => item.stockQuantity <= item.minimumStock).length,
     activeDevices: devices.filter((item) => item.status === "active").length,
     completedThisMonth: requests.filter(
