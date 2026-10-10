@@ -2,12 +2,14 @@ import { DEMO_USERS, isDemoMode, isTechnicianRole, normalizeRole } from "@/lib/a
 import { createClient } from "@/lib/supabase/client";
 import {
   authenticateManagedUser,
+  authenticateSeedUser,
   listManagedUsers,
   managedUserToProfile,
 } from "@/lib/users-store";
 import type { AppRole, Profile } from "@/types/domain";
 
 const STORAGE_KEY = "arms_session";
+const LOGIN_FAILED_AR = "اسم المستخدم أو كلمة المرور غير صحيحة.";
 
 export function readSession(): Profile | null {
   if (typeof window === "undefined") return null;
@@ -31,10 +33,46 @@ export function clearSession() {
   window.dispatchEvent(new CustomEvent("arms-session-updated"));
 }
 
+/**
+ * Local prototype auth without Supabase Auth:
+ * - demo mode, or
+ * - NEXT_PUBLIC_LOCAL_DEMO_AUTH=true, or
+ * - login is @arms.local / a built-in seed username (branch, courier, tech, …)
+ */
+function shouldPreferLocalDemoAuth(login: string): boolean {
+  if (isDemoMode()) return true;
+  if (process.env.NEXT_PUBLIC_LOCAL_DEMO_AUTH === "true") return true;
+  if (process.env.NEXT_PUBLIC_LOCAL_DEMO_AUTH === "false") return false;
+  const key = login.trim().toLowerCase();
+  if (key.endsWith("@arms.local")) return true;
+  return DEMO_USERS.some((user) => user.email.split("@")[0].toLowerCase() === key);
+}
+
+function localizeAuthError(message?: string | null): string {
+  if (!message) return LOGIN_FAILED_AR;
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("invalid login") ||
+    lower.includes("invalid credentials") ||
+    lower.includes("email not confirmed") ||
+    lower.includes("user not found")
+  ) {
+    return LOGIN_FAILED_AR;
+  }
+  return LOGIN_FAILED_AR;
+}
+
 function tryLocalSignIn(login: string, password: string) {
   const managed = authenticateManagedUser(login, password);
   if (managed) {
     writeSession(managedUserToProfile(managed));
+    return { error: null as string | null };
+  }
+
+  // Built-in seeds even when cloud cache has no matching row / no password_plain.
+  const seed = authenticateSeedUser(login, password);
+  if (seed) {
+    writeSession(managedUserToProfile(seed));
     return { error: null as string | null };
   }
 
@@ -56,6 +94,35 @@ function tryLocalSignIn(login: string, password: string) {
   return null;
 }
 
+function tryDemoUsersSignIn(login: string, password: string) {
+  const key = login.trim().toLowerCase();
+  const user = DEMO_USERS.find(
+    (item) =>
+      item.password === password &&
+      (item.email.toLowerCase() === key || item.email.split("@")[0].toLowerCase() === key),
+  );
+  if (!user) return null;
+
+  const managed = authenticateManagedUser(user.email, password) ?? authenticateSeedUser(user.email, password);
+  if (managed) {
+    writeSession(managedUserToProfile(managed));
+    return { error: null as string | null };
+  }
+
+  writeSession({
+    id: user.role,
+    fullName: user.fullName,
+    username: user.email.split("@")[0],
+    role: normalizeRole(user.role),
+    email: user.email,
+    mobile: null,
+    opsBranchId: user.opsBranchId ?? null,
+    opsBranchName: user.opsBranchName ?? null,
+    isActive: true,
+  });
+  return { error: null as string | null };
+}
+
 export async function signIn(email: string, password: string) {
   // Pull cloud users (and other ops) before authenticating so Pages logins see shared accounts.
   try {
@@ -65,40 +132,21 @@ export async function signIn(email: string, password: string) {
     // Offline / misconfigured: fall through to local cache.
   }
 
-  // Local managed users work in demo and on GitHub Pages static export.
+  // Local managed users + prototype seeds (username OR @arms.local email).
   const local = tryLocalSignIn(email, password);
   if (local) return local;
 
-  if (isDemoMode()) {
-    const user = DEMO_USERS.find(
-      (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
-    );
-    if (!user) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
-
-    const managed = authenticateManagedUser(user.email, password);
-    if (managed) {
-      writeSession(managedUserToProfile(managed));
-      return { error: null };
-    }
-
-    writeSession({
-      id: user.role,
-      fullName: user.fullName,
-      username: user.email.split("@")[0],
-      role: normalizeRole(user.role),
-      email: user.email,
-      mobile: null,
-      opsBranchId: user.opsBranchId ?? null,
-      opsBranchName: user.opsBranchName ?? null,
-      isActive: true,
-    });
-    return { error: null };
+  if (shouldPreferLocalDemoAuth(email)) {
+    const demo = tryDemoUsersSignIn(email, password);
+    if (demo) return demo;
+    // Do not call Supabase Auth for local prototype accounts — they are not in Auth.
+    return { error: LOGIN_FAILED_AR };
   }
 
   const supabase = createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
-    return { error: error?.message ?? "اسم المستخدم أو كلمة المرور غير صحيحة." };
+    return { error: localizeAuthError(error?.message) };
   }
 
   const { data: profile } = await supabase

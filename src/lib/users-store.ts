@@ -298,10 +298,95 @@ export function ensureBootstrapAdminIfEmpty(): ManagedUser[] {
   return [admin];
 }
 
+/** Built-in prototype accounts (username OR @arms.local email, password demo). */
+export function listPrototypeSeedUsers(): ManagedUser[] {
+  const now = new Date().toISOString();
+  return SEED_USERS.map((seed) =>
+    normalizeUser({
+      ...seed,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  );
+}
+
+function seedMatchesLogin(
+  seed: (typeof SEED_USERS)[number],
+  login: string,
+): boolean {
+  const key = login.trim().toLowerCase();
+  const mobileKey = login.trim();
+  return (
+    seed.username.toLowerCase() === key ||
+    seed.email.toLowerCase() === key ||
+    seed.mobile === mobileKey
+  );
+}
+
+/**
+ * Authenticate against built-in prototype seeds (username OR email OR mobile).
+ * Works even when Supabase is configured and remote app_users lacks passwords.
+ */
+export function authenticateSeedUser(
+  login: string,
+  password: string,
+): ManagedUser | null {
+  const seed = SEED_USERS.find((item) => seedMatchesLogin(item, login));
+  if (!seed || seed.password !== password.trim()) return null;
+
+  const key = login.trim().toLowerCase();
+  const mobileKey = login.trim();
+  const existing = listManagedUsers({ includeArchived: true }).find(
+    (item) =>
+      item.username.toLowerCase() === key ||
+      item.email.toLowerCase() === key ||
+      item.mobile === mobileKey ||
+      item.username.toLowerCase() === seed.username.toLowerCase() ||
+      item.email.toLowerCase() === seed.email.toLowerCase(),
+  );
+  if (existing?.isArchived) return null;
+  if (existing && !existing.isActive) return null;
+  if (existing) {
+    return normalizeUser({
+      ...existing,
+      password: seed.password,
+      fullName: existing.fullName || seed.fullName,
+      role: existing.role || seed.role,
+      opsBranchId: existing.opsBranchId ?? seed.opsBranchId,
+      opsBranchName: existing.opsBranchName ?? seed.opsBranchName,
+    });
+  }
+
+  const now = new Date().toISOString();
+  return normalizeUser({
+    ...seed,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 /** Active, non-archived users for temporary login shortcuts. */
 export function listLoginShortcutUsers(): ManagedUser[] {
   ensureBootstrapAdminIfEmpty();
-  return listManagedUsers().filter((user) => user.isActive && !user.isArchived);
+  const live = listManagedUsers().filter((user) => user.isActive && !user.isArchived);
+  const usernames = new Set(live.map((user) => user.username.toLowerCase()));
+  const emails = new Set(live.map((user) => user.email.toLowerCase()));
+  const missingSeeds = listPrototypeSeedUsers().filter(
+    (seed) =>
+      !usernames.has(seed.username.toLowerCase()) &&
+      !emails.has(seed.email.toLowerCase()),
+  );
+  // Prefer live rows; overlay seed password hint when cloud row has no password.
+  const withDemoHint = live.map((user) => {
+    if (user.password) return user;
+    const seed = SEED_USERS.find(
+      (item) =>
+        item.username.toLowerCase() === user.username.toLowerCase() ||
+        item.email.toLowerCase() === user.email.toLowerCase(),
+    );
+    return seed ? normalizeUser({ ...user, password: seed.password }) : user;
+  });
+  return [...withDemoHint, ...missingSeeds];
 }
 
 /** Seed demo accounts when both remote and local are empty (demo mode only). */
@@ -842,9 +927,24 @@ export function authenticateManagedUser(
       item.email.toLowerCase() === key ||
       item.mobile === mobileKey,
   );
-  if (!user) return null;
+  if (!user) {
+    // Cloud cache empty / missing row — still allow built-in prototype seeds.
+    return authenticateSeedUser(login, password);
+  }
   if (user.isArchived) return null;
   if (!user.isActive) return null;
-  if (user.password !== password) return null;
-  return user;
+  const pass = password.trim();
+  if (user.password === pass) return user;
+
+  // Remote row may lack password_plain; accept matching prototype seed password.
+  const seed = SEED_USERS.find(
+    (item) =>
+      item.username.toLowerCase() === user.username.toLowerCase() ||
+      item.email.toLowerCase() === user.email.toLowerCase() ||
+      seedMatchesLogin(item, login),
+  );
+  if (seed && seed.password === pass) {
+    return normalizeUser({ ...user, password: seed.password });
+  }
+  return null;
 }
