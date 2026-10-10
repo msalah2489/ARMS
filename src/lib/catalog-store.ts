@@ -279,7 +279,7 @@ export function addModel(input: {
   const colors = normalizeModelColors({ colors: input.colors });
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
-  if (!colors.length) return { ok: false, error: "أضف لوناً واحداً على الأقل للموديل." };
+  if (!colors.length) return { ok: false, error: "لون الجهاز مطلوب مرة واحدة على الأقل (لون واحد يكفي)." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
@@ -324,7 +324,7 @@ export function updateModel(input: {
   const colors = normalizeModelColors({ colors: input.colors });
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
-  if (!colors.length) return { ok: false, error: "أضف لوناً واحداً على الأقل للموديل." };
+  if (!colors.length) return { ok: false, error: "لون الجهاز مطلوب مرة واحدة على الأقل (لون واحد يكفي)." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };

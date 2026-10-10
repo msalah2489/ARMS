@@ -19,6 +19,7 @@ import {
   deleteModelSparePart,
   getCatalog,
   getModelColors,
+  normalizeModelColors,
   resetCatalogToSeed,
   suggestAccessoryNames,
   suggestSparePartNames,
@@ -121,16 +122,24 @@ function CatalogAdminContent() {
 
   if (!catalog) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
+  /** Merge chips + draft (supports «أبيض، أسود» in one field). Used on save so draft is not lost. */
+  function resolveColors(list: string[], draft: string): string[] {
+    const fromDraft = draft
+      .split(/[,،]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return normalizeModelColors({ colors: [...list, ...fromDraft] });
+  }
+
   function addColorToList(
     list: string[],
     draft: string,
     setList: (next: string[]) => void,
     setDraft: (next: string) => void,
   ) {
-    const value = draft.trim();
-    if (!value) return;
-    const exists = list.some((item) => item.trim().toLowerCase() === value.toLowerCase());
-    if (!exists) setList([...list, value]);
+    const next = resolveColors(list, draft);
+    if (next.length === list.length && !draft.trim()) return;
+    setList(next);
     setDraft("");
   }
 
@@ -408,6 +417,9 @@ function CatalogAdminContent() {
               <p className="text-xs font-medium text-ink-700/80 dark:text-sand-100/70">
                 ألوان الجهاز المتاحة *
               </p>
+              <p className="mt-0.5 text-[11px] text-ink-700/55 dark:text-sand-100/55">
+                لون واحد يكفي. لأكثر من لون: اكتبها مفصولة بفاصلة (أبيض، أسود) أو أضف كل لون على حدة.
+              </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <input
                   value={modelColorDraft}
@@ -418,7 +430,7 @@ function CatalogAdminContent() {
                       addColorToList(modelColors, modelColorDraft, setModelColors, setModelColorDraft);
                     }
                   }}
-                  placeholder="أضف لوناً ثم Enter"
+                  placeholder="مثال: أبيض  أو  أبيض، أسود"
                   className="min-w-[10rem] flex-1 rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
                 />
                 <button
@@ -428,7 +440,7 @@ function CatalogAdminContent() {
                     addColorToList(modelColors, modelColorDraft, setModelColors, setModelColorDraft)
                   }
                 >
-                  إضافة لون
+                  إضافة للقائمة
                 </button>
               </div>
               {modelColors.length ? (
@@ -445,11 +457,7 @@ function CatalogAdminContent() {
                     </button>
                   ))}
                 </div>
-              ) : (
-                <p className="mt-1 text-[11px] text-ink-700/50 dark:text-sand-100/50">
-                  مثال: أسود، فضي، ذهبي — لون واحد على الأقل
-                </p>
-              )}
+              ) : null}
             </div>
             <div className="mt-4">
               <ImagePickerField
@@ -464,8 +472,9 @@ function CatalogAdminContent() {
               type="button"
               className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
               onClick={() => {
-                if (!modelColors.length) {
-                  setError("أضف لوناً واحداً على الأقل للموديل.");
+                const colors = resolveColors(modelColors, modelColorDraft);
+                if (!colors.length) {
+                  setError("اكتب لون الجهاز مرة واحدة على الأقل (لون واحد يكفي).");
                   setMessage(null);
                   return;
                 }
@@ -481,7 +490,7 @@ function CatalogAdminContent() {
                         name: modelName,
                         deviceTypeId: modelTypeId,
                         brandId: modelBrandId,
-                        colors: modelColors,
+                        colors,
                         imageDataUrl: modelImage.dataUrl,
                       }),
                     "تمت إضافة الموديل.",
@@ -574,8 +583,8 @@ function CatalogAdminContent() {
                                           );
                                         }
                                       }}
-                                      placeholder="لون +"
-                                      aria-label="إضافة لون للموديل"
+                                      placeholder="أبيض، أسود"
+                                      aria-label="ألوان الموديل"
                                       className="w-full rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
                                     />
                                     <button
@@ -653,8 +662,12 @@ function CatalogAdminContent() {
                                     type="button"
                                     className="text-start text-aroma-700 dark:text-aroma-200"
                                     onClick={() => {
-                                      if (!editModelColors.length) {
-                                        setError("أضف لوناً واحداً على الأقل للموديل.");
+                                      const colors = resolveColors(
+                                        editModelColors,
+                                        editModelColorDraft,
+                                      );
+                                      if (!colors.length) {
+                                        setError("اكتب لون الجهاز مرة واحدة على الأقل (لون واحد يكفي).");
                                         setMessage(null);
                                         return;
                                       }
@@ -671,7 +684,7 @@ function CatalogAdminContent() {
                                               name: editModelName,
                                               deviceTypeId: editModelTypeId,
                                               brandId: editModelBrandId,
-                                              colors: editModelColors,
+                                              colors,
                                               imageDataUrl: editModelImage.dataUrl,
                                             }),
                                           "تم تعديل الموديل.",
@@ -679,6 +692,7 @@ function CatalogAdminContent() {
                                       ) {
                                         setEditingModelId(null);
                                         setEditModelImage(null);
+                                        setEditModelColors([]);
                                         setEditModelColorDraft("");
                                       }
                                     }}
