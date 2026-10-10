@@ -16,7 +16,7 @@ import {
 } from "@/lib/branch-store";
 import { getDevices } from "@/lib/data";
 import { readSession } from "@/lib/session";
-import { listDevicesEligibleForShipment } from "@/lib/shipping-store";
+import { listDevicesAwaitingBranchOutboundAction } from "@/lib/shipping-store";
 import type { Device } from "@/types/domain";
 
 type ListFocus =
@@ -75,7 +75,7 @@ export default function DevicesPage() {
     if (focus === "ready_to_send") {
       if (!branchId) return [];
       const ids = new Set(
-        listDevicesEligibleForShipment(branchId).map((item) => item.device.localId),
+        listDevicesAwaitingBranchOutboundAction(branchId).map((item) => item.device.localId),
       );
       return devices.filter((device) => ids.has(device.id));
     }

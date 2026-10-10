@@ -288,6 +288,40 @@ export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQ
   });
 }
 
+/**
+ * Devices the branch still needs to act on for outbound send:
+ * - not yet on a bill (eligible for shipment / courier), OR
+ * - already on a to_service bill in ready/draft awaiting «تم التسليم لشركة الشحن».
+ */
+export function listDevicesAwaitingBranchOutboundAction(
+  opsBranchId: string,
+): TechnicianQueueItem[] {
+  const byId = new Map<string, TechnicianQueueItem>();
+
+  for (const item of listDevicesEligibleForShipment(opsBranchId)) {
+    byId.set(item.device.localId, item);
+  }
+
+  for (const batch of listShippingBatches(opsBranchId)) {
+    if (batch.direction !== "to_service") continue;
+    if (!["ready", "draft"].includes(batch.status)) continue;
+    for (const batchItem of batch.items.filter((item) => item.status === "active")) {
+      const match =
+        listAllRequestDevices().find((row) => row.device.localId === batchItem.requestDeviceId) ??
+        listAllRequestDevices().find(
+          (row) =>
+            normalizeDeviceCodeKey(row.device.deviceCode) ===
+            normalizeDeviceCodeKey(batchItem.deviceCode),
+        );
+      if (!match) continue;
+      if (match.request.opsBranchId !== opsBranchId) continue;
+      byId.set(match.device.localId, match);
+    }
+  }
+
+  return [...byId.values()];
+}
+
 /** Failed mobile-maintenance devices a mobile tech can ship directly to the service center. */
 export function listDevicesEligibleForMobileDirectShip(
   opsBranchId: string,

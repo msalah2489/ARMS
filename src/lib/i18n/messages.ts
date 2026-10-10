@@ -110,7 +110,7 @@ const messagesAr = {
   "dashboard.work.awaitingCustomer": "جاهز للتسليم للعميل",
   "dashboard.work.awaitingCustomerHint": "صُيّنت وأُرجعت للفرع وبانتظار استلام العميل",
   "dashboard.work.readyToSend": "جاهز للإرسال للصيانة",
-  "dashboard.work.readyToSendHint": "مستلمة بالفرع وبانتظار الإرسال للصيانة أو الفني المتنقل",
+  "dashboard.work.readyToSendHint": "مستلمة بالفرع أو مدرجة في بوليصة بانتظار تأكيد التسليم للشحن / المندوب",
   "dashboard.work.openList": "عرض الأجهزة",
   "dashboard.work.openShipping": "فتح الشحن والاستلام",
 
@@ -429,7 +429,7 @@ const messagesEn: Record<MessageKey, string> = {
   "dashboard.work.awaitingCustomer": "Ready for customer pickup",
   "dashboard.work.awaitingCustomerHint": "Serviced and returned to branch — waiting for the customer",
   "dashboard.work.readyToSend": "Ready to send to service",
-  "dashboard.work.readyToSendHint": "Received at branch — waiting to ship or hand to mobile tech",
+  "dashboard.work.readyToSendHint": "At branch, or on a waybill awaiting handoff confirmation",
   "dashboard.work.openList": "View devices",
   "dashboard.work.openShipping": "Open shipping",
 

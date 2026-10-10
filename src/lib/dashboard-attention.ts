@@ -7,7 +7,7 @@ import { listApprovedReturnReceiptsForBranch } from "@/lib/pickup-receipt-store"
 import {
   listBranchesReadyToShip,
   listCarriersWithOpenBatches,
-  listDevicesEligibleForShipment,
+  listDevicesAwaitingBranchOutboundAction,
   type BranchReadyToShipSummary,
   type CarrierOpenBatchesSummary,
 } from "@/lib/shipping-store";
@@ -24,7 +24,10 @@ export type BranchDailyWorkCounts = {
   incomingFromService: number;
   /** Maintained devices at branch waiting for customer pickup. */
   awaitingCustomer: number;
-  /** Devices at branch ready to send to service (or mobile tech path). */
+  /**
+   * Devices needing branch outbound action: eligible to send, or already on a
+   * ready/draft outbound waybill awaiting handoff confirmation.
+   */
   readyToSend: number;
 };
 
@@ -56,7 +59,7 @@ export function getBranchDailyWorkCounts(opsBranchId: string): BranchDailyWorkCo
       (item) =>
         normalizeLifecycleStatus(item.device.lifecycleStatus) === "awaiting_customer",
     ).length,
-    readyToSend: listDevicesEligibleForShipment(opsBranchId).length,
+    readyToSend: listDevicesAwaitingBranchOutboundAction(opsBranchId).length,
   };
 }
 
