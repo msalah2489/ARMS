@@ -426,6 +426,7 @@ export type DraftRequestDevice = {
   receiptPhotoName: string;
   /** Compressed receipt photo (data URL) */
   receiptPhotoDataUrl?: string;
+  /** Device body color — required when adding a new device */
   color?: string;
   currentLocation?: string;
   lockedAfterShip?: boolean;

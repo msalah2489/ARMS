@@ -239,6 +239,7 @@ function NewServiceRequestContent() {
                   <th className="px-2 py-2 font-medium">الصورة</th>
                   <th className="px-2 py-2 font-medium">كود الجهاز</th>
                   <th className="px-2 py-2 font-medium">الموديل</th>
+                  <th className="px-2 py-2 font-medium">اللون</th>
                   <th className="px-2 py-2 font-medium">السيريال</th>
                   <th className="px-2 py-2 font-medium">شكوى العميل</th>
                   <th className="px-2 py-2 font-medium">الحالة الخارجية</th>
@@ -250,7 +251,7 @@ function NewServiceRequestContent() {
               <tbody>
                 {devices.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
+                    <td colSpan={10} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
                       لم تتم إضافة أجهزة بعد. بعد إضافة كل جهاز ستُطلب طباعة ملصق QR.
                     </td>
                   </tr>
@@ -270,6 +271,7 @@ function NewServiceRequestContent() {
                       </td>
                       <td className="px-2 py-3 font-medium dark:text-sand-50">{device.deviceCode}</td>
                       <td className="px-2 py-3 dark:text-sand-100">{device.modelName}</td>
+                      <td className="px-2 py-3 dark:text-sand-100">{device.color || "—"}</td>
                       <td className="px-2 py-3 dark:text-sand-100">{device.serialNumber || "—"}</td>
                       <td className="px-2 py-3 dark:text-sand-100">{device.fault || "—"}</td>
                       <td className="px-2 py-3 dark:text-sand-100">

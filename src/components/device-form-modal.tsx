@@ -23,6 +23,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   const [brandId, setBrandId] = useState("");
   const [modelId, setModelId] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
+  const [color, setColor] = useState("");
   const [fault, setFault] = useState("");
   const [externalCondition, setExternalCondition] = useState<ExternalCondition | "">("");
   const [accessoryIds, setAccessoryIds] = useState<string[]>([]);
@@ -59,6 +60,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
     setBrandId("");
     setModelId("");
     setSerialNumber("");
+    setColor("");
     setFault("");
     setExternalCondition("");
     setAccessoryIds([]);
@@ -71,17 +73,19 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   }
 
   function buildDevice(): DraftRequestDevice | null {
+    const colorTrimmed = color.trim();
     if (
       !deviceTypeId ||
       !brandId ||
       !modelId ||
+      !colorTrimmed ||
       !externalCondition ||
       !receiptNumber ||
       !deviceImage?.dataUrl ||
       !receiptImage?.dataUrl
     ) {
       setError(
-        "يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، الحالة الخارجية، صورة الجهاز، رقم وصورة سند الاستلام.",
+        "يرجى تعبئة الحقول الإلزامية: النوع، البراند، الموديل، لون الجهاز، الحالة الخارجية، صورة الجهاز، رقم وصورة سند الاستلام.",
       );
       return null;
     }
@@ -98,6 +102,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
       modelId,
       modelName: model?.name ?? "",
       serialNumber: serialNumber.trim(),
+      color: colorTrimmed,
       fault: fault.trim(),
       externalCondition,
       accessoryIds,
@@ -192,6 +197,16 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <input
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+            />
+          </label>
+          <label className="block text-sm">
+            لون الجهاز *
+            <input
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              placeholder="مثال: أسود / فضي"
+              required
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             />
           </label>
