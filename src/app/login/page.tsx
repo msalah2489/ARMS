@@ -1,6 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useState,
+  type MouseEvent,
+  type TouchEvent,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { ROLE_LABELS, homePathForRole, isDemoMode } from "@/lib/auth";
@@ -57,9 +63,16 @@ function LoginPageContent() {
   }, []);
 
   const hidePassword = () => setRevealPassword(false);
-  const showPasswordWhileHeld = (event: React.MouseEvent | React.TouchEvent) => {
+  const showPasswordWhileHeld = (event: MouseEvent | TouchEvent) => {
     event.preventDefault();
     setRevealPassword(true);
+  };
+
+  /** Fill login fields from the ManagedUser row (actual password, not a hardcoded demo). */
+  const fillAccount = (user: ManagedUser) => {
+    setEmail(user.username);
+    setPassword(user.password || "");
+    setError(null);
   };
 
   return (
@@ -92,15 +105,12 @@ function LoginPageContent() {
               </p>
               <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                 {accounts.map((user) => {
-                  const showDemoHint = demo || user.password === "demo";
+                  const passwordHint = user.password?.trim() || "";
                   return (
                     <button
                       key={user.id}
                       type="button"
-                      onClick={() => {
-                        setEmail(user.username);
-                        if (showDemoHint) setPassword(user.password);
-                      }}
+                      onClick={() => fillAccount(user)}
                       className="rounded-xl border border-ink-900/10 bg-white px-3 py-2 text-right text-sm hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900 dark:hover:border-aroma-400"
                     >
                       <span className="block font-medium dark:text-sand-50">
@@ -110,9 +120,9 @@ function LoginPageContent() {
                         {user.username}
                         {ROLE_LABELS[user.role] ? ` · ${ROLE_LABELS[user.role]}` : ""}
                       </span>
-                      {showDemoHint ? (
+                      {passwordHint ? (
                         <span className="mt-0.5 block text-[11px] text-aroma-700/80 dark:text-aroma-200/80">
-                          كلمة المرور: {user.password}
+                          كلمة المرور: {passwordHint}
                         </span>
                       ) : null}
                     </button>
