@@ -24,6 +24,7 @@ import {
   type PermissionKey,
 } from "@/lib/permissions";
 import { readSession } from "@/lib/session";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import {
   ASSIGNABLE_ROLES,
   ASSIGNABLE_ROLE_LABELS,
@@ -235,6 +236,7 @@ function PermissionsEditor({
 }
 
 function AdminUsersContent() {
+  const { setDirty, clearDirty, confirmIfDirty } = useUnsavedChanges("admin-users");
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [form, setForm] = useState(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -250,6 +252,28 @@ function AdminUsersContent() {
   const archivedUsers = users.filter((u) => u.isArchived);
   const showPermissions = canManagePermissions(actor);
   const canBulkImport = actor ? isSystemAdminRole(actor.role) : false;
+
+  const usersDirty = useMemo(() => {
+    if (editingId) return true;
+    const blank = emptyForm();
+    return (
+      form.fullName.trim() !== blank.fullName ||
+      form.username.trim() !== blank.username ||
+      form.email.trim() !== blank.email ||
+      form.mobile.trim() !== blank.mobile ||
+      form.role !== blank.role ||
+      form.opsBranchId !== blank.opsBranchId ||
+      form.password !== blank.password ||
+      form.isActive !== blank.isActive ||
+      form.permissions.length > 0 ||
+      form.gender !== blank.gender ||
+      Boolean(form.photo)
+    );
+  }, [form, editingId]);
+
+  useEffect(() => {
+    setDirty(usersDirty);
+  }, [usersDirty, setDirty]);
 
   const lockedKeys: PermissionKey[] =
     editingId &&
@@ -273,6 +297,11 @@ function AdminUsersContent() {
   function resetForm() {
     setForm(emptyForm());
     setEditingId(null);
+    clearDirty();
+  }
+
+  function requestResetForm() {
+    confirmIfDirty(() => resetForm());
   }
 
   function applyRoleDefaults(role: AssignableUserRole) {
@@ -592,7 +621,7 @@ function AdminUsersContent() {
             <button
               type="button"
               className="rounded-full border border-ink-900/15 px-5 py-2.5 text-sm dark:border-white/15 dark:text-sand-50"
-              onClick={resetForm}
+              onClick={requestResetForm}
             >
               إلغاء التعديل
             </button>
@@ -610,29 +639,33 @@ function AdminUsersContent() {
                 key={user.id}
                 user={user}
                 onEdit={() => {
-                  setEditingId(user.id);
-                  setForm({
-                    fullName: user.fullName,
-                    username: user.username,
-                    email: user.email.endsWith("@arms.local") ? "" : user.email,
-                    mobile: user.mobile,
-                    role: user.role,
-                    opsBranchId: user.opsBranchId ?? "",
-                    password: "",
-                    isActive: user.isActive,
-                    permissions: (user.permissions?.length
-                      ? user.permissions
-                      : getDefaultPermissionsForRole(user.role)) as PermissionKey[],
-                    gender: user.gender ?? "",
-                    photo: user.photoDataUrl
-                      ? {
-                          name: user.photoName || "photo.jpg",
-                          dataUrl: user.photoDataUrl,
-                        }
-                      : null,
-                  });
-                  setMessage(null);
-                  setError(null);
+                  if (editingId === user.id) return;
+                  const loadEdit = () => {
+                    setEditingId(user.id);
+                    setForm({
+                      fullName: user.fullName,
+                      username: user.username,
+                      email: user.email.endsWith("@arms.local") ? "" : user.email,
+                      mobile: user.mobile,
+                      role: user.role,
+                      opsBranchId: user.opsBranchId ?? "",
+                      password: "",
+                      isActive: user.isActive,
+                      permissions: (user.permissions?.length
+                        ? user.permissions
+                        : getDefaultPermissionsForRole(user.role)) as PermissionKey[],
+                      gender: user.gender ?? "",
+                      photo: user.photoDataUrl
+                        ? {
+                            name: user.photoName || "photo.jpg",
+                            dataUrl: user.photoDataUrl,
+                          }
+                        : null,
+                    });
+                    setMessage(null);
+                    setError(null);
+                  };
+                  confirmIfDirty(loadEdit);
                 }}
                 onToggleActive={() => {
                   void (async () => {

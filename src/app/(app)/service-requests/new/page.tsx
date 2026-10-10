@@ -20,6 +20,7 @@ import {
 } from "@/lib/branch-store";
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { readSession } from "@/lib/session";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   BranchPriority,
   DraftRequestDevice,
@@ -30,6 +31,7 @@ import type {
 function NewServiceRequestContent() {
   const router = useRouter();
   const { t } = usePreferences();
+  const { setDirty, clearDirty } = useUnsavedChanges("service-request-new");
   const [user, setUser] = useState<Profile | null>(null);
   const [requestNumber, setRequestNumber] = useState("");
   const [priority, setPriority] = useState<BranchPriority>("normal");
@@ -55,6 +57,34 @@ function NewServiceRequestContent() {
     setRequestNumber(generateRequestNumber());
     setBranchOptions(listBranchOptions());
   }, []);
+
+  const requestDirty = useMemo(
+    () =>
+      Boolean(
+        mobile.trim() ||
+          contactName.trim() ||
+          purchaseInvoice.trim() ||
+          generalNotes.trim() ||
+          selectedBranchId ||
+          devices.length > 0 ||
+          priority !== "normal" ||
+          assignmentPath !== "service_center",
+      ),
+    [
+      mobile,
+      contactName,
+      purchaseInvoice,
+      generalNotes,
+      selectedBranchId,
+      devices.length,
+      priority,
+      assignmentPath,
+    ],
+  );
+
+  useEffect(() => {
+    setDirty(requestDirty);
+  }, [requestDirty, setDirty]);
 
   const mustSelectBranch = Boolean(
     user &&
@@ -377,6 +407,7 @@ function NewServiceRequestContent() {
                     : {}),
                 });
                 setSuccess(`تم حفظ الطلب ${saved.requestNumber} بنجاح.`);
+                clearDirty();
                 // Managers stay on the requests list; branch users go to receiving.
                 if (mustSelectBranch) {
                   router.push(

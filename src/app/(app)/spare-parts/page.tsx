@@ -16,6 +16,7 @@ import {
   receiveSpareParts,
   updateBalanceMinimumQuantity,
 } from "@/lib/spare-inventory-store";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   Profile,
   SpareInventoryBalance,
@@ -45,6 +46,7 @@ function emptyLine(): LineDraft {
 }
 
 function SpareInventoryContent() {
+  const { setDirty, clearDirty } = useUnsavedChanges("spare-parts-receive");
   const [user, setUser] = useState<Profile | null>(null);
   const [balances, setBalances] = useState<SpareInventoryBalance[]>([]);
   const [receipts, setReceipts] = useState<SpareReceiveReceipt[]>([]);
@@ -58,6 +60,22 @@ function SpareInventoryContent() {
   const [error, setError] = useState<string | null>(null);
 
   const models = useMemo(() => listModelsWithSpareParts(), [balances, receipts]);
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const receiveDirty = useMemo(
+    () =>
+      Boolean(
+        receiptNumber.trim() ||
+          supplier.trim() ||
+          photoDataUrl ||
+          receiptDate !== today ||
+          lines.length > 1 ||
+          lines.some(
+            (line) => line.modelId || line.partId || (line.quantity.trim() && line.quantity !== "1"),
+          ),
+      ),
+    [receiptNumber, supplier, photoDataUrl, receiptDate, today, lines],
+  );
 
   function refresh() {
     setBalances(listInventoryBalances());
@@ -68,6 +86,10 @@ function SpareInventoryContent() {
     setUser(readSession());
     refresh();
   }, []);
+
+  useEffect(() => {
+    setDirty(receiveDirty);
+  }, [receiveDirty, setDirty]);
 
   if (!user) return <p className="text-sm text-ink-700/70 dark:text-sand-100/70">جاري التحميل…</p>;
 
@@ -326,6 +348,7 @@ function SpareInventoryContent() {
             setPhotoName("");
             setPhotoDataUrl("");
             setLines([emptyLine()]);
+            clearDirty();
             refresh();
           }}
         >

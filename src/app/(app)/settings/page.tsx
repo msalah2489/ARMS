@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ExpandableSection } from "@/components/expandable-section";
 import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
@@ -11,6 +11,7 @@ import { translate } from "@/lib/i18n/messages";
 import type { AppLocale, AppTheme } from "@/lib/preferences";
 import { readSession, writeSession } from "@/lib/session";
 import { canRepairShippingStatus } from "@/lib/shipping-store";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import {
   ASSIGNABLE_ROLE_LABELS,
   findManagedUserForSession,
@@ -23,8 +24,16 @@ import type { AssignableUserRole, Profile, UserGender } from "@/types/domain";
 const inputClass =
   "mt-1 w-full rounded-xl border border-ink-900/15 bg-white px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50";
 
+type ProfileBaseline = {
+  username: string;
+  mobile: string;
+  gender: UserGender | "";
+  photoDataUrl: string | null;
+};
+
 export default function SettingsPage() {
   const { t, locale, theme, setLocale, setTheme } = usePreferences();
+  const { setDirty, clearDirty } = useUnsavedChanges("settings");
   const [user, setUser] = useState<Profile | null>(null);
   const [managedId, setManagedId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -36,6 +45,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<ProfileBaseline | null>(null);
 
   useEffect(() => {
     const session = readSession();
@@ -55,6 +65,12 @@ export default function SettingsPage() {
           ? { name: managed.photoName || "photo.jpg", dataUrl: managed.photoDataUrl }
           : null,
       );
+      setBaseline({
+        username: managed.username,
+        mobile: managed.mobile,
+        gender: managed.gender ?? "",
+        photoDataUrl: managed.photoDataUrl ?? null,
+      });
       return;
     }
 
@@ -68,7 +84,40 @@ export default function SettingsPage() {
         : null,
     );
     setManagedId(null);
+    setBaseline({
+      username: session.username ?? "",
+      mobile: session.mobile ?? "",
+      gender: session.gender ?? "",
+      photoDataUrl: session.photoDataUrl ?? null,
+    });
   }, []);
+
+  const settingsDirty = useMemo(() => {
+    if (!managedId || !baseline) {
+      return Boolean(currentPassword || newPassword || confirmPassword);
+    }
+    return (
+      username !== baseline.username ||
+      mobile !== baseline.mobile ||
+      gender !== baseline.gender ||
+      (photo?.dataUrl ?? null) !== baseline.photoDataUrl ||
+      Boolean(currentPassword || newPassword || confirmPassword)
+    );
+  }, [
+    managedId,
+    baseline,
+    username,
+    mobile,
+    gender,
+    photo,
+    currentPassword,
+    newPassword,
+    confirmPassword,
+  ]);
+
+  useEffect(() => {
+    setDirty(settingsDirty);
+  }, [settingsDirty, setDirty]);
 
   if (!user) {
     return <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{t("common.loading")}</p>;
@@ -298,6 +347,13 @@ export default function SettingsPage() {
                 setCurrentPassword("");
                 setNewPassword("");
                 setConfirmPassword("");
+                setBaseline({
+                  username: result.user.username,
+                  mobile: result.user.mobile,
+                  gender: result.user.gender ?? "",
+                  photoDataUrl: result.user.photoDataUrl ?? null,
+                });
+                clearDirty();
                 setMessage(t("account.saved"));
               })();
             }}
