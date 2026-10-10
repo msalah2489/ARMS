@@ -472,54 +472,73 @@ function CatalogAdminContent() {
                           }`}
                         >
                           {isEditing ? (
-                            <td colSpan={8} className="px-2 py-3">
-                              <div className="space-y-3">
-                                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                                  <select
-                                    value={editModelTypeId}
-                                    onChange={(e) => setEditModelTypeId(e.target.value)}
-                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
-                                  >
-                                    {catalog.deviceTypes.map((item) => (
-                                      <option key={item.id} value={item.id}>
-                                        {item.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <select
-                                    value={editModelBrandId}
-                                    onChange={(e) => setEditModelBrandId(e.target.value)}
-                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
-                                  >
-                                    {catalog.brands.map((item) => (
-                                      <option key={item.id} value={item.id}>
-                                        {item.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    value={editModelName}
-                                    onChange={(e) => setEditModelName(e.target.value)}
-                                    placeholder="اسم الموديل *"
-                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
-                                  />
-                                  <input
-                                    value={editModelColor}
-                                    onChange={(e) => setEditModelColor(e.target.value)}
-                                    placeholder="لون الموديل *"
-                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
-                                  />
-                                </div>
+                            <>
+                              <td className="align-top px-2 py-3">
                                 <ImagePickerField
-                                  label="صورة الموديل"
+                                  label="صورة"
                                   required
                                   value={editModelImage}
                                   onChange={setEditModelImage}
+                                  className="min-w-[7.5rem] text-xs"
                                 />
-                                <div className="flex gap-3">
+                              </td>
+                              <td className="align-top px-2 py-3">
+                                <input
+                                  value={editModelName}
+                                  onChange={(e) => setEditModelName(e.target.value)}
+                                  placeholder="اسم الموديل *"
+                                  aria-label="اسم الموديل"
+                                  className="w-full min-w-[7rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                />
+                              </td>
+                              <td className="align-top px-2 py-3">
+                                <input
+                                  value={editModelColor}
+                                  onChange={(e) => setEditModelColor(e.target.value)}
+                                  placeholder="اللون *"
+                                  aria-label="لون الموديل"
+                                  className="w-full min-w-[5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                />
+                              </td>
+                              <td className="align-top px-2 py-3">
+                                <select
+                                  value={editModelTypeId}
+                                  onChange={(e) => setEditModelTypeId(e.target.value)}
+                                  aria-label="التصنيف"
+                                  className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                >
+                                  {catalog.deviceTypes.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="align-top px-2 py-3">
+                                <select
+                                  value={editModelBrandId}
+                                  onChange={(e) => setEditModelBrandId(e.target.value)}
+                                  aria-label="البراند"
+                                  className="w-full min-w-[6.5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                >
+                                  {catalog.brands.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
+                                {model.accessories.length}
+                              </td>
+                              <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
+                                {model.spareParts.length}
+                              </td>
+                              <td className="align-top px-2 py-3">
+                                <div className="flex flex-col gap-2">
                                   <button
                                     type="button"
-                                    className="text-aroma-700 dark:text-aroma-200"
+                                    className="text-start text-aroma-700 dark:text-aroma-200"
                                     onClick={() => {
                                       if (!editModelColor.trim()) {
                                         setError("لون الموديل إلزامي.");
@@ -554,7 +573,7 @@ function CatalogAdminContent() {
                                   </button>
                                   <button
                                     type="button"
-                                    className="text-ink-700/60 dark:text-sand-100/60"
+                                    className="text-start text-ink-700/60 dark:text-sand-100/60"
                                     onClick={() => {
                                       setEditingModelId(null);
                                       setEditModelImage(null);
@@ -563,8 +582,8 @@ function CatalogAdminContent() {
                                     إلغاء
                                   </button>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
+                            </>
                           ) : (
                             <>
                               <td className="px-2 py-3">
