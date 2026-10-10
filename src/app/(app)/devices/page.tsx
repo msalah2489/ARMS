@@ -16,12 +16,25 @@ import {
 } from "@/lib/branch-store";
 import { getDevices } from "@/lib/data";
 import { readSession } from "@/lib/session";
+import { listDevicesEligibleForShipment } from "@/lib/shipping-store";
 import type { Device } from "@/types/domain";
 
-type ListFocus = "pending_supervisor" | "awaiting_customer" | null;
+type ListFocus =
+  | "pending_supervisor"
+  | "awaiting_customer"
+  | "returning"
+  | "ready_to_send"
+  | null;
 
 function readFocus(raw: string | null): ListFocus {
-  if (raw === "pending_supervisor" || raw === "awaiting_customer") return raw;
+  if (
+    raw === "pending_supervisor" ||
+    raw === "awaiting_customer" ||
+    raw === "returning" ||
+    raw === "ready_to_send"
+  ) {
+    return raw;
+  }
   return null;
 }
 
@@ -59,8 +72,19 @@ export default function DevicesPage() {
 
   const visible = useMemo(() => {
     if (!focus) return devices;
+    if (focus === "ready_to_send") {
+      if (!branchId) return [];
+      const ids = new Set(
+        listDevicesEligibleForShipment(branchId).map((item) => item.device.localId),
+      );
+      return devices.filter((device) => ids.has(device.id));
+    }
     const lifecycle =
-      focus === "pending_supervisor" ? "awaiting_manager_decision" : "awaiting_customer";
+      focus === "pending_supervisor"
+        ? "awaiting_manager_decision"
+        : focus === "returning"
+          ? "in_return_transit"
+          : "awaiting_customer";
     const ids = new Set(
       listAllRequestDevices()
         .filter(
@@ -78,7 +102,11 @@ export default function DevicesPage() {
       ? t("dashboard.filter.pendingSupervisor")
       : focus === "awaiting_customer"
         ? t("dashboard.filter.awaitingCustomer")
-        : null;
+        : focus === "returning"
+          ? t("dashboard.filter.returning")
+          : focus === "ready_to_send"
+            ? t("dashboard.filter.readyToSend")
+            : null;
 
   return (
     <div>

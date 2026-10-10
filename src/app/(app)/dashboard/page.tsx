@@ -23,8 +23,10 @@ import {
   subscribeMaintenanceRequestsChanged,
 } from "@/lib/branch-store";
 import {
+  getBranchDailyWorkCounts,
   getDashboardAttentionCounts,
   getDashboardOpsShippingAttention,
+  type BranchDailyWorkCounts,
   type DashboardAttentionCounts,
   type DashboardOpsShippingAttention,
 } from "@/lib/dashboard-attention";
@@ -48,6 +50,7 @@ export default function DashboardPage() {
   const [techStats, setTechStats] = useState<ReturnType<typeof getTechnicianDashboardStats> | null>(
     null,
   );
+  const [branchWork, setBranchWork] = useState<BranchDailyWorkCounts | null>(null);
 
   useEffect(() => {
     function load() {
@@ -59,7 +62,13 @@ export default function DashboardPage() {
         setBranchRequests(listMaintenanceRequests(session.opsBranchId));
         setAttention(getDashboardAttentionCounts(session.opsBranchId));
         setShippingAttention(null);
+        setBranchWork(
+          session.opsBranchId
+            ? getBranchDailyWorkCounts(session.opsBranchId)
+            : { incomingFromService: 0, awaitingCustomer: 0, readyToSend: 0 },
+        );
       } else {
+        setBranchWork(null);
         setAttention(getDashboardAttentionCounts());
         if (isMaintenanceManagerRole(session.role)) {
           setShippingAttention(getDashboardOpsShippingAttention());
@@ -207,10 +216,48 @@ export default function DashboardPage() {
   }
 
   if (isBranchRole(user.role)) {
-    const openCount = branchRequests.length;
-    const deviceCount = branchRequests.reduce((sum, item) => sum + item.devices.length, 0);
-    const urgentCount = branchRequests.filter((item) => item.priority === "urgent").length;
     const branchName = user.opsBranchName || t("dashboard.branchFallback");
+    const work = branchWork ?? {
+      incomingFromService: 0,
+      awaitingCustomer: 0,
+      readyToSend: 0,
+    };
+
+    const workCards: Array<{
+      key: string;
+      title: string;
+      hint: string;
+      count: number;
+      href: string;
+      actionHref?: string;
+      actionLabel?: string;
+    }> = [
+      {
+        key: "incoming",
+        title: t("dashboard.work.incoming"),
+        hint: t("dashboard.work.incomingHint"),
+        count: work.incomingFromService,
+        href: "/devices?focus=returning",
+        actionHref: "/branch/shipping",
+        actionLabel: t("dashboard.work.openShipping"),
+      },
+      {
+        key: "awaiting",
+        title: t("dashboard.work.awaitingCustomer"),
+        hint: t("dashboard.work.awaitingCustomerHint"),
+        count: work.awaitingCustomer,
+        href: "/devices?focus=awaiting_customer",
+      },
+      {
+        key: "ready",
+        title: t("dashboard.work.readyToSend"),
+        hint: t("dashboard.work.readyToSendHint"),
+        count: work.readyToSend,
+        href: "/devices?focus=ready_to_send",
+        actionHref: "/branch/shipping",
+        actionLabel: t("dashboard.work.openShipping"),
+      },
+    ];
 
     return (
       <div>
@@ -234,19 +281,41 @@ export default function DashboardPage() {
             </>
           }
         />
-        <AttentionWidgets
-          counts={attention}
-          t={t}
-          urgentHref="/service-requests?focus=urgent_today"
-          pendingHref="/service-requests?focus=on_hold"
-          awaitingHref="/devices?focus=awaiting_customer"
-        />
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <DashboardColumn title={t("dashboard.col.branchSummary")}>
-            <StatRow label={t("dashboard.branchRequests")} value={openCount} />
-            <StatRow label={t("dashboard.receivedDevices")} value={deviceCount} />
-            <StatRow label={t("dashboard.urgentRequests")} value={urgentCount} />
-          </DashboardColumn>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {workCards.map((card) => (
+            <div
+              key={card.key}
+              className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">{card.title}</h2>
+                <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-ink-900 px-3 py-1 text-sm font-semibold text-white dark:bg-aroma-600">
+                  {card.count}
+                </span>
+              </div>
+              <p className="mt-2 flex-1 text-sm text-ink-700/70 dark:text-sand-100/70">{card.hint}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href={card.href}
+                  className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+                >
+                  {t("dashboard.work.openList")}
+                </Link>
+                {card.actionHref && card.actionLabel ? (
+                  <Link
+                    href={card.actionHref}
+                    className="rounded-full border border-ink-900/15 px-4 py-2 text-sm text-ink-900 dark:border-white/15 dark:text-sand-50"
+                  >
+                    {card.actionLabel}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6">
           <DashboardColumn title={t("dashboard.col.branchRequests")}>
             {branchRequests.length === 0 ? (
               <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
@@ -254,7 +323,7 @@ export default function DashboardPage() {
               </p>
             ) : (
               <ul className="space-y-2">
-                {branchRequests.map((request) => (
+                {branchRequests.slice(0, 8).map((request) => (
                   <li
                     key={request.id}
                     className="rounded-xl border border-ink-900/10 px-3 py-2 dark:border-white/10"
@@ -268,26 +337,15 @@ export default function DashboardPage() {
                           {request.requestNumber}
                         </Link>
                         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                          {request.contactName} · {request.customerMobile} ·{" "}
+                          {request.contactName} ·{" "}
                           {t("dashboard.deviceCount").replace(
                             "{count}",
                             String(request.devices.length),
                           )}
                         </p>
-                        <p className="mt-1 text-xs text-ink-700/60 dark:text-sand-100/60">
-                          {request.devices
-                            .map(
-                              (device) =>
-                                `${device.deviceCode}: ${deviceStatusLabel(device.lifecycleStatus, "branch")}`,
-                            )
-                            .join(" · ")}
-                        </p>
                       </div>
                       <div className="text-sm text-ink-700/70 dark:text-sand-100/70">
-                        {request.priority === "urgent"
-                          ? t("dashboard.urgent")
-                          : t("dashboard.normal")}{" "}
-                        · {formatDate(request.receivedAt)}
+                        {formatDate(request.receivedAt)}
                       </div>
                     </div>
                   </li>

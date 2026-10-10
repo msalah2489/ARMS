@@ -3,9 +3,11 @@ import {
   listMaintenanceRequests,
   normalizeLifecycleStatus,
 } from "@/lib/branch-store";
+import { listApprovedReturnReceiptsForBranch } from "@/lib/pickup-receipt-store";
 import {
   listBranchesReadyToShip,
   listCarriersWithOpenBatches,
+  listDevicesEligibleForShipment,
   type BranchReadyToShipSummary,
   type CarrierOpenBatchesSummary,
 } from "@/lib/shipping-store";
@@ -15,6 +17,48 @@ export type DashboardAttentionCounts = {
   pendingSupervisor: number;
   awaitingCustomer: number;
 };
+
+/** Daily work queues for branch employee home screen. */
+export type BranchDailyWorkCounts = {
+  /** Devices returning to this branch (in transit / with courier return). */
+  incomingFromService: number;
+  /** Maintained devices at branch waiting for customer pickup. */
+  awaitingCustomer: number;
+  /** Devices at branch ready to send to service (or mobile tech path). */
+  readyToSend: number;
+};
+
+export function getBranchDailyWorkCounts(opsBranchId: string): BranchDailyWorkCounts {
+  const devices = listAllRequestDevices().filter(
+    (item) => item.request.opsBranchId === opsBranchId,
+  );
+
+  const incomingDeviceIds = new Set(
+    devices
+      .filter(
+        (item) =>
+          normalizeLifecycleStatus(item.device.lifecycleStatus) === "in_return_transit",
+      )
+      .map((item) => item.device.localId),
+  );
+
+  for (const receipt of listApprovedReturnReceiptsForBranch(opsBranchId)) {
+    for (const line of receipt.lines) {
+      if (line.status === "approved" || line.status === "included") {
+        incomingDeviceIds.add(line.deviceLocalId);
+      }
+    }
+  }
+
+  return {
+    incomingFromService: incomingDeviceIds.size,
+    awaitingCustomer: devices.filter(
+      (item) =>
+        normalizeLifecycleStatus(item.device.lifecycleStatus) === "awaiting_customer",
+    ).length,
+    readyToSend: listDevicesEligibleForShipment(opsBranchId).length,
+  };
+}
 
 export type DashboardOpsShippingAttention = {
   branchesReadyToShip: BranchReadyToShipSummary[];
