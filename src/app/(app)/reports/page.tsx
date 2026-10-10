@@ -114,20 +114,27 @@ function EmptyState({ label }: { label: string }) {
 function FilterField({
   label,
   children,
+  wide,
 }: {
   label: string;
   children: ReactNode;
+  /** Slightly wider for report-type / long text fields */
+  wide?: boolean;
 }) {
   return (
-    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs text-ink-700/80 dark:text-sand-100/70">
-      <span>{label}</span>
+    <label
+      className={`flex flex-col gap-0.5 text-[11px] text-ink-700/80 dark:text-sand-100/70 ${
+        wide ? "w-[12.5rem] max-w-full" : "w-[8.5rem] max-w-full"
+      }`}
+    >
+      <span className="truncate">{label}</span>
       {children}
     </label>
   );
 }
 
 const fieldClass =
-  "rounded-xl border border-ink-900/10 bg-white px-3 py-2 text-sm text-ink-900 dark:border-white/10 dark:bg-ink-950 dark:text-sand-50";
+  "w-full rounded-md border border-ink-900/10 bg-white px-2 py-1 text-xs text-ink-900 dark:border-white/10 dark:bg-ink-950 dark:text-sand-50";
 
 function SelectFilter({
   value,
@@ -633,9 +640,9 @@ export default function ReportsPage() {
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{t("reports.loading")}</p>
       ) : (
         <>
-          <section className="rounded-2xl border border-ink-900/10 bg-white p-4 shadow-panel dark:border-white/10 dark:bg-ink-900">
-            <div className="grid gap-4 lg:grid-cols-[minmax(14rem,18rem)_1fr]">
-              <FilterField label={t("reports.reportType")}>
+          <section className="rounded-xl border border-ink-900/10 bg-white p-3 shadow-panel dark:border-white/10 dark:bg-ink-900">
+            <div className="flex flex-wrap items-end gap-2">
+              <FilterField label={t("reports.reportType")} wide>
                 <select
                   className={fieldClass}
                   value={reportId}
@@ -652,48 +659,46 @@ export default function ReportsPage() {
                 </select>
               </FilterField>
 
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex items-center gap-2 pb-2 text-sm text-ink-700 dark:text-sand-100">
-                  <input
-                    type="checkbox"
-                    checked={filters.allDates !== false}
-                    onChange={(event) =>
-                      patchFilters({
-                        allDates: event.target.checked,
-                        dateFrom: event.target.checked ? "" : filters.dateFrom,
-                        dateTo: event.target.checked ? "" : filters.dateTo,
-                      })
-                    }
-                    className="rounded border-ink-900/20"
-                  />
-                  {t("reports.filter.allDates")}
-                </label>
-                <FilterField label={t("reports.filter.dateFrom")}>
-                  <input
-                    type="date"
-                    className={fieldClass}
-                    disabled={filters.allDates !== false}
-                    value={filters.dateFrom || ""}
-                    onChange={(event) =>
-                      patchFilters({ allDates: false, dateFrom: event.target.value })
-                    }
-                  />
-                </FilterField>
-                <FilterField label={t("reports.filter.dateTo")}>
-                  <input
-                    type="date"
-                    className={fieldClass}
-                    disabled={filters.allDates !== false}
-                    value={filters.dateTo || ""}
-                    onChange={(event) =>
-                      patchFilters({ allDates: false, dateTo: event.target.value })
-                    }
-                  />
-                </FilterField>
-              </div>
+              <label className="flex h-[1.875rem] items-center gap-1.5 text-xs text-ink-700 dark:text-sand-100">
+                <input
+                  type="checkbox"
+                  checked={filters.allDates !== false}
+                  onChange={(event) =>
+                    patchFilters({
+                      allDates: event.target.checked,
+                      dateFrom: event.target.checked ? "" : filters.dateFrom,
+                      dateTo: event.target.checked ? "" : filters.dateTo,
+                    })
+                  }
+                  className="size-3.5 rounded border-ink-900/20"
+                />
+                {t("reports.filter.allDates")}
+              </label>
+              <FilterField label={t("reports.filter.dateFrom")}>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  disabled={filters.allDates !== false}
+                  value={filters.dateFrom || ""}
+                  onChange={(event) =>
+                    patchFilters({ allDates: false, dateFrom: event.target.value })
+                  }
+                />
+              </FilterField>
+              <FilterField label={t("reports.filter.dateTo")}>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  disabled={filters.allDates !== false}
+                  value={filters.dateTo || ""}
+                  onChange={(event) =>
+                    patchFilters({ allDates: false, dateTo: event.target.value })
+                  }
+                />
+              </FilterField>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-2 flex flex-wrap gap-2">
               {showBrand ? (
                 <FilterField label={t("reports.filter.brand")}>
                   <SelectFilter
@@ -898,25 +903,25 @@ export default function ReportsPage() {
               ) : null}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-ink-900/10 px-3 py-1.5 text-xs font-medium dark:border-white/10"
+                className="inline-flex items-center gap-1 rounded-md border border-ink-900/10 px-2 py-1 text-[11px] font-medium dark:border-white/10"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="h-3 w-3" />
                 {t("reports.resetFilters")}
               </button>
-              <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
+              <span className="text-[11px] text-ink-700/60 dark:text-sand-100/60">
                 {t("reports.rows").replace("{count}", String(result.tableRows.length))}
               </span>
               <button
                 type="button"
                 disabled={result.csvRows.length === 0}
                 onClick={() => downloadCsv(result.filename, result.columns, result.csvRows)}
-                className="ms-auto inline-flex items-center gap-1.5 rounded-xl border border-ink-900/10 px-3 py-1.5 text-xs font-medium disabled:opacity-40 dark:border-white/10"
+                className="ms-auto inline-flex items-center gap-1 rounded-md border border-ink-900/10 px-2 py-1 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Download className="h-3 w-3" />
                 {t("reports.exportCsv")}
               </button>
             </div>
