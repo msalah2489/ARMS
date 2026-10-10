@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { EXTERNAL_CONDITION_LABELS, generateDeviceCode } from "@/lib/branch-catalog";
-import { getBrands, getDeviceTypes, getModelColors, getModels } from "@/lib/catalog-store";
+import {
+  getBrands,
+  getDeviceTypes,
+  getModelColors,
+  getModels,
+  listModelAccessories,
+} from "@/lib/catalog-store";
 import type { CatalogItem, DraftRequestDevice, ExternalCondition, ModelItem } from "@/types/domain";
 
 type Props = {
@@ -51,6 +57,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   );
 
   const selectedModel = models.find((model) => model.id === modelId);
+  const modelAccessories = listModelAccessories(selectedModel, color);
 
   if (!open) return null;
 
@@ -114,7 +121,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
       fault: fault.trim(),
       externalCondition,
       accessoryIds,
-      accessoryNames: (model?.accessories ?? [])
+      accessoryNames: listModelAccessories(model, colorTrimmed)
         .filter((item) => accessoryIds.includes(item.id))
         .map((item) => (item.color ? `${item.name} · ${item.color}` : item.name)),
       extraDetails: extraDetails.trim(),
@@ -217,7 +224,10 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             {getModelColors(selectedModel).length > 0 ? (
               <select
                 value={color}
-                onChange={(e) => setColor(e.target.value)}
+                onChange={(e) => {
+                  setColor(e.target.value);
+                  setAccessoryIds([]);
+                }}
                 required
                 className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
               >
@@ -231,7 +241,10 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             ) : (
               <input
                 value={color}
-                onChange={(e) => setColor(e.target.value)}
+                onChange={(e) => {
+                  setColor(e.target.value);
+                  setAccessoryIds([]);
+                }}
                 placeholder={modelId ? "لا ألوان على الموديل — أدخل اللون يدوياً" : "اختر الموديل أولاً"}
                 required
                 className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
@@ -266,10 +279,14 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
         <div className="mt-6">
           <p className="text-sm font-medium">الملحقات</p>
           <div className="mt-2 flex flex-wrap gap-3">
-            {(selectedModel?.accessories ?? []).length === 0 ? (
-              <p className="text-xs text-ink-700/60 dark:text-sand-100/60">اختر الموديل لعرض الملحقات.</p>
+            {!selectedModel || !color.trim() ? (
+              <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                اختر الموديل ولون الجهاز لعرض الملحقات.
+              </p>
+            ) : modelAccessories.length === 0 ? (
+              <p className="text-xs text-ink-700/60 dark:text-sand-100/60">لا توجد ملحقات لهذا اللون.</p>
             ) : (
-              selectedModel?.accessories.map((item) => (
+              modelAccessories.map((item) => (
                 <label key={item.id} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"

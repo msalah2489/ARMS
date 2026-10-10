@@ -222,7 +222,12 @@ export function reportPartNameOptions(allLabel: string): ReportFilterOption[] {
   const fromWork = listTechnicianWork().flatMap(
     (w) => w.sparePartsUsed?.map((p) => p.partName) ?? [],
   );
-  const fromModels = getModels().flatMap((m) => m.spareParts?.map((p) => p.name) ?? []);
+  const fromModels = getModels().flatMap((m) => {
+    if (m.variants?.length) {
+      return m.variants.flatMap((variant) => variant.spareParts.map((p) => p.name));
+    }
+    return m.spareParts?.map((p) => p.name) ?? [];
+  });
   return withAll(
     uniqueSorted([...fromWork, ...fromModels]).map((name) => ({ value: name, label: name })),
     allLabel,

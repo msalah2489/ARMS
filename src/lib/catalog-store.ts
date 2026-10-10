@@ -6,7 +6,13 @@ import {
 import { isDemoMode } from "@/lib/auth";
 import { pushAppCatalog } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { AccessoryItem, CatalogItem, ModelItem, SparePartItem } from "@/types/domain";
+import type {
+  AccessoryItem,
+  CatalogItem,
+  ModelColorVariant,
+  ModelItem,
+  SparePartItem,
+} from "@/types/domain";
 
 const CATALOG_KEY = "arms_device_catalog_v1";
 
@@ -72,29 +78,251 @@ export function getModelColors(model: Pick<ModelItem, "colors" | "color"> | null
   return normalizeModelColors(model);
 }
 
-/** True if any accessory or spare part on the model has a non-empty color. */
+function colorKey(color: string): string {
+  return color.trim().toLowerCase();
+}
+
+function cloneAccessory(item: AccessoryItem): AccessoryItem {
+  return normalizeAccessory({
+    ...item,
+    id: crypto.randomUUID(),
+  });
+}
+
+function cloneSparePart(item: SparePartItem): SparePartItem {
+  return normalizeSparePart({
+    ...item,
+    id: crypto.randomUUID(),
+  });
+}
+
+function cloneAccessories(items: AccessoryItem[]): AccessoryItem[] {
+  return items.map(cloneAccessory);
+}
+
+function cloneSpareParts(items: SparePartItem[]): SparePartItem[] {
+  return items.map(cloneSparePart);
+}
+
+function mirrorLegacyFromFirstVariant(model: ModelItem) {
+  const first = model.variants?.[0];
+  model.accessories = first
+    ? first.accessories.map((item) => normalizeAccessory({ ...item }))
+    : [];
+  model.spareParts = first
+    ? first.spareParts.map((item) => normalizeSparePart({ ...item }))
+    : [];
+}
+
+/** Build/sync one variant entry per body color; clone parts when forking a new color. */
+function syncModelVariants(model: ModelItem, colors: string[]): ModelColorVariant[] {
+  const legacyAccessories = (model.accessories ?? []).map(normalizeAccessory);
+  const legacySpareParts = (model.spareParts ?? []).map(normalizeSparePart);
+  const byKey = new Map<string, ModelColorVariant>();
+
+  for (const raw of model.variants ?? []) {
+    const c = String(raw.color ?? "").trim();
+    if (!c) continue;
+    const key = colorKey(c);
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      color: c,
+      accessories: (raw.accessories ?? []).map(normalizeAccessory),
+      spareParts: (raw.spareParts ?? []).map(normalizeSparePart),
+    });
+  }
+
+  const hadVariants = byKey.size > 0;
+  let template: { accessories: AccessoryItem[]; spareParts: SparePartItem[] } | null = null;
+
+  function getCloneTemplate() {
+    if (template) return template;
+    for (const color of colors) {
+      const existing = byKey.get(colorKey(color));
+      if (existing) {
+        template = existing;
+        return template;
+      }
+    }
+    for (const existing of byKey.values()) {
+      template = existing;
+      return template;
+    }
+    template = { accessories: legacyAccessories, spareParts: legacySpareParts };
+    return template;
+  }
+
+  return colors.map((color, index) => {
+    const existing = byKey.get(colorKey(color));
+    if (existing) {
+      return {
+        color,
+        accessories: existing.accessories,
+        spareParts: existing.spareParts,
+      };
+    }
+    if (!hadVariants) {
+      // First migration: keep legacy ids on the first color; fork copies for the rest.
+      if (index === 0) {
+        return {
+          color,
+          accessories: legacyAccessories.map((item) => normalizeAccessory({ ...item })),
+          spareParts: legacySpareParts.map((item) => normalizeSparePart({ ...item })),
+        };
+      }
+      return {
+        color,
+        accessories: cloneAccessories(legacyAccessories),
+        spareParts: cloneSpareParts(legacySpareParts),
+      };
+    }
+    const source = getCloneTemplate();
+    return {
+      color,
+      accessories: cloneAccessories(source.accessories),
+      spareParts: cloneSpareParts(source.spareParts),
+    };
+  });
+}
+
+/**
+ * Variant for a body color. If `bodyColor` is empty and the model has exactly one color,
+ * returns that color's variant. Multi-color with no bodyColor → null.
+ */
+export function getModelVariant(
+  model: ModelItem | null | undefined,
+  bodyColor: string | null | undefined,
+): ModelColorVariant | null {
+  if (!model) return null;
+  const colors = getModelColors(model);
+  const variants = model.variants ?? [];
+  const trimmed = bodyColor?.trim();
+  if (trimmed) {
+    const key = colorKey(trimmed);
+    return variants.find((item) => colorKey(item.color) === key) ?? null;
+  }
+  if (colors.length === 1) {
+    const only = colors[0];
+    return (
+      variants.find((item) => colorKey(item.color) === colorKey(only)) ??
+      variants[0] ??
+      null
+    );
+  }
+  return null;
+}
+
+export function listModelAccessories(
+  model: ModelItem | null | undefined,
+  bodyColor: string | null | undefined,
+): AccessoryItem[] {
+  if (!model) return [];
+  const variant = getModelVariant(model, bodyColor);
+  if (variant) return variant.accessories;
+  if (bodyColor?.trim()) return [];
+  return model.variants?.[0]?.accessories ?? model.accessories ?? [];
+}
+
+export function listModelSpareParts(
+  model: ModelItem | null | undefined,
+  bodyColor: string | null | undefined,
+): SparePartItem[] {
+  if (!model) return [];
+  const variant = getModelVariant(model, bodyColor);
+  if (variant) return variant.spareParts;
+  if (bodyColor?.trim()) return [];
+  return model.variants?.[0]?.spareParts ?? model.spareParts ?? [];
+}
+
+function allModelAccessories(model: ModelItem): AccessoryItem[] {
+  if (model.variants?.length) {
+    return model.variants.flatMap((variant) => variant.accessories);
+  }
+  return model.accessories ?? [];
+}
+
+function allModelSpareParts(model: ModelItem): SparePartItem[] {
+  if (model.variants?.length) {
+    return model.variants.flatMap((variant) => variant.spareParts);
+  }
+  return model.spareParts ?? [];
+}
+
+/** True if any accessory or spare part (any variant or legacy) has a non-empty color. */
 export function modelHasColoredParts(
-  model: Pick<ModelItem, "accessories" | "spareParts"> | null | undefined,
+  model: Pick<ModelItem, "accessories" | "spareParts" | "variants"> | null | undefined,
 ): boolean {
   if (!model) return false;
+  const accessories = model.variants?.length
+    ? model.variants.flatMap((variant) => variant.accessories)
+    : (model.accessories ?? []);
+  const spareParts = model.variants?.length
+    ? model.variants.flatMap((variant) => variant.spareParts)
+    : (model.spareParts ?? []);
   return (
-    model.accessories.some((item) => Boolean(item.color?.trim())) ||
-    model.spareParts.some((item) => Boolean(item.color?.trim()))
+    accessories.some((item) => Boolean(item.color?.trim())) ||
+    spareParts.some((item) => Boolean(item.color?.trim()))
   );
+}
+
+function resolveVariantForMutation(
+  model: ModelItem,
+  bodyColor: string,
+): { ok: true; variant: ModelColorVariant } | { ok: false; error: string } {
+  const trimmed = bodyColor?.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      error: "اختر لون الجهاز أولاً لتعديل الملحقات وقطع الغيار.",
+    };
+  }
+  const colors = getModelColors(model);
+  if (!colors.some((item) => colorKey(item) === colorKey(trimmed))) {
+    return {
+      ok: false,
+      error: "لون الجهاز المحدد غير موجود على هذا الموديل.",
+    };
+  }
+  if (!model.variants?.length) {
+    model.variants = syncModelVariants(model, colors);
+  }
+  const variant = model.variants.find((item) => colorKey(item.color) === colorKey(trimmed));
+  if (!variant) {
+    return {
+      ok: false,
+      error: "لون الجهاز المحدد غير موجود على هذا الموديل.",
+    };
+  }
+  return { ok: true, variant };
 }
 
 function normalizeModel(model: ModelItem): ModelItem {
   const image = model.imageDataUrl?.trim();
   const colors = normalizeModelColors(model);
+  const variants = syncModelVariants(model, colors);
+  const first = variants[0];
   const next: ModelItem = {
     ...model,
     imageDataUrl: image || undefined,
     colors,
-    accessories: (model.accessories ?? []).map(normalizeAccessory),
-    spareParts: (model.spareParts ?? []).map(normalizeSparePart),
+    variants,
+    accessories: first
+      ? first.accessories.map((item) => normalizeAccessory({ ...item }))
+      : [],
+    spareParts: first
+      ? first.spareParts.map((item) => normalizeSparePart({ ...item }))
+      : [],
   };
   delete next.color;
   return next;
+}
+
+function modelsNeedVariantPersist(raw: ModelItem[], normalized: ModelItem[]): boolean {
+  return raw.some((model, index) => {
+    const before = Array.isArray(model.variants) ? model.variants.length : 0;
+    const after = normalized[index]?.variants?.length ?? 0;
+    return before === 0 && after > 0;
+  });
 }
 
 function seedCatalog(): DeviceCatalogState {
@@ -110,11 +338,17 @@ export function getCatalogLocalRaw(): DeviceCatalogState | null {
   if (typeof window === "undefined") return null;
   const stored = readJson<DeviceCatalogState | null>(CATALOG_KEY, null);
   if (!stored) return null;
-  return {
+  const rawModels = stored.models ?? [];
+  const models = rawModels.map(normalizeModel);
+  const next = {
     deviceTypes: stored.deviceTypes ?? [],
     brands: stored.brands ?? [],
-    models: (stored.models ?? []).map(normalizeModel),
+    models,
   };
+  if (modelsNeedVariantPersist(rawModels, models)) {
+    writeJson(CATALOG_KEY, next);
+  }
+  return next;
 }
 
 export function getCatalogLocal(): DeviceCatalogState {
@@ -154,11 +388,18 @@ export function getCatalog(): DeviceCatalogState {
   // Cloud mode: never auto-seed or push demo catalog; show stored or empty.
   if (isSupabaseConfigured() && !isDemoMode()) {
     if (!stored) return { deviceTypes: [], brands: [], models: [] };
-    return {
+    const rawModels = stored.models ?? [];
+    const models = rawModels.map(normalizeModel);
+    const next = {
       deviceTypes: stored.deviceTypes ?? [],
       brands: stored.brands ?? [],
-      models: (stored.models ?? []).map(normalizeModel),
+      models,
     };
+    if (modelsNeedVariantPersist(rawModels, models)) {
+      writeJson(CATALOG_KEY, next);
+      if (!isDemoMode()) void pushAppCatalog(next);
+    }
+    return next;
   }
 
   const fallback = seedCatalog();
@@ -166,11 +407,17 @@ export function getCatalog(): DeviceCatalogState {
     writeJson(CATALOG_KEY, fallback);
     return fallback;
   }
-  return {
+  const rawModels = stored.models?.length ? stored.models : fallback.models;
+  const models = rawModels.map(normalizeModel);
+  const next = {
     deviceTypes: stored.deviceTypes?.length ? stored.deviceTypes : fallback.deviceTypes,
     brands: stored.brands?.length ? stored.brands : fallback.brands,
-    models: (stored.models?.length ? stored.models : fallback.models).map(normalizeModel),
+    models,
   };
+  if (modelsNeedVariantPersist(rawModels, models)) {
+    writeJson(CATALOG_KEY, next);
+  }
+  return next;
 }
 
 function saveCatalog(next: DeviceCatalogState) {
@@ -197,8 +444,14 @@ export function getModelById(modelId: string) {
   return getModels().find((model) => model.id === modelId) ?? null;
 }
 
-export function getSparePartsForModel(modelId: string) {
-  return getModelById(modelId)?.spareParts ?? [];
+/** Spare parts for a model; optional body color scopes to that variant. Without color, all variants. */
+export function getSparePartsForModel(modelId: string, bodyColor?: string | null) {
+  const model = getModelById(modelId);
+  if (!model) return [];
+  if (bodyColor?.trim()) {
+    return listModelSpareParts(model, bodyColor);
+  }
+  return allModelSpareParts(model);
 }
 
 export function addDeviceType(name: string): { ok: true } | { ok: false; error: string } {
@@ -303,6 +556,11 @@ export function addModel(input: {
     return { ok: false, error: "البراند غير موجود." };
   }
   const id = crypto.randomUUID();
+  const variants: ModelColorVariant[] = colors.map((color) => ({
+    color,
+    accessories: [],
+    spareParts: [],
+  }));
   catalog.models.push({
     id,
     name,
@@ -310,6 +568,7 @@ export function addModel(input: {
     brandId: input.brandId,
     colors,
     imageDataUrl,
+    variants,
     accessories: [],
     spareParts: [],
   });
@@ -359,12 +618,15 @@ export function updateModel(input: {
   model.colors = colors;
   delete model.color;
   model.imageDataUrl = imageDataUrl;
+  model.variants = syncModelVariants(model, colors);
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function addModelAccessory(
   modelId: string,
+  bodyColor: string,
   name: string,
   color?: string,
 ): { ok: true } | { ok: false; error: string } {
@@ -374,26 +636,31 @@ export function addModelAccessory(
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  const { variant } = resolved;
   if (
-    model.accessories.some(
+    variant.accessories.some(
       (item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
-    return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
+    return { ok: false, error: "الملحق موجود مسبقًا لهذا اللون." };
   }
-  model.accessories.push(
+  variant.accessories.push(
     normalizeAccessory({
       id: crypto.randomUUID(),
       name: trimmed,
       color: colorTrimmed,
     }),
   );
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function updateModelAccessory(
   modelId: string,
+  bodyColor: string,
   accessoryId: string,
   name: string,
   color?: string,
@@ -404,39 +671,50 @@ export function updateModelAccessory(
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  const accessory = model.accessories.find((item) => item.id === accessoryId);
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  const { variant } = resolved;
+  const accessory = variant.accessories.find((item) => item.id === accessoryId);
   if (!accessory) return { ok: false, error: "الملحق غير موجود." };
   if (
-    model.accessories.some(
+    variant.accessories.some(
       (item) =>
         item.id !== accessoryId &&
         item.name === trimmed &&
         (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
-    return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
+    return { ok: false, error: "الملحق موجود مسبقًا لهذا اللون." };
   }
   accessory.name = trimmed;
   if (colorTrimmed) accessory.color = colorTrimmed;
   else delete accessory.color;
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function deleteModelAccessory(
   modelId: string,
+  bodyColor: string,
   accessoryId: string,
 ): { ok: true } | { ok: false; error: string } {
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  model.accessories = model.accessories.filter((item) => item.id !== accessoryId);
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  resolved.variant.accessories = resolved.variant.accessories.filter(
+    (item) => item.id !== accessoryId,
+  );
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function addModelSparePart(
   modelId: string,
+  bodyColor: string,
   name: string,
   color?: string,
   imageDataUrl?: string,
@@ -448,10 +726,17 @@ export function addModelSparePart(
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""))) {
-    return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  const { variant } = resolved;
+  if (
+    variant.spareParts.some(
+      (item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""),
+    )
+  ) {
+    return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا اللون." };
   }
-  model.spareParts.push(
+  variant.spareParts.push(
     normalizeSparePart({
       id: crypto.randomUUID(),
       name: trimmed,
@@ -459,12 +744,14 @@ export function addModelSparePart(
       imageDataUrl: image,
     }),
   );
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function updateModelSparePart(
   modelId: string,
+  bodyColor: string,
   partId: string,
   name: string,
   color?: string,
@@ -477,35 +764,43 @@ export function updateModelSparePart(
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  const part = model.spareParts.find((item) => item.id === partId);
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  const { variant } = resolved;
+  const part = variant.spareParts.find((item) => item.id === partId);
   if (!part) return { ok: false, error: "قطعة الغيار غير موجودة." };
   if (
-    model.spareParts.some(
+    variant.spareParts.some(
       (item) =>
         item.id !== partId &&
         item.name === trimmed &&
         (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
-    return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
+    return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا اللون." };
   }
   part.name = trimmed;
   if (colorTrimmed) part.color = colorTrimmed;
   else delete part.color;
   if (image) part.imageDataUrl = image;
   else delete part.imageDataUrl;
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
 
 export function deleteModelSparePart(
   modelId: string,
+  bodyColor: string,
   partId: string,
 ): { ok: true } | { ok: false; error: string } {
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  model.spareParts = model.spareParts.filter((item) => item.id !== partId);
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  resolved.variant.spareParts = resolved.variant.spareParts.filter((item) => item.id !== partId);
+  mirrorLegacyFromFirstVariant(model);
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -541,7 +836,7 @@ export function suggestAccessoryNames(
 
   for (const model of catalog.models) {
     if (options?.excludeModelId && model.id === options.excludeModelId) continue;
-    for (const accessory of model.accessories) {
+    for (const accessory of allModelAccessories(model)) {
       if (
         !matchesQuery(accessory.name, query) &&
         !(accessory.color && matchesQuery(accessory.color, query))
@@ -579,7 +874,7 @@ export function suggestSparePartNames(
 
   for (const model of catalog.models) {
     if (options?.excludeModelId && model.id === options.excludeModelId) continue;
-    for (const part of model.spareParts) {
+    for (const part of allModelSpareParts(model)) {
       if (!matchesQuery(part.name, query) && !(part.color && matchesQuery(part.color, query))) {
         continue;
       }

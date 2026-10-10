@@ -393,6 +393,14 @@ export type AccessoryItem = CatalogItem & {
   /** Optional color for the accessory */
   color?: string;
 };
+
+/** Per body-color accessories and spare parts for a model. */
+export type ModelColorVariant = {
+  color: string;
+  accessories: AccessoryItem[];
+  spareParts: SparePartItem[];
+};
+
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
@@ -405,7 +413,18 @@ export type ModelItem = CatalogItem & {
   color?: string;
   /** Required catalog/model photo (compressed data URL) */
   imageDataUrl?: string;
+  /**
+   * Accessories/spares isolated per body color.
+   * Prefer reading via catalog-store helpers with a device body color.
+   */
+  variants?: ModelColorVariant[];
+  /**
+   * @deprecated Prefer `variants` — kept as a mirror of the first variant for older readers.
+   */
   accessories: AccessoryItem[];
+  /**
+   * @deprecated Prefer `variants` — kept as a mirror of the first variant for older readers.
+   */
   spareParts: SparePartItem[];
 };
 

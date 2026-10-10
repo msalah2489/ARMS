@@ -222,7 +222,7 @@ export function TechnicianWorkModal({
 
   if (!open || !item) return null;
 
-  const spareParts = getModelSpareParts(item.device.modelId);
+  const spareParts = getModelSpareParts(item.device.modelId, item.device.color);
   const isResume = Boolean(work);
   const isMobilePath =
     normalizeRole(technician.role) === "mobile_technician" ||

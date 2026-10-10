@@ -19,6 +19,8 @@ import {
   deleteModelSparePart,
   getCatalog,
   getModelColors,
+  listModelAccessories,
+  listModelSpareParts,
   modelHasColoredParts,
   normalizeModelColors,
   resetCatalogToSeed,
@@ -33,10 +35,12 @@ import {
 } from "@/lib/catalog-store";
 import { isDemoMode } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 
 type Tab = "types" | "brands" | "models";
 
 function CatalogAdminContent() {
+  const { setDirty, clearDirty, confirmIfDirty } = useUnsavedChanges("admin-catalog");
   const [tab, setTab] = useState<Tab>("types");
   const [catalog, setCatalog] = useState<DeviceCatalogState | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -91,6 +95,32 @@ function CatalogAdminContent() {
     [catalog, selectedModelId],
   );
 
+  const selectedModelColors = useMemo(
+    () => (selectedModel ? getModelColors(selectedModel) : []),
+    [selectedModel],
+  );
+
+  /** Active body color for accessories/spares: row selection, or sole color. */
+  const activeBodyColor = useMemo(() => {
+    const fromRow = selectedModelColor?.trim();
+    if (fromRow) return fromRow;
+    if (selectedModelColors.length === 1) return selectedModelColors[0];
+    return null;
+  }, [selectedModelColor, selectedModelColors]);
+
+  const activeAccessories = useMemo(
+    () => (selectedModel ? listModelAccessories(selectedModel, activeBodyColor) : []),
+    [selectedModel, activeBodyColor],
+  );
+
+  const activeSpareParts = useMemo(
+    () => (selectedModel ? listModelSpareParts(selectedModel, activeBodyColor) : []),
+    [selectedModel, activeBodyColor],
+  );
+
+  const partsColorLocked =
+    Boolean(selectedModel) && selectedModelColors.length > 1 && !activeBodyColor;
+
   const accessorySuggestions = useMemo(
     () =>
       suggestAccessoryNames(accessoryName || accessoryColor, {
@@ -123,7 +153,100 @@ function CatalogAdminContent() {
     [editingSpareName, editingSpareColor, selectedModelId, catalog],
   );
 
+  const catalogDirty = useMemo(
+    () =>
+      Boolean(
+        typeName.trim() ||
+          brandName.trim() ||
+          modelName.trim() ||
+          modelColors.length > 0 ||
+          modelColorDraft.trim() ||
+          modelTypeId ||
+          modelBrandId ||
+          modelImage ||
+          accessoryName.trim() ||
+          accessoryColor.trim() ||
+          spareName.trim() ||
+          spareColor.trim() ||
+          spareImage ||
+          editingTypeId ||
+          editingBrandId ||
+          editingModelId ||
+          editingAccessoryId ||
+          editingSpareId ||
+          editModelColorDraft.trim(),
+      ),
+    [
+      typeName,
+      brandName,
+      modelName,
+      modelColors,
+      modelColorDraft,
+      modelTypeId,
+      modelBrandId,
+      modelImage,
+      accessoryName,
+      accessoryColor,
+      spareName,
+      spareColor,
+      spareImage,
+      editingTypeId,
+      editingBrandId,
+      editingModelId,
+      editingAccessoryId,
+      editingSpareId,
+      editModelColorDraft,
+    ],
+  );
+
+  useEffect(() => {
+    setDirty(catalogDirty);
+  }, [catalogDirty, setDirty]);
+
   if (!catalog) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+
+  function discardCatalogDrafts() {
+    setTypeName("");
+    setBrandName("");
+    setModelName("");
+    setModelColors([]);
+    setModelColorDraft("");
+    setModelTypeId("");
+    setModelBrandId("");
+    setModelImage(null);
+    setAccessoryName("");
+    setAccessoryColor("");
+    setSpareName("");
+    setSpareColor("");
+    setSpareImage(null);
+    setEditingTypeId(null);
+    setEditingTypeName("");
+    setEditingBrandId(null);
+    setEditingBrandName("");
+    setEditingModelId(null);
+    setEditModelName("");
+    setEditModelColors([]);
+    setEditModelColorDraft("");
+    setEditModelTypeId("");
+    setEditModelBrandId("");
+    setEditModelImage(null);
+    setEditingAccessoryId(null);
+    setEditingAccessoryName("");
+    setEditingAccessoryColor("");
+    setEditingSpareId(null);
+    setEditingSpareName("");
+    setEditingSpareColor("");
+    setEditingSpareImage(null);
+    clearDirty();
+  }
+
+  function requestTabChange(next: Tab) {
+    if (next === tab) return;
+    confirmIfDirty(() => {
+      discardCatalogDrafts();
+      setTab(next);
+    });
+  }
 
   /** Merge chips + draft (supports «أبيض، أسود» in one field). Used on save so draft is not lost. */
   function resolveColors(list: string[], draft: string): string[] {
@@ -177,7 +300,7 @@ function CatalogAdminContent() {
     );
     if (!confirmed) return;
     setSelectedModelId(modelId);
-    setSelectedModelColor(null);
+    setSelectedModelColor(colors[0] ?? null);
     window.setTimeout(() => {
       document
         .getElementById("catalog-model-details")
@@ -201,19 +324,19 @@ function CatalogAdminContent() {
             type="button"
             className="rounded-full border border-ink-900/15 px-4 py-2 text-sm"
             onClick={() => {
-              resetCatalogToSeed();
-              setSelectedModelId("");
-              setSelectedModelColor(null);
-              setEditingTypeId(null);
-              setEditingBrandId(null);
-              setEditingModelId(null);
-              setMessage(
-                isSupabaseConfigured() && !isDemoMode()
-                  ? "تم تفريغ الكتالوج (بدون بيانات تجريبية)."
-                  : "تمت إعادة الكتالوج إلى القيم الافتراضية.",
-              );
-              setError(null);
-              refresh();
+              confirmIfDirty(() => {
+                discardCatalogDrafts();
+                resetCatalogToSeed();
+                setSelectedModelId("");
+                setSelectedModelColor(null);
+                setMessage(
+                  isSupabaseConfigured() && !isDemoMode()
+                    ? "تم تفريغ الكتالوج (بدون بيانات تجريبية)."
+                    : "تمت إعادة الكتالوج إلى القيم الافتراضية.",
+                );
+                setError(null);
+                refresh();
+              });
             }}
           >
             {isSupabaseConfigured() && !isDemoMode() ? "تفريغ الكتالوج" : "إعادة الافتراضي"}
@@ -229,7 +352,7 @@ function CatalogAdminContent() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => requestTabChange(item.id)}
             className={`rounded-full px-4 py-2 text-sm ${
               tab === item.id ? "bg-ink-900 text-white" : "border border-ink-900/15 bg-white"
             }`}
@@ -685,10 +808,10 @@ function CatalogAdminContent() {
                                   </select>
                                 </td>
                                 <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
-                                  {model.accessories.length}
+                                  {listModelAccessories(model, rowColor).length}
                                 </td>
                                 <td className="align-top px-2 py-3 text-ink-700/70 dark:text-sand-100/70">
-                                  {model.spareParts.length}
+                                  {listModelSpareParts(model, rowColor).length}
                                 </td>
                                 <td className="align-top px-2 py-3">
                                   <div className="flex flex-col gap-2">
@@ -779,8 +902,12 @@ function CatalogAdminContent() {
                                 <td className="px-2 py-3">{rowColor ?? "—"}</td>
                                 <td className="px-2 py-3">{typeName}</td>
                                 <td className="px-2 py-3">{brandLabel}</td>
-                                <td className="px-2 py-3">{model.accessories.length}</td>
-                                <td className="px-2 py-3">{model.spareParts.length}</td>
+                                <td className="px-2 py-3">
+                                  {listModelAccessories(model, rowColor).length}
+                                </td>
+                                <td className="px-2 py-3">
+                                  {listModelSpareParts(model, rowColor).length}
+                                </td>
                                 <td className="px-2 py-3">
                                   <div className="flex flex-wrap gap-3">
                                     <button
@@ -840,10 +967,9 @@ function CatalogAdminContent() {
               <h2 className="font-display text-xl">
                 تفاصيل: {selectedModel.name}
                 {(() => {
-                  const colors = getModelColors(selectedModel);
                   const colorLabel =
-                    selectedModelColor?.trim() ||
-                    (colors.length ? colors.join(" · ") : "");
+                    activeBodyColor ||
+                    (selectedModelColors.length ? selectedModelColors.join(" · ") : "");
                   return colorLabel ? (
                     <span className="font-sans text-base font-normal text-ink-700/70 dark:text-sand-100/70">
                       {" "}
@@ -852,6 +978,12 @@ function CatalogAdminContent() {
                   ) : null;
                 })()}
               </h2>
+
+              {partsColorLocked ? (
+                <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
+                  اختر لون الجهاز من الجدول أولاً لتعديل ملحقاته وقطع غياره
+                </p>
+              ) : null}
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <div>
@@ -876,12 +1008,19 @@ function CatalogAdminContent() {
                     />
                     <button
                       type="button"
-                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
+                      disabled={partsColorLocked || !activeBodyColor}
+                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => {
+                        if (!activeBodyColor) return;
                         if (
                           run(
                             () =>
-                              addModelAccessory(selectedModel.id, accessoryName, accessoryColor),
+                              addModelAccessory(
+                                selectedModel.id,
+                                activeBodyColor,
+                                accessoryName,
+                                accessoryColor,
+                              ),
                             "تمت إضافة الملحق.",
                           )
                         ) {
@@ -894,10 +1033,10 @@ function CatalogAdminContent() {
                     </button>
                   </div>
                   <ul className="mt-3 space-y-2">
-                    {selectedModel.accessories.length === 0 ? (
+                    {activeAccessories.length === 0 ? (
                       <li className="text-xs text-ink-700/60">لا توجد ملحقات بعد.</li>
                     ) : (
-                      selectedModel.accessories.map((item) => (
+                      activeAccessories.map((item) => (
                         <li
                           key={item.id}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm"
@@ -925,11 +1064,13 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700"
                                   onClick={() => {
+                                    if (!activeBodyColor) return;
                                     if (
                                       run(
                                         () =>
                                           updateModelAccessory(
                                             selectedModel.id,
+                                            activeBodyColor,
                                             item.id,
                                             editingAccessoryName,
                                             editingAccessoryColor,
@@ -975,12 +1116,18 @@ function CatalogAdminContent() {
                                 <button
                                   type="button"
                                   className="text-rose-700"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    if (!activeBodyColor) return;
                                     run(
-                                      () => deleteModelAccessory(selectedModel.id, item.id),
+                                      () =>
+                                        deleteModelAccessory(
+                                          selectedModel.id,
+                                          activeBodyColor,
+                                          item.id,
+                                        ),
                                       "تم حذف الملحق.",
-                                    )
-                                  }
+                                    );
+                                  }}
                                 >
                                   حذف
                                 </button>
@@ -1015,13 +1162,16 @@ function CatalogAdminContent() {
                     />
                     <button
                       type="button"
-                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
+                      disabled={partsColorLocked || !activeBodyColor}
+                      className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sand-100 dark:text-ink-900"
                       onClick={() => {
+                        if (!activeBodyColor) return;
                         if (
                           run(
                             () =>
                               addModelSparePart(
                                 selectedModel.id,
+                                activeBodyColor,
                                 spareName,
                                 spareColor,
                                 spareImage?.dataUrl,
@@ -1047,10 +1197,10 @@ function CatalogAdminContent() {
                     />
                   </div>
                   <ul className="mt-3 space-y-2">
-                    {selectedModel.spareParts.length === 0 ? (
+                    {activeSpareParts.length === 0 ? (
                       <li className="text-xs text-ink-700/60 dark:text-sand-100/60">لا توجد قطع غيار بعد.</li>
                     ) : (
-                      selectedModel.spareParts.map((item) => (
+                      activeSpareParts.map((item) => (
                         <li
                           key={item.id}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-900/10 px-3 py-2 text-sm dark:border-white/10"
@@ -1085,11 +1235,13 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700 dark:text-aroma-200"
                                   onClick={() => {
+                                    if (!activeBodyColor) return;
                                     if (
                                       run(
                                         () =>
                                           updateModelSparePart(
                                             selectedModel.id,
+                                            activeBodyColor,
                                             item.id,
                                             editingSpareName,
                                             editingSpareColor,
@@ -1159,12 +1311,18 @@ function CatalogAdminContent() {
                                 <button
                                   type="button"
                                   className="text-rose-700 dark:text-rose-300"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    if (!activeBodyColor) return;
                                     run(
-                                      () => deleteModelSparePart(selectedModel.id, item.id),
+                                      () =>
+                                        deleteModelSparePart(
+                                          selectedModel.id,
+                                          activeBodyColor,
+                                          item.id,
+                                        ),
                                       "تم حذف قطعة الغيار.",
-                                    )
-                                  }
+                                    );
+                                  }}
                                 >
                                   حذف
                                 </button>

@@ -372,12 +372,17 @@ export function consumeSpareParts(input: {
 
 export function listModelsWithSpareParts() {
   return getModels()
-    .filter((model) => model.spareParts.length > 0)
-    .map((model) => ({
-      id: model.id,
-      name: model.name,
-      sparePartsCount: model.spareParts.length,
-    }));
+    .map((model) => {
+      const sparePartsCount = model.variants?.length
+        ? model.variants.reduce((sum, variant) => sum + variant.spareParts.length, 0)
+        : model.spareParts.length;
+      return {
+        id: model.id,
+        name: model.name,
+        sparePartsCount,
+      };
+    })
+    .filter((model) => model.sparePartsCount > 0);
 }
 
 export function partLabel(part: { name?: string; partName?: string; color?: string }) {

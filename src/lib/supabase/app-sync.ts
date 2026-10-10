@@ -658,8 +658,12 @@ export async function pushAppCatalog(catalog: DeviceCatalogState): Promise<SyncR
         device_type_id: model.deviceTypeId,
         brand_id: model.brandId,
         has_image: Boolean(model.imageDataUrl),
-        accessory_count: model.accessories?.length ?? 0,
-        spare_part_count: model.spareParts?.length ?? 0,
+        accessory_count: model.variants?.length
+          ? model.variants.reduce((sum, variant) => sum + variant.accessories.length, 0)
+          : (model.accessories?.length ?? 0),
+        spare_part_count: model.variants?.length
+          ? model.variants.reduce((sum, variant) => sum + variant.spareParts.length, 0)
+          : (model.spareParts?.length ?? 0),
         payload: model,
         synced_at: syncedAt,
       })),

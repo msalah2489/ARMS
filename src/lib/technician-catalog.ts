@@ -41,9 +41,9 @@ export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   other: "أخرى",
 };
 
-/** Spare parts come from the admin-managed catalog. */
-export function getModelSpareParts(modelId: string) {
-  return getSparePartsForModel(modelId);
+/** Spare parts come from the admin-managed catalog (scoped by device body color when provided). */
+export function getModelSpareParts(modelId: string, bodyColor?: string | null) {
+  return getSparePartsForModel(modelId, bodyColor);
 }
 
 /** @deprecated use getModelSpareParts */
