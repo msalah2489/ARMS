@@ -10,6 +10,7 @@ import {
   getModels,
   listModelAccessories,
 } from "@/lib/catalog-store";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type { CatalogItem, DraftRequestDevice, ExternalCondition, ModelItem } from "@/types/domain";
 
 type Props = {
@@ -19,12 +20,15 @@ type Props = {
 };
 
 const CONDITIONS = Object.keys(EXTERNAL_CONDITION_LABELS) as ExternalCondition[];
+const DIRTY_SCOPE = "device-form-modal";
 
 export function DeviceFormModal({ open, onClose, onSave }: Props) {
+  const { setDirty, clearDirty, confirmIfDirty } = useUnsavedChanges(DIRTY_SCOPE);
   const [deviceTypes, setDeviceTypes] = useState<CatalogItem[]>([]);
   const [brands, setBrands] = useState<CatalogItem[]>([]);
   const [models, setModels] = useState<ModelItem[]>([]);
   const [deviceCode, setDeviceCode] = useState(generateDeviceCode());
+  const [baselineCode, setBaselineCode] = useState("");
   const [deviceTypeId, setDeviceTypeId] = useState("");
   const [brandId, setBrandId] = useState("");
   const [modelId, setModelId] = useState("");
@@ -40,11 +44,71 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      clearDirty();
+      return;
+    }
     setDeviceTypes(getDeviceTypes());
     setBrands(getBrands());
     setModels(getModels());
-  }, [open]);
+    const code = generateDeviceCode();
+    setDeviceCode(code);
+    setBaselineCode(code);
+    setDeviceTypeId("");
+    setBrandId("");
+    setModelId("");
+    setSerialNumber("");
+    setColor("");
+    setFault("");
+    setExternalCondition("");
+    setAccessoryIds([]);
+    setExtraDetails("");
+    setDeviceImage(null);
+    setReceiptNumber("");
+    setReceiptImage(null);
+    setError(null);
+    clearDirty();
+  }, [open, clearDirty]);
+
+  const formDirty = useMemo(() => {
+    if (!open) return false;
+    return (
+      deviceCode !== baselineCode ||
+      Boolean(deviceTypeId) ||
+      Boolean(brandId) ||
+      Boolean(modelId) ||
+      Boolean(serialNumber.trim()) ||
+      Boolean(color.trim()) ||
+      Boolean(fault.trim()) ||
+      Boolean(externalCondition) ||
+      accessoryIds.length > 0 ||
+      Boolean(extraDetails.trim()) ||
+      Boolean(deviceImage) ||
+      Boolean(receiptNumber.trim()) ||
+      Boolean(receiptImage)
+    );
+  }, [
+    open,
+    baselineCode,
+    deviceCode,
+    deviceTypeId,
+    brandId,
+    modelId,
+    serialNumber,
+    color,
+    fault,
+    externalCondition,
+    accessoryIds,
+    extraDetails,
+    deviceImage,
+    receiptNumber,
+    receiptImage,
+  ]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDirty(formDirty);
+  }, [open, formDirty, setDirty]);
 
   const filteredModels = useMemo(
     () =>
@@ -62,7 +126,9 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
   if (!open) return null;
 
   function resetForm(keepOpen: boolean) {
-    setDeviceCode(generateDeviceCode());
+    const code = generateDeviceCode();
+    setDeviceCode(code);
+    setBaselineCode(code);
     setDeviceTypeId("");
     setBrandId("");
     setModelId("");
@@ -76,7 +142,15 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
     setReceiptNumber("");
     setReceiptImage(null);
     setError(null);
+    clearDirty();
     if (!keepOpen) onClose();
+  }
+
+  function requestClose() {
+    confirmIfDirty(() => {
+      clearDirty();
+      resetForm(false);
+    });
   }
 
   function buildDevice(): DraftRequestDevice | null {
@@ -139,7 +213,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-panel dark:bg-ink-900">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-2xl">إضافة جهاز</h2>
-          <button type="button" onClick={onClose} className="text-sm text-ink-700/70 dark:text-sand-100/70">
+          <button type="button" onClick={requestClose} className="text-sm text-ink-700/70 dark:text-sand-100/70">
             إغلاق
           </button>
         </div>
@@ -348,6 +422,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             onClick={() => {
               const device = buildDevice();
               if (!device) return;
+              clearDirty();
               onSave(device, false);
               resetForm(false);
             }}
@@ -360,6 +435,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             onClick={() => {
               const device = buildDevice();
               if (!device) return;
+              clearDirty();
               onSave(device, true);
               resetForm(true);
             }}
@@ -369,7 +445,7 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => resetForm(false)}
+            onClick={requestClose}
             className="rounded-full px-5 py-2.5 text-sm text-ink-700/70 dark:text-sand-100/70"
           >
             إلغاء
