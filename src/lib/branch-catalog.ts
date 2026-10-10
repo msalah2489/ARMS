@@ -25,6 +25,7 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Nimbus 300",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc1",
+    color: "أسود",
     accessories: [
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee1", name: "سلك كهرباء" },
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee2", name: "قاعدة تثبيت" },
@@ -41,6 +42,7 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Aura Mini",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc1",
+    color: "فضي",
     accessories: [
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee4", name: "سلك كهرباء" },
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee5", name: "ريموت" },
@@ -55,6 +57,7 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Pro Diffuser",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc2",
+    color: "أبيض",
     accessories: [{ id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee6", name: "حامل جداري" }],
     spareParts: [
       { id: "sp-nozzle", name: "طقم فوهات" },

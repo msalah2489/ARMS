@@ -384,18 +384,20 @@ export type DashboardStats = {
 
 export type CatalogItem = { id: string; name: string };
 export type SparePartItem = CatalogItem & {
-  /** Required color for the spare part (new items); older catalog rows may omit it */
+  /** Optional color for the spare part */
   color?: string;
   /** Optional compressed image (data URL) */
   imageDataUrl?: string;
 };
 export type AccessoryItem = CatalogItem & {
-  /** Required color for the accessory (new items); older catalog rows may omit it */
+  /** Optional color for the accessory */
   color?: string;
 };
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
+  /** Required color for new/updated models; older catalog rows may omit it */
+  color?: string;
   /** Required catalog/model photo (compressed data URL) */
   imageDataUrl?: string;
   accessories: AccessoryItem[];

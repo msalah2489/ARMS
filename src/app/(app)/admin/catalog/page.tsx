@@ -42,6 +42,7 @@ function CatalogAdminContent() {
   const [typeName, setTypeName] = useState("");
   const [brandName, setBrandName] = useState("");
   const [modelName, setModelName] = useState("");
+  const [modelColor, setModelColor] = useState("");
   const [modelTypeId, setModelTypeId] = useState("");
   const [modelBrandId, setModelBrandId] = useState("");
   const [modelImage, setModelImage] = useState<ImageValue | null>(null);
@@ -58,6 +59,7 @@ function CatalogAdminContent() {
   const [editingBrandName, setEditingBrandName] = useState("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editModelName, setEditModelName] = useState("");
+  const [editModelColor, setEditModelColor] = useState("");
   const [editModelTypeId, setEditModelTypeId] = useState("");
   const [editModelBrandId, setEditModelBrandId] = useState("");
   const [editModelImage, setEditModelImage] = useState<ImageValue | null>(null);
@@ -346,7 +348,7 @@ function CatalogAdminContent() {
         <div className="space-y-4">
           <section className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900">
             <h2 className="font-display text-xl">إضافة موديل</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <select
                 value={modelTypeId}
                 onChange={(e) => setModelTypeId(e.target.value)}
@@ -377,6 +379,12 @@ function CatalogAdminContent() {
                 placeholder="اسم الموديل *"
                 className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
               />
+              <input
+                value={modelColor}
+                onChange={(e) => setModelColor(e.target.value)}
+                placeholder="لون الموديل *"
+                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
+              />
             </div>
             <div className="mt-4">
               <ImagePickerField
@@ -391,6 +399,11 @@ function CatalogAdminContent() {
               type="button"
               className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
               onClick={() => {
+                if (!modelColor.trim()) {
+                  setError("لون الموديل إلزامي.");
+                  setMessage(null);
+                  return;
+                }
                 if (!modelImage?.dataUrl) {
                   setError("صورة الموديل إلزامية.");
                   setMessage(null);
@@ -403,12 +416,14 @@ function CatalogAdminContent() {
                         name: modelName,
                         deviceTypeId: modelTypeId,
                         brandId: modelBrandId,
+                        color: modelColor,
                         imageDataUrl: modelImage.dataUrl,
                       }),
                     "تمت إضافة الموديل.",
                   )
                 ) {
                   setModelName("");
+                  setModelColor("");
                   setModelImage(null);
                 }
               }}
@@ -425,6 +440,7 @@ function CatalogAdminContent() {
                   <tr className="border-b border-ink-900/10 text-right text-ink-700/70 dark:border-white/10 dark:text-sand-100/70">
                     <th className="px-2 py-2 font-medium">الصورة</th>
                     <th className="px-2 py-2 font-medium">الموديل</th>
+                    <th className="px-2 py-2 font-medium">اللون</th>
                     <th className="px-2 py-2 font-medium">التصنيف</th>
                     <th className="px-2 py-2 font-medium">البراند</th>
                     <th className="px-2 py-2 font-medium">ملحقات</th>
@@ -435,7 +451,7 @@ function CatalogAdminContent() {
                 <tbody>
                   {catalog.models.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
+                      <td colSpan={8} className="px-2 py-6 text-ink-700/60 dark:text-sand-100/60">
                         لا توجد موديلات بعد.
                       </td>
                     </tr>
@@ -456,9 +472,9 @@ function CatalogAdminContent() {
                           }`}
                         >
                           {isEditing ? (
-                            <td colSpan={7} className="px-2 py-3">
+                            <td colSpan={8} className="px-2 py-3">
                               <div className="space-y-3">
-                                <div className="grid gap-2 md:grid-cols-3">
+                                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
                                   <select
                                     value={editModelTypeId}
                                     onChange={(e) => setEditModelTypeId(e.target.value)}
@@ -484,6 +500,13 @@ function CatalogAdminContent() {
                                   <input
                                     value={editModelName}
                                     onChange={(e) => setEditModelName(e.target.value)}
+                                    placeholder="اسم الموديل *"
+                                    className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+                                  />
+                                  <input
+                                    value={editModelColor}
+                                    onChange={(e) => setEditModelColor(e.target.value)}
+                                    placeholder="لون الموديل *"
                                     className="rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
                                   />
                                 </div>
@@ -498,6 +521,11 @@ function CatalogAdminContent() {
                                     type="button"
                                     className="text-aroma-700 dark:text-aroma-200"
                                     onClick={() => {
+                                      if (!editModelColor.trim()) {
+                                        setError("لون الموديل إلزامي.");
+                                        setMessage(null);
+                                        return;
+                                      }
                                       if (!editModelImage?.dataUrl) {
                                         setError("صورة الموديل إلزامية.");
                                         setMessage(null);
@@ -511,6 +539,7 @@ function CatalogAdminContent() {
                                               name: editModelName,
                                               deviceTypeId: editModelTypeId,
                                               brandId: editModelBrandId,
+                                              color: editModelColor,
                                               imageDataUrl: editModelImage.dataUrl,
                                             }),
                                           "تم تعديل الموديل.",
@@ -558,6 +587,7 @@ function CatalogAdminContent() {
                                   {model.name}
                                 </button>
                               </td>
+                              <td className="px-2 py-3">{model.color || "—"}</td>
                               <td className="px-2 py-3">{typeName}</td>
                               <td className="px-2 py-3">{brandLabel}</td>
                               <td className="px-2 py-3">{model.accessories.length}</td>
@@ -570,6 +600,7 @@ function CatalogAdminContent() {
                                     onClick={() => {
                                       setEditingModelId(model.id);
                                       setEditModelName(model.name);
+                                      setEditModelColor(model.color ?? "");
                                       setEditModelTypeId(model.deviceTypeId);
                                       setEditModelBrandId(model.brandId);
                                       setEditModelImage(
@@ -628,19 +659,13 @@ function CatalogAdminContent() {
                     <input
                       value={accessoryColor}
                       onChange={(e) => setAccessoryColor(e.target.value)}
-                      placeholder="اللون *"
-                      required
+                      placeholder="اللون (اختياري)"
                       className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
                     />
                     <button
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
                       onClick={() => {
-                        if (!accessoryColor.trim()) {
-                          setError("لون الملحق إلزامي.");
-                          setMessage(null);
-                          return;
-                        }
                         if (
                           run(
                             () =>
@@ -680,8 +705,7 @@ function CatalogAdminContent() {
                               <input
                                 value={editingAccessoryColor}
                                 onChange={(e) => setEditingAccessoryColor(e.target.value)}
-                                placeholder="اللون *"
-                                required
+                                placeholder="اللون (اختياري)"
                                 className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
                               <div className="flex gap-2 pt-2">
@@ -689,11 +713,6 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700"
                                   onClick={() => {
-                                    if (!editingAccessoryColor.trim()) {
-                                      setError("لون الملحق إلزامي.");
-                                      setMessage(null);
-                                      return;
-                                    }
                                     if (
                                       run(
                                         () =>
@@ -779,19 +798,13 @@ function CatalogAdminContent() {
                     <input
                       value={spareColor}
                       onChange={(e) => setSpareColor(e.target.value)}
-                      placeholder="اللون *"
-                      required
+                      placeholder="اللون (اختياري)"
                       className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
                     />
                     <button
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
                       onClick={() => {
-                        if (!spareColor.trim()) {
-                          setError("لون قطعة الغيار إلزامي.");
-                          setMessage(null);
-                          return;
-                        }
                         if (
                           run(
                             () =>
@@ -846,8 +859,7 @@ function CatalogAdminContent() {
                                 <input
                                   value={editingSpareColor}
                                   onChange={(e) => setEditingSpareColor(e.target.value)}
-                                  placeholder="اللون *"
-                                  required
+                                  placeholder="اللون (اختياري)"
                                   className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5 dark:border-white/15 dark:bg-ink-950"
                                 />
                               </div>
@@ -861,11 +873,6 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700 dark:text-aroma-200"
                                   onClick={() => {
-                                    if (!editingSpareColor.trim()) {
-                                      setError("لون قطعة الغيار إلزامي.");
-                                      setMessage(null);
-                                      return;
-                                    }
                                     if (
                                       run(
                                         () =>

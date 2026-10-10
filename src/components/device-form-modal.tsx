@@ -179,8 +179,13 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
             <select
               value={modelId}
               onChange={(e) => {
-                setModelId(e.target.value);
+                const nextModelId = e.target.value;
+                setModelId(nextModelId);
                 setAccessoryIds([]);
+                const nextModel = models.find((item) => item.id === nextModelId);
+                if (nextModel?.color?.trim()) {
+                  setColor(nextModel.color.trim());
+                }
               }}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >

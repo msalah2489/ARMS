@@ -52,12 +52,16 @@ function normalizeAccessory(accessory: AccessoryItem): AccessoryItem {
 
 function normalizeModel(model: ModelItem): ModelItem {
   const image = model.imageDataUrl?.trim();
-  return {
+  const color = model.color?.trim();
+  const next: ModelItem = {
     ...model,
     imageDataUrl: image || undefined,
     accessories: (model.accessories ?? []).map(normalizeAccessory),
     spareParts: (model.spareParts ?? []).map(normalizeSparePart),
   };
+  if (color) next.color = color;
+  else delete next.color;
+  return next;
 }
 
 function seedCatalog(): DeviceCatalogState {
@@ -246,11 +250,14 @@ export function addModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
+  color: string;
   imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
+  const color = input.color.trim();
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
+  if (!color) return { ok: false, error: "لون الموديل إلزامي." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
@@ -267,6 +274,7 @@ export function addModel(input: {
     name,
     deviceTypeId: input.deviceTypeId,
     brandId: input.brandId,
+    color,
     imageDataUrl,
     accessories: [],
     spareParts: [],
@@ -287,11 +295,14 @@ export function updateModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
+  color: string;
   imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
+  const color = input.color.trim();
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
+  if (!color) return { ok: false, error: "لون الموديل إلزامي." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
@@ -311,6 +322,7 @@ export function updateModel(input: {
   model.name = name;
   model.deviceTypeId = input.deviceTypeId;
   model.brandId = input.brandId;
+  model.color = color;
   model.imageDataUrl = imageDataUrl;
   saveCatalog(catalog);
   return { ok: true };
@@ -323,14 +335,13 @@ export function addModelAccessory(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
-  const colorTrimmed = color?.trim() || "";
-  if (!colorTrimmed) return { ok: false, error: "لون الملحق إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
   if (
     model.accessories.some(
-      (item) => item.name === trimmed && (item.color ?? "") === colorTrimmed,
+      (item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
@@ -354,8 +365,7 @@ export function updateModelAccessory(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
-  const colorTrimmed = color?.trim() || "";
-  if (!colorTrimmed) return { ok: false, error: "لون الملحق إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
@@ -366,13 +376,14 @@ export function updateModelAccessory(
       (item) =>
         item.id !== accessoryId &&
         item.name === trimmed &&
-        (item.color ?? "") === colorTrimmed,
+        (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
   }
   accessory.name = trimmed;
-  accessory.color = colorTrimmed;
+  if (colorTrimmed) accessory.color = colorTrimmed;
+  else delete accessory.color;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -397,13 +408,12 @@ export function addModelSparePart(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
-  const colorTrimmed = color?.trim() || "";
-  if (!colorTrimmed) return { ok: false, error: "لون قطعة الغيار إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === colorTrimmed)) {
+  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""))) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   model.spareParts.push(
@@ -427,8 +437,7 @@ export function updateModelSparePart(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
-  const colorTrimmed = color?.trim() || "";
-  if (!colorTrimmed) return { ok: false, error: "لون قطعة الغيار إلزامي." };
+  const colorTrimmed = color?.trim() || undefined;
   const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
@@ -440,13 +449,14 @@ export function updateModelSparePart(
       (item) =>
         item.id !== partId &&
         item.name === trimmed &&
-        (item.color ?? "") === colorTrimmed,
+        (item.color ?? "") === (colorTrimmed ?? ""),
     )
   ) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   part.name = trimmed;
-  part.color = colorTrimmed;
+  if (colorTrimmed) part.color = colorTrimmed;
+  else delete part.color;
   if (image) part.imageDataUrl = image;
   else delete part.imageDataUrl;
   saveCatalog(catalog);
