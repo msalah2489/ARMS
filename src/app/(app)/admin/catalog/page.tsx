@@ -628,13 +628,19 @@ function CatalogAdminContent() {
                     <input
                       value={accessoryColor}
                       onChange={(e) => setAccessoryColor(e.target.value)}
-                      placeholder="اللون (اختياري)"
+                      placeholder="اللون *"
+                      required
                       className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm"
                     />
                     <button
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white"
                       onClick={() => {
+                        if (!accessoryColor.trim()) {
+                          setError("لون الملحق إلزامي.");
+                          setMessage(null);
+                          return;
+                        }
                         if (
                           run(
                             () =>
@@ -674,7 +680,8 @@ function CatalogAdminContent() {
                               <input
                                 value={editingAccessoryColor}
                                 onChange={(e) => setEditingAccessoryColor(e.target.value)}
-                                placeholder="اللون (اختياري)"
+                                placeholder="اللون *"
+                                required
                                 className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5"
                               />
                               <div className="flex gap-2 pt-2">
@@ -682,6 +689,11 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700"
                                   onClick={() => {
+                                    if (!editingAccessoryColor.trim()) {
+                                      setError("لون الملحق إلزامي.");
+                                      setMessage(null);
+                                      return;
+                                    }
                                     if (
                                       run(
                                         () =>
@@ -767,13 +779,19 @@ function CatalogAdminContent() {
                     <input
                       value={spareColor}
                       onChange={(e) => setSpareColor(e.target.value)}
-                      placeholder="اللون (اختياري)"
+                      placeholder="اللون *"
+                      required
                       className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
                     />
                     <button
                       type="button"
                       className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
                       onClick={() => {
+                        if (!spareColor.trim()) {
+                          setError("لون قطعة الغيار إلزامي.");
+                          setMessage(null);
+                          return;
+                        }
                         if (
                           run(
                             () =>
@@ -828,7 +846,8 @@ function CatalogAdminContent() {
                                 <input
                                   value={editingSpareColor}
                                   onChange={(e) => setEditingSpareColor(e.target.value)}
-                                  placeholder="اللون (اختياري)"
+                                  placeholder="اللون *"
+                                  required
                                   className="min-w-[120px] flex-1 rounded-xl border border-ink-900/15 px-3 py-1.5 dark:border-white/15 dark:bg-ink-950"
                                 />
                               </div>
@@ -842,6 +861,11 @@ function CatalogAdminContent() {
                                   type="button"
                                   className="text-aroma-700 dark:text-aroma-200"
                                   onClick={() => {
+                                    if (!editingSpareColor.trim()) {
+                                      setError("لون قطعة الغيار إلزامي.");
+                                      setMessage(null);
+                                      return;
+                                    }
                                     if (
                                       run(
                                         () =>

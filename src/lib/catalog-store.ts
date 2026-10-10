@@ -323,13 +323,14 @@ export function addModelAccessory(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
-  const colorTrimmed = color?.trim() || undefined;
+  const colorTrimmed = color?.trim() || "";
+  if (!colorTrimmed) return { ok: false, error: "لون الملحق إلزامي." };
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
   if (
     model.accessories.some(
-      (item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""),
+      (item) => item.name === trimmed && (item.color ?? "") === colorTrimmed,
     )
   ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
@@ -353,7 +354,8 @@ export function updateModelAccessory(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم الملحق إلزامي." };
-  const colorTrimmed = color?.trim() || undefined;
+  const colorTrimmed = color?.trim() || "";
+  if (!colorTrimmed) return { ok: false, error: "لون الملحق إلزامي." };
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
@@ -364,14 +366,13 @@ export function updateModelAccessory(
       (item) =>
         item.id !== accessoryId &&
         item.name === trimmed &&
-        (item.color ?? "") === (colorTrimmed ?? ""),
+        (item.color ?? "") === colorTrimmed,
     )
   ) {
     return { ok: false, error: "الملحق موجود مسبقًا لهذا الموديل." };
   }
   accessory.name = trimmed;
-  if (colorTrimmed) accessory.color = colorTrimmed;
-  else delete accessory.color;
+  accessory.color = colorTrimmed;
   saveCatalog(catalog);
   return { ok: true };
 }
@@ -396,12 +397,13 @@ export function addModelSparePart(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
-  const colorTrimmed = color?.trim() || undefined;
+  const colorTrimmed = color?.trim() || "";
+  if (!colorTrimmed) return { ok: false, error: "لون قطعة الغيار إلزامي." };
   const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
   if (!model) return { ok: false, error: "الموديل غير موجود." };
-  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === (colorTrimmed ?? ""))) {
+  if (model.spareParts.some((item) => item.name === trimmed && (item.color ?? "") === colorTrimmed)) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   model.spareParts.push(
@@ -425,7 +427,8 @@ export function updateModelSparePart(
 ): { ok: true } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "اسم قطعة الغيار إلزامي." };
-  const colorTrimmed = color?.trim() || undefined;
+  const colorTrimmed = color?.trim() || "";
+  if (!colorTrimmed) return { ok: false, error: "لون قطعة الغيار إلزامي." };
   const image = imageDataUrl?.trim() || undefined;
   const catalog = getCatalog();
   const model = catalog.models.find((item) => item.id === modelId);
@@ -437,14 +440,13 @@ export function updateModelSparePart(
       (item) =>
         item.id !== partId &&
         item.name === trimmed &&
-        (item.color ?? "") === (colorTrimmed ?? ""),
+        (item.color ?? "") === colorTrimmed,
     )
   ) {
     return { ok: false, error: "قطعة الغيار موجودة مسبقًا لهذا الموديل." };
   }
   part.name = trimmed;
-  if (colorTrimmed) part.color = colorTrimmed;
-  else delete part.color;
+  part.color = colorTrimmed;
   if (image) part.imageDataUrl = image;
   else delete part.imageDataUrl;
   saveCatalog(catalog);
