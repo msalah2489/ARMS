@@ -123,8 +123,8 @@ function FilterField({
 }) {
   return (
     <label
-      className={`flex flex-col gap-0.5 text-[11px] text-ink-700/80 dark:text-sand-100/70 ${
-        wide ? "w-[12.5rem] max-w-full" : "w-[8.5rem] max-w-full"
+      className={`flex shrink-0 flex-col gap-0.5 text-[11px] text-ink-700/80 dark:text-sand-100/70 ${
+        wide ? "w-[12.5rem]" : "w-[8.5rem]"
       }`}
     >
       <span className="truncate">{label}</span>
@@ -641,7 +641,8 @@ export default function ReportsPage() {
       ) : (
         <>
           <section className="rounded-xl border border-ink-900/10 bg-white p-3 shadow-panel dark:border-white/10 dark:bg-ink-900">
-            <div className="flex flex-wrap items-end gap-2">
+            {/* Row 1: report type + secondary filters */}
+            <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-0.5">
               <FilterField label={t("reports.reportType")} wide>
                 <select
                   className={fieldClass}
@@ -658,47 +659,6 @@ export default function ReportsPage() {
                   ))}
                 </select>
               </FilterField>
-
-              <label className="flex h-[1.875rem] items-center gap-1.5 text-xs text-ink-700 dark:text-sand-100">
-                <input
-                  type="checkbox"
-                  checked={filters.allDates !== false}
-                  onChange={(event) =>
-                    patchFilters({
-                      allDates: event.target.checked,
-                      dateFrom: event.target.checked ? "" : filters.dateFrom,
-                      dateTo: event.target.checked ? "" : filters.dateTo,
-                    })
-                  }
-                  className="size-3.5 rounded border-ink-900/20"
-                />
-                {t("reports.filter.allDates")}
-              </label>
-              <FilterField label={t("reports.filter.dateFrom")}>
-                <input
-                  type="date"
-                  className={fieldClass}
-                  disabled={filters.allDates !== false}
-                  value={filters.dateFrom || ""}
-                  onChange={(event) =>
-                    patchFilters({ allDates: false, dateFrom: event.target.value })
-                  }
-                />
-              </FilterField>
-              <FilterField label={t("reports.filter.dateTo")}>
-                <input
-                  type="date"
-                  className={fieldClass}
-                  disabled={filters.allDates !== false}
-                  value={filters.dateTo || ""}
-                  onChange={(event) =>
-                    patchFilters({ allDates: false, dateTo: event.target.value })
-                  }
-                />
-              </FilterField>
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-2">
               {showBrand ? (
                 <FilterField label={t("reports.filter.brand")}>
                   <SelectFilter
@@ -903,23 +863,61 @@ export default function ReportsPage() {
               ) : null}
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* Row 2: date range only */}
+            <div className="mt-2 flex flex-nowrap items-end gap-2">
+              <label className="flex h-[1.875rem] shrink-0 items-center gap-1.5 text-xs text-ink-700 dark:text-sand-100">
+                <input
+                  type="checkbox"
+                  checked={filters.allDates !== false}
+                  onChange={(event) =>
+                    patchFilters({
+                      allDates: event.target.checked,
+                      dateFrom: event.target.checked ? "" : filters.dateFrom,
+                      dateTo: event.target.checked ? "" : filters.dateTo,
+                    })
+                  }
+                  className="size-3.5 rounded border-ink-900/20"
+                />
+                {t("reports.filter.allDates")}
+              </label>
+              <FilterField label={t("reports.filter.dateFrom")}>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  disabled={filters.allDates !== false}
+                  value={filters.dateFrom || ""}
+                  onChange={(event) =>
+                    patchFilters({ allDates: false, dateFrom: event.target.value })
+                  }
+                />
+              </FilterField>
+              <FilterField label={t("reports.filter.dateTo")}>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  disabled={filters.allDates !== false}
+                  value={filters.dateTo || ""}
+                  onChange={(event) =>
+                    patchFilters({ allDates: false, dateTo: event.target.value })
+                  }
+                />
+              </FilterField>
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex items-center gap-1 rounded-md border border-ink-900/10 px-2 py-1 text-[11px] font-medium dark:border-white/10"
+                className="inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium dark:border-white/10"
               >
                 <RotateCcw className="h-3 w-3" />
                 {t("reports.resetFilters")}
               </button>
-              <span className="text-[11px] text-ink-700/60 dark:text-sand-100/60">
+              <span className="pb-1 text-[11px] text-ink-700/60 dark:text-sand-100/60">
                 {t("reports.rows").replace("{count}", String(result.tableRows.length))}
               </span>
               <button
                 type="button"
                 disabled={result.csvRows.length === 0}
                 onClick={() => downloadCsv(result.filename, result.columns, result.csvRows)}
-                className="ms-auto inline-flex items-center gap-1 rounded-md border border-ink-900/10 px-2 py-1 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
+                className="ms-auto inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
               >
                 <Download className="h-3 w-3" />
                 {t("reports.exportCsv")}
