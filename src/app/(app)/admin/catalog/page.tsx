@@ -18,6 +18,7 @@ import {
   deleteModelAccessory,
   deleteModelSparePart,
   getCatalog,
+  getModelColors,
   resetCatalogToSeed,
   suggestAccessoryNames,
   suggestSparePartNames,
@@ -42,7 +43,8 @@ function CatalogAdminContent() {
   const [typeName, setTypeName] = useState("");
   const [brandName, setBrandName] = useState("");
   const [modelName, setModelName] = useState("");
-  const [modelColor, setModelColor] = useState("");
+  const [modelColors, setModelColors] = useState<string[]>([]);
+  const [modelColorDraft, setModelColorDraft] = useState("");
   const [modelTypeId, setModelTypeId] = useState("");
   const [modelBrandId, setModelBrandId] = useState("");
   const [modelImage, setModelImage] = useState<ImageValue | null>(null);
@@ -59,7 +61,8 @@ function CatalogAdminContent() {
   const [editingBrandName, setEditingBrandName] = useState("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editModelName, setEditModelName] = useState("");
-  const [editModelColor, setEditModelColor] = useState("");
+  const [editModelColors, setEditModelColors] = useState<string[]>([]);
+  const [editModelColorDraft, setEditModelColorDraft] = useState("");
   const [editModelTypeId, setEditModelTypeId] = useState("");
   const [editModelBrandId, setEditModelBrandId] = useState("");
   const [editModelImage, setEditModelImage] = useState<ImageValue | null>(null);
@@ -117,6 +120,27 @@ function CatalogAdminContent() {
   );
 
   if (!catalog) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
+
+  function addColorToList(
+    list: string[],
+    draft: string,
+    setList: (next: string[]) => void,
+    setDraft: (next: string) => void,
+  ) {
+    const value = draft.trim();
+    if (!value) return;
+    const exists = list.some((item) => item.trim().toLowerCase() === value.toLowerCase());
+    if (!exists) setList([...list, value]);
+    setDraft("");
+  }
+
+  function removeColorFromList(
+    list: string[],
+    color: string,
+    setList: (next: string[]) => void,
+  ) {
+    setList(list.filter((item) => item !== color));
+  }
 
   function run(action: () => { ok: true } | { ok: false; error: string }, success: string) {
     setError(null);
@@ -379,12 +403,53 @@ function CatalogAdminContent() {
                 placeholder="اسم الموديل *"
                 className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
               />
-              <input
-                value={modelColor}
-                onChange={(e) => setModelColor(e.target.value)}
-                placeholder="لون الموديل *"
-                className="rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
-              />
+            </div>
+            <div className="mt-3">
+              <p className="text-xs font-medium text-ink-700/80 dark:text-sand-100/70">
+                ألوان الجهاز المتاحة *
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <input
+                  value={modelColorDraft}
+                  onChange={(e) => setModelColorDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addColorToList(modelColors, modelColorDraft, setModelColors, setModelColorDraft);
+                    }
+                  }}
+                  placeholder="أضف لوناً ثم Enter"
+                  className="min-w-[10rem] flex-1 rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-950"
+                />
+                <button
+                  type="button"
+                  className="rounded-full border border-ink-900/15 px-3 py-2 text-xs dark:border-white/15"
+                  onClick={() =>
+                    addColorToList(modelColors, modelColorDraft, setModelColors, setModelColorDraft)
+                  }
+                >
+                  إضافة لون
+                </button>
+              </div>
+              {modelColors.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {modelColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => removeColorFromList(modelColors, color, setModelColors)}
+                      className="rounded-full bg-ink-900/5 px-2.5 py-1 text-xs dark:bg-white/10"
+                      title="إزالة اللون"
+                    >
+                      {color} ×
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] text-ink-700/50 dark:text-sand-100/50">
+                  مثال: أسود، فضي، ذهبي — لون واحد على الأقل
+                </p>
+              )}
             </div>
             <div className="mt-4">
               <ImagePickerField
@@ -399,8 +464,8 @@ function CatalogAdminContent() {
               type="button"
               className="mt-4 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-sand-100 dark:text-ink-900"
               onClick={() => {
-                if (!modelColor.trim()) {
-                  setError("لون الموديل إلزامي.");
+                if (!modelColors.length) {
+                  setError("أضف لوناً واحداً على الأقل للموديل.");
                   setMessage(null);
                   return;
                 }
@@ -416,14 +481,15 @@ function CatalogAdminContent() {
                         name: modelName,
                         deviceTypeId: modelTypeId,
                         brandId: modelBrandId,
-                        color: modelColor,
+                        colors: modelColors,
                         imageDataUrl: modelImage.dataUrl,
                       }),
                     "تمت إضافة الموديل.",
                   )
                 ) {
                   setModelName("");
-                  setModelColor("");
+                  setModelColors([]);
+                  setModelColorDraft("");
                   setModelImage(null);
                 }
               }}
@@ -492,13 +558,60 @@ function CatalogAdminContent() {
                                 />
                               </td>
                               <td className="align-top px-2 py-3">
-                                <input
-                                  value={editModelColor}
-                                  onChange={(e) => setEditModelColor(e.target.value)}
-                                  placeholder="اللون *"
-                                  aria-label="لون الموديل"
-                                  className="w-full min-w-[5rem] rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
-                                />
+                                <div className="min-w-[8rem] space-y-1.5">
+                                  <div className="flex gap-1">
+                                    <input
+                                      value={editModelColorDraft}
+                                      onChange={(e) => setEditModelColorDraft(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          addColorToList(
+                                            editModelColors,
+                                            editModelColorDraft,
+                                            setEditModelColors,
+                                            setEditModelColorDraft,
+                                          );
+                                        }
+                                      }}
+                                      placeholder="لون +"
+                                      aria-label="إضافة لون للموديل"
+                                      className="w-full rounded-lg border border-ink-900/15 px-2 py-1.5 text-sm dark:border-white/15 dark:bg-ink-950"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="shrink-0 rounded-lg border border-ink-900/15 px-2 text-xs dark:border-white/15"
+                                      onClick={() =>
+                                        addColorToList(
+                                          editModelColors,
+                                          editModelColorDraft,
+                                          setEditModelColors,
+                                          setEditModelColorDraft,
+                                        )
+                                      }
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {editModelColors.map((color) => (
+                                      <button
+                                        key={color}
+                                        type="button"
+                                        onClick={() =>
+                                          removeColorFromList(
+                                            editModelColors,
+                                            color,
+                                            setEditModelColors,
+                                          )
+                                        }
+                                        className="rounded-full bg-ink-900/5 px-2 py-0.5 text-[11px] dark:bg-white/10"
+                                      >
+                                        {color} ×
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               </td>
                               <td className="align-top px-2 py-3">
                                 <select
@@ -540,8 +653,8 @@ function CatalogAdminContent() {
                                     type="button"
                                     className="text-start text-aroma-700 dark:text-aroma-200"
                                     onClick={() => {
-                                      if (!editModelColor.trim()) {
-                                        setError("لون الموديل إلزامي.");
+                                      if (!editModelColors.length) {
+                                        setError("أضف لوناً واحداً على الأقل للموديل.");
                                         setMessage(null);
                                         return;
                                       }
@@ -558,7 +671,7 @@ function CatalogAdminContent() {
                                               name: editModelName,
                                               deviceTypeId: editModelTypeId,
                                               brandId: editModelBrandId,
-                                              color: editModelColor,
+                                              colors: editModelColors,
                                               imageDataUrl: editModelImage.dataUrl,
                                             }),
                                           "تم تعديل الموديل.",
@@ -566,6 +679,7 @@ function CatalogAdminContent() {
                                       ) {
                                         setEditingModelId(null);
                                         setEditModelImage(null);
+                                        setEditModelColorDraft("");
                                       }
                                     }}
                                   >
@@ -577,6 +691,8 @@ function CatalogAdminContent() {
                                     onClick={() => {
                                       setEditingModelId(null);
                                       setEditModelImage(null);
+                                      setEditModelColors([]);
+                                      setEditModelColorDraft("");
                                     }}
                                   >
                                     إلغاء
@@ -606,7 +722,11 @@ function CatalogAdminContent() {
                                   {model.name}
                                 </button>
                               </td>
-                              <td className="px-2 py-3">{model.color || "—"}</td>
+                              <td className="px-2 py-3">
+                                {getModelColors(model).length
+                                  ? getModelColors(model).join(" · ")
+                                  : "—"}
+                              </td>
                               <td className="px-2 py-3">{typeName}</td>
                               <td className="px-2 py-3">{brandLabel}</td>
                               <td className="px-2 py-3">{model.accessories.length}</td>
@@ -619,7 +739,8 @@ function CatalogAdminContent() {
                                     onClick={() => {
                                       setEditingModelId(model.id);
                                       setEditModelName(model.name);
-                                      setEditModelColor(model.color ?? "");
+                                      setEditModelColors(getModelColors(model));
+                                      setEditModelColorDraft("");
                                       setEditModelTypeId(model.deviceTypeId);
                                       setEditModelBrandId(model.brandId);
                                       setEditModelImage(

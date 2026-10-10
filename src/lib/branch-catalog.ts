@@ -25,9 +25,9 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Nimbus 300",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc1",
-    color: "أسود",
+    colors: ["أسود", "فضي", "ذهبي"],
     accessories: [
-      { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee1", name: "سلك كهرباء" },
+      { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee1", name: "سلك كهرباء", color: "أسود" },
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee2", name: "قاعدة تثبيت" },
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee3", name: "عبوة عطر" },
     ],
@@ -35,6 +35,7 @@ export const MODELS_SEED: ModelItem[] = [
       { id: "sp-fan", name: "مروحة هادئة" },
       { id: "sp-pump", name: "طقم مضخة مصغرة" },
       { id: "sp-nozzle", name: "طقم فوهات" },
+      { id: "sp-charger", name: "شاحن", color: "أسود" },
     ],
   },
   {
@@ -42,9 +43,9 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Aura Mini",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc1",
-    color: "فضي",
+    colors: ["فضي", "أسود"],
     accessories: [
-      { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee4", name: "سلك كهرباء" },
+      { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee4", name: "سلك كهرباء", color: "أسود" },
       { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee5", name: "ريموت" },
     ],
     spareParts: [
@@ -57,11 +58,11 @@ export const MODELS_SEED: ModelItem[] = [
     name: "Pro Diffuser",
     deviceTypeId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2",
     brandId: "cccccccc-cccc-cccc-cccc-ccccccccccc2",
-    color: "أبيض",
+    colors: ["أبيض", "أسود"],
     accessories: [{ id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee6", name: "حامل جداري" }],
     spareParts: [
       { id: "sp-nozzle", name: "طقم فوهات" },
-      { id: "sp-cable", name: "سلك طاقة" },
+      { id: "sp-cable", name: "سلك طاقة", color: "أسود" },
     ],
   },
 ];

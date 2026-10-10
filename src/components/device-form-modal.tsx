@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { EXTERNAL_CONDITION_LABELS, generateDeviceCode } from "@/lib/branch-catalog";
-import { getBrands, getDeviceTypes, getModels } from "@/lib/catalog-store";
+import { getBrands, getDeviceTypes, getModelColors, getModels } from "@/lib/catalog-store";
 import type { CatalogItem, DraftRequestDevice, ExternalCondition, ModelItem } from "@/types/domain";
 
 type Props = {
@@ -92,6 +92,14 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
     const typeName = deviceTypes.find((item) => item.id === deviceTypeId)?.name ?? "";
     const brandName = brands.find((item) => item.id === brandId)?.name ?? "";
     const model = models.find((item) => item.id === modelId);
+    const modelColors = getModelColors(model);
+    if (
+      modelColors.length > 0 &&
+      !modelColors.some((item) => item.toLowerCase() === colorTrimmed.toLowerCase())
+    ) {
+      setError("اختر لون الجهاز من ألوان الموديل المتاحة.");
+      return null;
+    }
     return {
       localId: crypto.randomUUID(),
       deviceCode: deviceCode.trim(),
@@ -183,9 +191,8 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
                 setModelId(nextModelId);
                 setAccessoryIds([]);
                 const nextModel = models.find((item) => item.id === nextModelId);
-                if (nextModel?.color?.trim()) {
-                  setColor(nextModel.color.trim());
-                }
+                const colors = getModelColors(nextModel);
+                setColor(colors.length === 1 ? colors[0] : "");
               }}
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
             >
@@ -207,13 +214,29 @@ export function DeviceFormModal({ open, onClose, onSave }: Props) {
           </label>
           <label className="block text-sm">
             لون الجهاز *
-            <input
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              placeholder="مثال: أسود / فضي"
-              required
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
-            />
+            {getModelColors(selectedModel).length > 0 ? (
+              <select
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                required
+                className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+              >
+                <option value="">اختر اللون</option>
+                {getModelColors(selectedModel).map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                placeholder={modelId ? "لا ألوان على الموديل — أدخل اللون يدوياً" : "اختر الموديل أولاً"}
+                required
+                className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950"
+              />
+            )}
           </label>
           <label className="block text-sm">
             العطل

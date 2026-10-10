@@ -151,9 +151,10 @@ export function reportModelOptions(allLabel: string, brand?: string): ReportFilt
 }
 
 export function reportColorOptions(allLabel: string): ReportFilterOption[] {
-  const colors = listAllRequestDevices().map(({ device }) => device.color || "");
+  const fromDevices = listAllRequestDevices().map(({ device }) => device.color || "");
+  const fromCatalog = getModels().flatMap((model) => model.colors ?? (model.color ? [model.color] : []));
   return withAll(
-    uniqueSorted(colors).map((name) => ({ value: name, label: name })),
+    uniqueSorted([...fromDevices, ...fromCatalog]).map((name) => ({ value: name, label: name })),
     allLabel,
   );
 }

@@ -50,17 +50,39 @@ function normalizeAccessory(accessory: AccessoryItem): AccessoryItem {
   return normalizeColoredItem(accessory);
 }
 
+/** Normalize and de-dupe model body colors; migrates legacy `color` → `colors`. */
+export function normalizeModelColors(model: Pick<ModelItem, "colors" | "color">): string[] {
+  const fromList = Array.isArray(model.colors) ? model.colors : [];
+  const legacy = model.color?.trim() ? [model.color.trim()] : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...fromList, ...legacy]) {
+    const value = String(raw ?? "").trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+export function getModelColors(model: Pick<ModelItem, "colors" | "color"> | null | undefined): string[] {
+  if (!model) return [];
+  return normalizeModelColors(model);
+}
+
 function normalizeModel(model: ModelItem): ModelItem {
   const image = model.imageDataUrl?.trim();
-  const color = model.color?.trim();
+  const colors = normalizeModelColors(model);
   const next: ModelItem = {
     ...model,
     imageDataUrl: image || undefined,
+    colors,
     accessories: (model.accessories ?? []).map(normalizeAccessory),
     spareParts: (model.spareParts ?? []).map(normalizeSparePart),
   };
-  if (color) next.color = color;
-  else delete next.color;
+  delete next.color;
   return next;
 }
 
@@ -250,14 +272,14 @@ export function addModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
-  color: string;
+  colors: string[];
   imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
-  const color = input.color.trim();
+  const colors = normalizeModelColors({ colors: input.colors });
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
-  if (!color) return { ok: false, error: "لون الموديل إلزامي." };
+  if (!colors.length) return { ok: false, error: "أضف لوناً واحداً على الأقل للموديل." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
@@ -274,7 +296,7 @@ export function addModel(input: {
     name,
     deviceTypeId: input.deviceTypeId,
     brandId: input.brandId,
-    color,
+    colors,
     imageDataUrl,
     accessories: [],
     spareParts: [],
@@ -295,14 +317,14 @@ export function updateModel(input: {
   name: string;
   deviceTypeId: string;
   brandId: string;
-  color: string;
+  colors: string[];
   imageDataUrl: string;
 }): { ok: true } | { ok: false; error: string } {
   const name = input.name.trim();
-  const color = input.color.trim();
+  const colors = normalizeModelColors({ colors: input.colors });
   const imageDataUrl = input.imageDataUrl.trim();
   if (!name) return { ok: false, error: "اسم الموديل إلزامي." };
-  if (!color) return { ok: false, error: "لون الموديل إلزامي." };
+  if (!colors.length) return { ok: false, error: "أضف لوناً واحداً على الأقل للموديل." };
   if (!imageDataUrl) return { ok: false, error: "صورة الموديل إلزامية." };
   if (!input.deviceTypeId || !input.brandId) {
     return { ok: false, error: "اختر التصنيف والبراند." };
@@ -322,7 +344,8 @@ export function updateModel(input: {
   model.name = name;
   model.deviceTypeId = input.deviceTypeId;
   model.brandId = input.brandId;
-  model.color = color;
+  model.colors = colors;
+  delete model.color;
   model.imageDataUrl = imageDataUrl;
   saveCatalog(catalog);
   return { ok: true };

@@ -396,7 +396,12 @@ export type AccessoryItem = CatalogItem & {
 export type ModelItem = CatalogItem & {
   deviceTypeId: string;
   brandId: string;
-  /** Required color for new/updated models; older catalog rows may omit it */
+  /**
+   * Available body colors for this model (at least one required for new/updated models).
+   * Spare-part/accessory colors stay independent on those items.
+   */
+  colors?: string[];
+  /** @deprecated migrated to `colors` — kept for older local/remote payloads */
   color?: string;
   /** Required catalog/model photo (compressed data URL) */
   imageDataUrl?: string;
