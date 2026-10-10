@@ -23,7 +23,7 @@ export function todayLocalDateKey() {
   return toLocalDateKey(new Date());
 }
 
-function dateInRange(iso: string | undefined, fromKey: string, toKey: string) {
+export function dateInRange(iso: string | undefined, fromKey: string, toKey: string) {
   if (!iso) return false;
   const key = toLocalDateKey(iso);
   if (!key) return false;

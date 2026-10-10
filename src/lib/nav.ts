@@ -181,7 +181,8 @@ const ADMIN_NAV: NavItem[] = [
     href: "/devices",
     labelKey: "nav.devices",
     icon: Cpu,
-    roles: ["system_admin", "manager", "maintenance_manager", "maintenance_supervisor", "supervisor"],
+    // maintenance_manager uses /reports for device/customer views — keep page for deep links.
+    roles: ["system_admin", "manager", "maintenance_supervisor", "supervisor"],
     permission: "view_devices",
   },
   {
@@ -195,7 +196,8 @@ const ADMIN_NAV: NavItem[] = [
     href: "/customers",
     labelKey: "nav.customers",
     icon: Users,
-    roles: ["system_admin", "manager", "maintenance_manager"],
+    // Hidden for maintenance_manager — covered by interactive /reports.
+    roles: ["system_admin", "manager"],
     permission: "view_requests",
   },
   {
