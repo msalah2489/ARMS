@@ -74,6 +74,7 @@ function AdminNotificationsInner() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!user) return;
     setMessage(null);
     setError(null);
     const result = sendNotification({
