@@ -38,8 +38,8 @@ let devicePhotosMemoryCache: Record<string, DevicePhotoBlob> | null = null;
 /** Prevent repair→notify→list→repair feedback that freezes the UI. */
 let lifecycleRepairDoneForCache = false;
 let suppressRequestsChangedNotify = false;
-let lifecycleRepairTimer: ReturnType<typeof setTimeout> | null = null;
-let photoPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let lifecycleRepairTimer: number | null = null;
+let photoPersistTimer: number | null = null;
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;

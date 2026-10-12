@@ -62,8 +62,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let heavyTimer: ReturnType<typeof setTimeout> | null = null;
+    let debounceTimer: number | null = null;
+    let heavyTimer: number | null = null;
 
     // Paint the shell first — sync scans of localStorage must not run inside the same
     // turn as setUser, or React never commits and the tab shows «جاري التحميل…» then hangs.
