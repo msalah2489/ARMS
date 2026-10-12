@@ -10,6 +10,7 @@ import {
   Package,
   PackageCheck,
   Archive,
+  Bell,
   QrCode,
   Settings,
   Store,
@@ -252,6 +253,13 @@ const ADMIN_NAV: NavItem[] = [
     icon: Users,
     roles: ["system_admin", "manager"],
     permission: "manage_users",
+  },
+  {
+    href: "/admin/notifications",
+    labelKey: "nav.notifications",
+    icon: Bell,
+    roles: ["system_admin"],
+    permission: "login",
   },
   {
     href: "/admin/branches",

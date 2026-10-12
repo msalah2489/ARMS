@@ -166,6 +166,29 @@ export type Profile = {
   photoName?: string | null;
 };
 
+/** In-app notification audience: everyone, one role, or one account. */
+export type NotificationAudienceType = "all" | "role" | "user";
+
+export type ArmsNotification = {
+  id: string;
+  title: string;
+  body: string;
+  audienceType: NotificationAudienceType;
+  audienceRole?: AppRole | null;
+  audienceUserId?: string | null;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+};
+
+/** Per-user read receipt — notifications themselves are never deleted. */
+export type ArmsNotificationRead = {
+  id: string;
+  notificationId: string;
+  userId: string;
+  readAt: string;
+};
+
 /** Roles an admin can assign when creating users */
 export type AssignableUserRole =
   | "system_admin"

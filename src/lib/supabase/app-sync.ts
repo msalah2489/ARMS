@@ -8,9 +8,12 @@ import { isAuthLikeSupabaseError, setArmsSyncStatus } from "@/lib/supabase/sync-
 import type { DeviceCatalogState } from "@/lib/catalog-store";
 import type { SpareInventoryState } from "@/lib/spare-inventory-store";
 import type {
+  ArmsNotification,
+  ArmsNotificationRead,
   DraftRequestDevice,
   ManagedUser,
   MaintenanceRequestRecord,
+  NotificationAudienceType,
   OpsBranchRecord,
   PickupReceipt,
   ShippingBatch,
@@ -1225,6 +1228,132 @@ export async function pushAppPickupReceipts(receipts: PickupReceipt[]): Promise<
     const message = error instanceof Error ? error.message : String(error);
     console.error("[arms] pushAppPickupReceipts", error);
     reportError("app_pickup_receipts", error);
+    return { ok: false, error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// In-app notifications (upsert only — never wipe history)
+// ---------------------------------------------------------------------------
+
+function notificationToRow(item: ArmsNotification) {
+  return {
+    id: item.id,
+    title: item.title,
+    body: item.body,
+    audience_type: item.audienceType,
+    audience_role: item.audienceRole ?? null,
+    audience_user_id: item.audienceUserId ?? null,
+    created_by: item.createdBy,
+    created_by_name: item.createdByName,
+    created_at: item.createdAt,
+    synced_at: nowIso(),
+  };
+}
+
+function rowToNotification(row: Record<string, unknown>): ArmsNotification {
+  const audienceType = String(row.audience_type ?? "all") as NotificationAudienceType;
+  return {
+    id: String(row.id ?? ""),
+    title: String(row.title ?? ""),
+    body: String(row.body ?? ""),
+    audienceType:
+      audienceType === "role" || audienceType === "user" || audienceType === "all"
+        ? audienceType
+        : "all",
+    audienceRole: row.audience_role ? (String(row.audience_role) as ArmsNotification["audienceRole"]) : null,
+    audienceUserId: row.audience_user_id ? String(row.audience_user_id) : null,
+    createdBy: String(row.created_by ?? ""),
+    createdByName: String(row.created_by_name ?? ""),
+    createdAt: String(row.created_at ?? nowIso()),
+  };
+}
+
+export async function pullAppNotifications(): Promise<ArmsNotification[]> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") return [];
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("app_notifications")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) {
+    // Table may not exist until migration 023 is applied — soft-fail.
+    if (/does not exist|Could not find the table|PGRST/i.test(error.message ?? "")) {
+      console.warn("[arms] pullAppNotifications:", error.message);
+      return [];
+    }
+    reportError("app_notifications", error);
+    throw error;
+  }
+  return (data ?? []).map((row) => rowToNotification(row as Record<string, unknown>));
+}
+
+export async function pushAppNotifications(
+  notifications: ArmsNotification[],
+): Promise<SyncResult> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+  if (!notifications.length) return { ok: true };
+  try {
+    await upsertRows("app_notifications", notifications.map(notificationToRow));
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[arms] pushAppNotifications", error);
+    reportError("app_notifications", error);
+    return { ok: false, error: message };
+  }
+}
+
+function notificationReadToRow(item: ArmsNotificationRead) {
+  return {
+    id: item.id,
+    notification_id: item.notificationId,
+    user_id: item.userId,
+    read_at: item.readAt,
+    synced_at: nowIso(),
+  };
+}
+
+function rowToNotificationRead(row: Record<string, unknown>): ArmsNotificationRead {
+  return {
+    id: String(row.id ?? ""),
+    notificationId: String(row.notification_id ?? ""),
+    userId: String(row.user_id ?? ""),
+    readAt: String(row.read_at ?? nowIso()),
+  };
+}
+
+export async function pullAppNotificationReads(): Promise<ArmsNotificationRead[]> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") return [];
+  const supabase = createClient();
+  const { data, error } = await supabase.from("app_notification_reads").select("*");
+  if (error) {
+    if (/does not exist|Could not find the table|PGRST/i.test(error.message ?? "")) {
+      console.warn("[arms] pullAppNotificationReads:", error.message);
+      return [];
+    }
+    reportError("app_notification_reads", error);
+    throw error;
+  }
+  return (data ?? []).map((row) => rowToNotificationRead(row as Record<string, unknown>));
+}
+
+export async function pushAppNotificationReads(
+  reads: ArmsNotificationRead[],
+): Promise<SyncResult> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+  if (!reads.length) return { ok: true };
+  try {
+    await upsertRows("app_notification_reads", reads.map(notificationReadToRow));
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[arms] pushAppNotificationReads", error);
+    reportError("app_notification_reads", error);
     return { ok: false, error: message };
   }
 }

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { AuthGate } from "@/components/auth-gate";
+import { NotificationBell } from "@/components/notification-bell";
+import { NotificationLoginBanner } from "@/components/notification-login-banner";
 import { Sidebar } from "@/components/sidebar";
 import { SyncStatusBanner } from "@/components/sync-status-banner";
 import { usePreferences } from "@/components/preferences-provider";
@@ -67,9 +69,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <span className="sr-only">{t("common.openMenu")}</span>
                 </button>
                 <ArmsLogo size="sm" />
-                <span className="max-w-[40%] truncate text-end text-xs text-ink-700/70 dark:text-sand-100/70">
-                  {user.fullName}
-                </span>
+                <div className="flex items-center gap-2">
+                  <NotificationBell user={user} />
+                  <span className="max-w-[28vw] truncate text-end text-xs text-ink-700/70 dark:text-sand-100/70">
+                    {user.fullName}
+                  </span>
+                </div>
+              </header>
+
+              {/* Desktop top strip with notifications */}
+              <header className="sticky top-0 z-20 hidden items-center justify-end gap-3 border-b border-ink-900/10 bg-white/90 px-4 py-2 backdrop-blur dark:border-white/10 dark:bg-ink-900/90 md:flex md:px-8">
+                <NotificationBell user={user} />
               </header>
 
               {/* Mobile drawer */}
@@ -101,6 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               ) : null}
 
               <SyncStatusBanner />
+              <NotificationLoginBanner user={user} />
               <main className="flex-1 px-3 py-4 text-ink-900 dark:text-sand-50 sm:px-4 sm:py-6 md:px-8">
                 {children}
               </main>

@@ -25,6 +25,12 @@ import {
   type SpareInventoryState,
 } from "@/lib/spare-inventory-store";
 import { applyRemoteTechnicianWork } from "@/lib/technician-store";
+import {
+  applyRemoteNotificationReads,
+  applyRemoteNotifications,
+  listNotificationReadsLocalRaw,
+  listNotificationsLocalRaw,
+} from "@/lib/notifications-store";
 import { readSession, writeSession } from "@/lib/session";
 import {
   applyRemoteManagedUsers,
@@ -39,6 +45,8 @@ import {
   pullAppBranches,
   pullAppCatalog,
   pullAppMaintenanceRequests,
+  pullAppNotificationReads,
+  pullAppNotifications,
   pullAppPickupReceipts,
   pullAppShippingBatches,
   pullAppSpareInventory,
@@ -46,6 +54,8 @@ import {
   pullAppUsers,
   pullAppWaybills,
   pushAppMaintenanceRequests,
+  pushAppNotificationReads,
+  pushAppNotifications,
   pushAppUsers,
 } from "@/lib/supabase/app-sync";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
@@ -196,6 +206,8 @@ async function runHydratePull(): Promise<boolean> {
       remoteSpare,
       remoteWaybills,
       remotePickupReceipts,
+      remoteNotifications,
+      remoteNotificationReads,
     ] = await Promise.all([
       pullAppBranches(),
       pullAppMaintenanceRequests(),
@@ -207,6 +219,8 @@ async function runHydratePull(): Promise<boolean> {
       pullAppSpareInventory(),
       pullAppWaybills(),
       pullAppPickupReceipts(),
+      pullAppNotifications(),
+      pullAppNotificationReads(),
     ]);
 
     reconcilePayload({
@@ -324,6 +338,26 @@ async function runHydratePull(): Promise<boolean> {
         else replacePickupReceipts([]);
       },
     });
+
+    // Notifications: always merge (never wipe local history when remote is empty /
+    // migration not applied yet). Push any local-only rows so offline sends catch up.
+    {
+      const localNotes = listNotificationsLocalRaw();
+      const remoteNoteIds = new Set(remoteNotifications.map((row) => row.id));
+      const localOnlyNotes = localNotes.filter((row) => row.id && !remoteNoteIds.has(row.id));
+      applyRemoteNotifications(remoteNotifications);
+      if (localOnlyNotes.length > 0) {
+        await pushAppNotifications(localOnlyNotes);
+      }
+
+      const localReads = listNotificationReadsLocalRaw();
+      const remoteReadIds = new Set(remoteNotificationReads.map((row) => row.id));
+      const localOnlyReads = localReads.filter((row) => row.id && !remoteReadIds.has(row.id));
+      applyRemoteNotificationReads(remoteNotificationReads);
+      if (localOnlyReads.length > 0) {
+        await pushAppNotificationReads(localOnlyReads);
+      }
+    }
 
     markBootstrapConfirmed();
     markHydrated();
