@@ -9,7 +9,7 @@ import { usePreferences } from "@/components/preferences-provider";
 import { StatusBadge } from "@/components/status-badge";
 import { branchScopeId } from "@/lib/auth";
 import { subscribeMaintenanceRequestsChanged } from "@/lib/branch-store";
-import { getServiceRequests } from "@/lib/data";
+import { getServiceRequests, peekServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -100,8 +100,16 @@ function RequestLifecycleStatusCell({
 export default function ServiceRequestsPage() {
   const { t, locale } = usePreferences();
   const searchParams = useSearchParams();
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [requests, setRequests] = useState<ServiceRequest[]>(() =>
+    typeof window !== "undefined"
+      ? peekServiceRequests(branchScopeId(readSession()), locale)
+      : [],
+  );
+  const [loading, setLoading] = useState(() =>
+    typeof window !== "undefined"
+      ? peekServiceRequests(branchScopeId(readSession()), locale).length === 0
+      : true,
+  );
   const [filter, setFilter] = useState<QuickFilter>(() =>
     parseFocusFilter(searchParams?.get("focus") ?? null),
   );
@@ -113,15 +121,21 @@ export default function ServiceRequestsPage() {
   useEffect(() => {
     let cancelled = false;
     const load = (opts?: { quiet?: boolean }) => {
-      if (!opts?.quiet) setLoading(true);
       const scope = branchScopeId(readSession());
+      const cached = peekServiceRequests(scope, locale);
+      if (cached.length > 0) {
+        setRequests(cached);
+        setLoading(false);
+      } else if (!opts?.quiet) {
+        setLoading(true);
+      }
       void getServiceRequests(locale, scope).then((rows) => {
         if (cancelled) return;
         setRequests(rows);
         setLoading(false);
       });
     };
-    load();
+    load({ quiet: true });
     const onSyncStatus = () => load({ quiet: true });
     window.addEventListener("arms-sync-status", onSyncStatus);
     const unsubscribe = subscribeMaintenanceRequestsChanged(() => load({ quiet: true }));

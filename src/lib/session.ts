@@ -21,7 +21,27 @@ export function readSession(): Profile | null {
   }
 }
 
+function profilesLookEqual(a: Profile, b: Profile) {
+  return (
+    a.id === b.id &&
+    a.role === b.role &&
+    a.fullName === b.fullName &&
+    a.username === b.username &&
+    a.email === b.email &&
+    a.mobile === b.mobile &&
+    a.opsBranchId === b.opsBranchId &&
+    a.opsBranchName === b.opsBranchName &&
+    a.isActive === b.isActive &&
+    a.photoDataUrl === b.photoDataUrl &&
+    JSON.stringify(a.permissions ?? null) === JSON.stringify(b.permissions ?? null)
+  );
+}
+
 export function writeSession(profile: Profile) {
+  // Skip no-op writes — hydrate used to rewrite the session every pull and
+  // re-render the whole app (and can freeze the tab when a photo is stored).
+  const current = readSession();
+  if (current && profilesLookEqual(current, profile)) return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
   window.dispatchEvent(new CustomEvent("arms-session-updated"));
 }

@@ -33,6 +33,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 The sidebar changes with the role.
 
+## User manual (Arabic, by role)
+
+دليل المستخدم حسب الدور (فرع، فني، مندوب، مدير صيانة، مدير نظام):  
+[`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)
+
 ## Connect Supabase
 
 Full GitHub Pages steps: [`docs/SUPABASE_GITHUB_PAGES.md`](docs/SUPABASE_GITHUB_PAGES.md).

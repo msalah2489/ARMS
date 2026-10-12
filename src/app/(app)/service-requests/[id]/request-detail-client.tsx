@@ -13,6 +13,7 @@ import {
   getDeviceAssignmentPath,
   getMaintenanceRequestById,
   normalizeLifecycleStatus,
+  withDevicePhotos,
 } from "@/lib/branch-store";
 import { getOpsServiceRequest } from "@/lib/ops-data";
 import { readSession } from "@/lib/session";
@@ -166,7 +167,9 @@ export function RequestDetailClient({ id }: { id: string }) {
             {(record?.devices ?? []).length === 0 ? (
               <p className="text-ink-700/60 dark:text-sand-100/60">لا توجد أجهزة.</p>
             ) : (
-              record!.devices.map((device) => (
+              record!.devices.map((rawDevice) => {
+                const device = withDevicePhotos(rawDevice);
+                return (
                 <div
                   key={device.localId}
                   className="flex gap-3 rounded-xl border border-ink-900/10 px-3 py-3 dark:border-white/10"
@@ -223,7 +226,8 @@ export function RequestDetailClient({ id }: { id: string }) {
                     ) : null}
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

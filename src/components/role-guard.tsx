@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { homePathForRole, isBranchRole, isTechnicianRole, normalizeRole } from "@/lib/auth";
 import { hasAnyPermission, hasPermission, type PermissionKey } from "@/lib/permissions";
@@ -45,16 +45,18 @@ export function RoleGuard({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  // Sync session on first client render — avoids a blank "checking…" frame on every navigation.
+  const [session] = useState(() => (typeof window !== "undefined" ? readSession() : null));
 
-  function isAllowed(session: NonNullable<ReturnType<typeof readSession>>) {
-    const roleOk = allow ? roleAllowed(session.role, allow) : false;
+  function isAllowed(current: NonNullable<ReturnType<typeof readSession>>) {
+    const roleOk = allow ? roleAllowed(current.role, allow) : false;
     const permList = permission
       ? Array.isArray(permission)
         ? permission
         : [permission]
       : [];
     const permOk =
-      permList.length > 0 ? hasAnyPermission(session, permList) : false;
+      permList.length > 0 ? hasAnyPermission(current, permList) : false;
     // If neither constraint provided, deny. If either matches, allow.
     if (!allow && permList.length === 0) return false;
     if (allow && permList.length > 0) return roleOk || permOk;
@@ -63,17 +65,16 @@ export function RoleGuard({
   }
 
   useEffect(() => {
-    const session = readSession();
-    if (!session) {
+    const current = readSession();
+    if (!current) {
       router.replace("/login");
       return;
     }
-    if (!isAllowed(session)) {
-      router.replace(homePathForRole(session.role));
+    if (!isAllowed(current)) {
+      router.replace(homePathForRole(current.role));
     }
   }, [allow, permission, router]);
 
-  const session = typeof window !== "undefined" ? readSession() : null;
   if (!session || !isAllowed(session)) {
     return <p className="text-sm text-ink-700/70">جاري التحقق من الصلاحيات…</p>;
   }

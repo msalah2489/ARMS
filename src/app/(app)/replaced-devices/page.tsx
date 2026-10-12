@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { SortableTh } from "@/components/sortable-th";
 import { usePreferences } from "@/components/preferences-provider";
 import {
   addReplacedDevice,
@@ -11,12 +12,30 @@ import {
   removeReplacedDevice,
 } from "@/lib/replaced-devices-store";
 import { readSession } from "@/lib/session";
+import { useColumnSort } from "@/lib/table-sort";
 import type { Profile, ReplacedDeviceStockItem } from "@/types/domain";
 
 function ReplacedDevicesContent() {
   const { t } = usePreferences();
   const [user, setUser] = useState<Profile | null>(null);
   const [items, setItems] = useState<ReplacedDeviceStockItem[]>([]);
+  const getSortValue = useCallback((row: ReplacedDeviceStockItem, key: string) => {
+    switch (key) {
+      case "type":
+        return row.deviceTypeName;
+      case "model":
+        return row.modelName || "";
+      case "code":
+        return row.serialOrCode || "";
+      case "qty":
+        return row.quantity;
+      case "notes":
+        return row.notes || "";
+      default:
+        return "";
+    }
+  }, []);
+  const { sorted, sortKey, sortDirection, toggleSort } = useColumnSort(items, getSortValue);
   const [deviceTypeName, setDeviceTypeName] = useState("");
   const [modelName, setModelName] = useState("");
   const [serialOrCode, setSerialOrCode] = useState("");
@@ -141,16 +160,51 @@ function ReplacedDevicesContent() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-ink-900/10 text-right text-ink-700/60 dark:border-white/10 dark:text-sand-100/60">
-                  <th className="px-3 py-2 font-medium">النوع</th>
-                  <th className="px-3 py-2 font-medium">الموديل</th>
-                  <th className="px-3 py-2 font-medium">الكود</th>
-                  <th className="px-3 py-2 font-medium">الكمية</th>
-                  <th className="px-3 py-2 font-medium">ملاحظات</th>
+                  <SortableTh
+                    label="النوع"
+                    columnKey="type"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onToggle={toggleSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="الموديل"
+                    columnKey="model"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onToggle={toggleSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="الكود"
+                    columnKey="code"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onToggle={toggleSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="الكمية"
+                    columnKey="qty"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onToggle={toggleSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="ملاحظات"
+                    columnKey="notes"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onToggle={toggleSort}
+                    className="px-3 py-2 font-medium"
+                  />
                   <th className="px-3 py-2 font-medium">تعديل</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((row) => (
+                {sorted.map((row) => (
                   <tr key={row.id} className="border-b border-ink-900/5 dark:border-white/5">
                     <td className="px-3 py-2">{row.deviceTypeName}</td>
                     <td className="px-3 py-2">{row.modelName || "—"}</td>

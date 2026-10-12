@@ -4,20 +4,35 @@ import { useEffect, useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
-import { getBranches } from "@/lib/data";
+import { getBranches, peekBranches } from "@/lib/data";
 import type { Branch } from "@/types/domain";
 
 export default function BranchesPage() {
   const { t, locale } = usePreferences();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [branches, setBranches] = useState<Branch[]>(() =>
+    typeof window !== "undefined" ? peekBranches(locale) : [],
+  );
+  const [loading, setLoading] = useState(() =>
+    typeof window !== "undefined" ? peekBranches(locale).length === 0 : true,
+  );
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
+    const cached = peekBranches(locale);
+    if (cached.length > 0) {
+      setBranches(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     void getBranches(locale).then((rows) => {
+      if (cancelled) return;
       setBranches(rows);
       setLoading(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [locale]);
 
   return (

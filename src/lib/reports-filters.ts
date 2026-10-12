@@ -3,6 +3,7 @@ import {
   listAllRequestDevices,
   listMaintenanceRequests,
 } from "@/lib/branch-store";
+import { listOpsBranchRecords } from "@/lib/branches-store";
 import { getBrands, getModels } from "@/lib/catalog-store";
 import { listOpsBranches } from "@/lib/ops-data";
 import { listShippingBatches } from "@/lib/shipping-store";
@@ -19,6 +20,8 @@ export type ReportFilters = {
   brand?: string;
   model?: string;
   color?: string;
+  /** City from registered ops branches (`OpsBranchRecord.city`). */
+  city?: string;
   branch?: string;
   lifecycleStatus?: string;
   priority?: "" | "urgent" | "normal";
@@ -52,6 +55,7 @@ export function emptyReportFilters(): ReportFilters {
     brand: ALL_FILTER_VALUE,
     model: ALL_FILTER_VALUE,
     color: ALL_FILTER_VALUE,
+    city: ALL_FILTER_VALUE,
     branch: ALL_FILTER_VALUE,
     lifecycleStatus: ALL_FILTER_VALUE,
     priority: "",
@@ -159,21 +163,57 @@ export function reportColorOptions(allLabel: string): ReportFilterOption[] {
   );
 }
 
-export function reportBranchOptions(allLabel: string, opsBranchId?: string | null): ReportFilterOption[] {
+/** Resolve city for a branch display name from registered ops branches. */
+export function cityForBranchName(branchName: string | undefined | null): string {
+  const key = (branchName || "").trim().toLowerCase();
+  if (!key) return "";
+  const hit = listOpsBranchRecords({ includeInactive: true }).find(
+    (branch) => branch.name.trim().toLowerCase() === key,
+  );
+  return hit?.city?.trim() || "";
+}
+
+export function matchesBranchCityFilter(
+  branchName: string | undefined | null,
+  filters: Pick<ReportFilters, "city">,
+) {
+  if (isAllFilter(filters.city)) return true;
+  const name = (branchName || "").trim();
+  if (!name || name === "—") return false;
+  return matchesExactFilter(cityForBranchName(name), filters.city);
+}
+
+/** Cities extracted from registered (active) branch records. */
+export function reportCityOptions(allLabel: string): ReportFilterOption[] {
+  const cities = listOpsBranchRecords().map((branch) => branch.city || "");
+  return withAll(
+    uniqueSorted(cities).map((name) => ({ value: name, label: name })),
+    allLabel,
+  );
+}
+
+export function reportBranchOptions(
+  allLabel: string,
+  opsBranchId?: string | null,
+  city?: string,
+): ReportFilterOption[] {
+  let names: string[];
   if (opsBranchId) {
     const scoped = listMaintenanceRequests(opsBranchId)
       .map((r) => r.opsBranchName || "")
       .filter(Boolean);
-    const names = uniqueSorted(scoped);
-    return withAll(
-      names.map((name) => ({ value: name, label: name })),
-      allLabel,
-    );
+    names = uniqueSorted(scoped);
+  } else {
+    const fromOps = listOpsBranches("ar").map((b) => b.name);
+    const fromRequests = listMaintenanceRequests().map((r) => r.opsBranchName || "");
+    names = uniqueSorted([...fromOps, ...fromRequests]);
   }
-  const fromOps = listOpsBranches("ar").map((b) => b.name);
-  const fromRequests = listMaintenanceRequests().map((r) => r.opsBranchName || "");
+  if (!isAllFilter(city)) {
+    const cityKey = (city || "").trim().toLowerCase();
+    names = names.filter((name) => cityForBranchName(name).toLowerCase() === cityKey);
+  }
   return withAll(
-    uniqueSorted([...fromOps, ...fromRequests]).map((name) => ({ value: name, label: name })),
+    names.map((name) => ({ value: name, label: name })),
     allLabel,
   );
 }

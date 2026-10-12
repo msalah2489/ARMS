@@ -39,7 +39,20 @@ export function AuthGate({
         router.replace(loginPath);
         return;
       }
-      setUser(session);
+      // Avoid remounting the whole shell when hydrate only refreshes unchanged profile.
+      setUser((prev) => {
+        if (
+          prev &&
+          prev.id === session.id &&
+          prev.role === session.role &&
+          prev.fullName === session.fullName &&
+          prev.opsBranchId === session.opsBranchId &&
+          prev.photoDataUrl === session.photoDataUrl
+        ) {
+          return prev;
+        }
+        return session;
+      });
       setReady(true);
     }
 

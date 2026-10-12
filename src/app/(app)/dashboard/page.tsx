@@ -61,18 +61,28 @@ export default function DashboardPage() {
   const [managerWork, setManagerWork] = useState<ManagerDailyWorkCounts | null>(null);
 
   useEffect(() => {
-    function load() {
-      const session = readSession();
-      setUser(session);
-      if (!session) return;
+    let cancelled = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let heavyTimer: ReturnType<typeof setTimeout> | null = null;
 
-      if (isBranchRole(session.role)) {
-        setBranchRequests(listMaintenanceRequests(session.opsBranchId));
-        setAttention(getDashboardAttentionCounts(session.opsBranchId));
+    // Paint the shell first — sync scans of localStorage must not run inside the same
+    // turn as setUser, or React never commits and the tab shows «جاري التحميل…» then hangs.
+    const session = readSession();
+    setUser(session);
+
+    function loadHeavy() {
+      if (cancelled) return;
+      const current = readSession();
+      if (!current) return;
+      setUser(current);
+
+      if (isBranchRole(current.role)) {
+        setBranchRequests(listMaintenanceRequests(current.opsBranchId));
+        setAttention(getDashboardAttentionCounts(current.opsBranchId));
         setManagerWork(null);
         setBranchWork(
-          session.opsBranchId
-            ? getBranchDailyWorkCounts(session.opsBranchId)
+          current.opsBranchId
+            ? getBranchDailyWorkCounts(current.opsBranchId)
             : {
                 customersAtBranch: 0,
                 sendToService: 0,
@@ -84,28 +94,45 @@ export default function DashboardPage() {
       } else {
         setBranchWork(null);
         setAttention(getDashboardAttentionCounts());
-        if (isMaintenanceManagerRole(session.role)) {
+        if (isMaintenanceManagerRole(current.role)) {
           setManagerWork(getManagerDailyWorkCounts());
         } else {
           setManagerWork(null);
         }
       }
 
-      if (isTechnicianRole(session.role)) {
-        setTechQueues(getTechnicianHomeQueues(session));
+      if (isTechnicianRole(current.role)) {
+        setTechQueues(getTechnicianHomeQueues(current));
       } else {
         setTechQueues(null);
       }
 
       void Promise.all([getDashboardStats(), getServiceRequests()]).then(([nextStats, nextRequests]) => {
+        if (cancelled) return;
         setStats(nextStats);
         setRequests(nextRequests);
       });
     }
 
-    load();
-    void hydrateOpsFromSupabase().then(() => load());
-    return subscribeMaintenanceRequestsChanged(load);
+    function scheduleLoad() {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = null;
+        loadHeavy();
+      }, 120);
+    }
+
+    heavyTimer = window.setTimeout(loadHeavy, 0);
+    void hydrateOpsFromSupabase().then(() => {
+      if (!cancelled) scheduleLoad();
+    });
+    const unsubscribe = subscribeMaintenanceRequestsChanged(scheduleLoad);
+    return () => {
+      cancelled = true;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      if (heavyTimer) window.clearTimeout(heavyTimer);
+      unsubscribe();
+    };
   }, []);
 
   if (!user) {
@@ -401,13 +428,23 @@ export default function DashboardPage() {
     );
   }
 
-  if (isMaintenanceManagerRole(user.role) && managerWork) {
+  if (isMaintenanceManagerRole(user.role)) {
+    const counts = managerWork ?? {
+      branchesNeedMaintenance: 0,
+      needMaintenanceDecision: 0,
+      lowStockParts: 0,
+      replacedDevicesStock: 0,
+      readyToReturnToBranches: 0,
+      deliveringToBranches: 0,
+      needReceiveAtService: 0,
+      inMaintenance: 0,
+    };
     const mgrCards: WorkCard[] = [
       {
         key: "branchesNeed",
         title: t("dashboard.mgr.branchesNeedMaintenance"),
         hint: t("dashboard.mgr.branchesNeedMaintenanceHint"),
-        count: managerWork.branchesNeedMaintenance,
+        count: counts.branchesNeedMaintenance,
         href: "/devices?focus=branches_need_maintenance",
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
@@ -416,28 +453,28 @@ export default function DashboardPage() {
         key: "decision",
         title: t("dashboard.mgr.needDecision"),
         hint: t("dashboard.mgr.needDecisionHint"),
-        count: managerWork.needMaintenanceDecision,
+        count: counts.needMaintenanceDecision,
         href: "/devices?focus=need_decision",
       },
       {
         key: "lowStock",
         title: t("dashboard.mgr.lowStock"),
         hint: t("dashboard.mgr.lowStockHint"),
-        count: managerWork.lowStockParts,
+        count: counts.lowStockParts,
         href: "/spare-parts",
       },
       {
         key: "replaced",
         title: t("dashboard.mgr.replacedStock"),
         hint: t("dashboard.mgr.replacedStockHint"),
-        count: managerWork.replacedDevicesStock,
+        count: counts.replacedDevicesStock,
         href: "/replaced-devices",
       },
       {
         key: "readyReturn",
         title: t("dashboard.mgr.readyToReturn"),
         hint: t("dashboard.mgr.readyToReturnHint"),
-        count: managerWork.readyToReturnToBranches,
+        count: counts.readyToReturnToBranches,
         href: "/devices?focus=ready_to_return",
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
@@ -446,14 +483,14 @@ export default function DashboardPage() {
         key: "delivering",
         title: t("dashboard.mgr.deliveringToBranches"),
         hint: t("dashboard.mgr.deliveringToBranchesHint"),
-        count: managerWork.deliveringToBranches,
+        count: counts.deliveringToBranches,
         href: "/devices?focus=delivering_to_branches",
       },
       {
         key: "needReceive",
         title: t("dashboard.mgr.needReceiveAtService"),
         hint: t("dashboard.mgr.needReceiveAtServiceHint"),
-        count: managerWork.needReceiveAtService,
+        count: counts.needReceiveAtService,
         href: "/devices?focus=need_receive_at_service",
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
@@ -462,7 +499,7 @@ export default function DashboardPage() {
         key: "inMaint",
         title: t("dashboard.mgr.inMaintenance"),
         hint: t("dashboard.mgr.inMaintenanceHint"),
-        count: managerWork.inMaintenance,
+        count: counts.inMaintenance,
         href: "/devices?focus=in_maintenance",
       },
     ];
@@ -495,6 +532,9 @@ export default function DashboardPage() {
             </>
           }
         />
+        {!managerWork ? (
+          <p className="mt-4 text-sm text-ink-700/70 dark:text-sand-100/70">{t("dashboard.loading")}</p>
+        ) : null}
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {mgrCards.map((card) => (
             <WorkCardPanel key={card.key} card={card} openListLabel={t("dashboard.work.openList")} />

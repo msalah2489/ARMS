@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CatalogSuggestInput } from "@/components/catalog-suggest-input";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { ImagePickerField, type ImageValue } from "@/components/image-picker-field";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { SortableTh } from "@/components/sortable-th";
 import {
   addBrand,
   addDeviceType,
@@ -31,13 +32,32 @@ import {
   updateModel,
   updateModelAccessory,
   updateModelSparePart,
+  replaceModelVariantParts,
   type DeviceCatalogState,
 } from "@/lib/catalog-store";
 import { isDemoMode } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { useColumnSort } from "@/lib/table-sort";
 import { useUnsavedChanges } from "@/lib/unsaved-changes";
+import type { AccessoryItem, ModelItem, SparePartItem } from "@/types/domain";
 
 type Tab = "types" | "brands" | "models";
+
+type PartsSnapshot = {
+  modelId: string;
+  bodyColor: string;
+  accessories: AccessoryItem[];
+  spareParts: SparePartItem[];
+};
+
+type CatalogModelRow = {
+  model: ModelItem;
+  rowColor: string | null;
+  typeName: string;
+  brandLabel: string;
+  accessoryCount: number;
+  spareCount: number;
+};
 
 function CatalogAdminContent() {
   const { setDirty, clearDirty, confirmIfDirty } = useUnsavedChanges("admin-catalog");
@@ -57,6 +77,9 @@ function CatalogAdminContent() {
   const [selectedModelId, setSelectedModelId] = useState("");
   /** Color of the table row that opened details (null = show all model colors). */
   const [selectedModelColor, setSelectedModelColor] = useState<string | null>(null);
+  /** Snapshot of variant parts when the details modal opened — restored on إهمال. */
+  const [partsSnapshot, setPartsSnapshot] = useState<PartsSnapshot | null>(null);
+  const [partsSessionDirty, setPartsSessionDirty] = useState(false);
   const [accessoryName, setAccessoryName] = useState("");
   const [accessoryColor, setAccessoryColor] = useState("");
   const [spareName, setSpareName] = useState("");
@@ -121,6 +144,59 @@ function CatalogAdminContent() {
   const partsColorLocked =
     Boolean(selectedModel) && selectedModelColors.length > 1 && !activeBodyColor;
 
+  const catalogModelRows = useMemo((): CatalogModelRow[] => {
+    if (!catalog) return [];
+    return catalog.models.flatMap((model) => {
+      const typeName =
+        catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ?? "—";
+      const brandLabel =
+        catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
+      const modelColorList = getModelColors(model);
+      const colorEntries: Array<string | null> = modelColorList.length
+        ? modelColorList
+        : [null];
+      return colorEntries.flatMap((rowColor, colorIndex) => {
+        if (editingModelId === model.id && colorIndex !== 0) return [];
+        return [
+          {
+            model,
+            rowColor,
+            typeName,
+            brandLabel,
+            accessoryCount: listModelAccessories(model, rowColor).length,
+            spareCount: listModelSpareParts(model, rowColor).length,
+          },
+        ];
+      });
+    });
+  }, [catalog, editingModelId]);
+
+  const getCatalogModelSortValue = useCallback((row: CatalogModelRow, key: string) => {
+    switch (key) {
+      case "name":
+        return row.model.name;
+      case "color":
+        return row.rowColor ?? "";
+      case "type":
+        return row.typeName;
+      case "brand":
+        return row.brandLabel;
+      case "acc":
+        return row.accessoryCount;
+      case "spare":
+        return row.spareCount;
+      default:
+        return "";
+    }
+  }, []);
+
+  const {
+    sorted: sortedCatalogModelRows,
+    sortKey: catalogModelSortKey,
+    sortDirection: catalogModelSortDir,
+    toggleSort: toggleCatalogModelSort,
+  } = useColumnSort(catalogModelRows, getCatalogModelSortValue);
+
   const accessorySuggestions = useMemo(
     () =>
       suggestAccessoryNames(accessoryName || accessoryColor, {
@@ -169,6 +245,7 @@ function CatalogAdminContent() {
           spareName.trim() ||
           spareColor.trim() ||
           spareImage ||
+          partsSessionDirty ||
           editingTypeId ||
           editingBrandId ||
           editingModelId ||
@@ -190,6 +267,7 @@ function CatalogAdminContent() {
       spareName,
       spareColor,
       spareImage,
+      partsSessionDirty,
       editingTypeId,
       editingBrandId,
       editingModelId,
@@ -237,13 +315,18 @@ function CatalogAdminContent() {
     setEditingSpareName("");
     setEditingSpareColor("");
     setEditingSpareImage(null);
+    setPartsSnapshot(null);
+    setPartsSessionDirty(false);
     clearDirty();
   }
 
   function requestTabChange(next: Tab) {
     if (next === tab) return;
     confirmIfDirty(() => {
+      revertPartsSnapshot();
       discardCatalogDrafts();
+      setSelectedModelId("");
+      setSelectedModelColor(null);
       setTab(next);
     });
   }
@@ -290,6 +373,133 @@ function CatalogAdminContent() {
     return true;
   }
 
+  function discardPartsDrafts() {
+    setAccessoryName("");
+    setAccessoryColor("");
+    setSpareName("");
+    setSpareColor("");
+    setSpareImage(null);
+    setEditingAccessoryId(null);
+    setEditingAccessoryName("");
+    setEditingAccessoryColor("");
+    setEditingSpareId(null);
+    setEditingSpareName("");
+    setEditingSpareColor("");
+    setEditingSpareImage(null);
+  }
+
+  function partsDraftDirty() {
+    return Boolean(
+      accessoryName.trim() ||
+        accessoryColor.trim() ||
+        spareName.trim() ||
+        spareColor.trim() ||
+        spareImage ||
+        editingAccessoryId ||
+        editingSpareId ||
+        partsSessionDirty,
+    );
+  }
+
+  function cloneParts(items: AccessoryItem[]): AccessoryItem[];
+  function cloneParts(items: SparePartItem[]): SparePartItem[];
+  function cloneParts(items: AccessoryItem[] | SparePartItem[]) {
+    return items.map((item) => ({ ...item }));
+  }
+
+  function capturePartsSnapshot(modelId: string, rowColor: string | null): PartsSnapshot | null {
+    const model = getCatalog().models.find((item) => item.id === modelId);
+    if (!model) return null;
+    const fromRow = rowColor?.trim();
+    const colors = getModelColors(model);
+    const bodyColor = fromRow || (colors.length === 1 ? colors[0] : "");
+    if (!bodyColor) {
+      return { modelId, bodyColor: "", accessories: [], spareParts: [] };
+    }
+    return {
+      modelId,
+      bodyColor,
+      accessories: cloneParts(listModelAccessories(model, bodyColor)),
+      spareParts: cloneParts(listModelSpareParts(model, bodyColor)),
+    };
+  }
+
+  function revertPartsSnapshot() {
+    if (!partsSnapshot?.bodyColor || !partsSessionDirty) return;
+    replaceModelVariantParts(
+      partsSnapshot.modelId,
+      partsSnapshot.bodyColor,
+      partsSnapshot.accessories,
+      partsSnapshot.spareParts,
+    );
+    refresh();
+  }
+
+  function clearModelDetailsState() {
+    discardPartsDrafts();
+    setPartsSnapshot(null);
+    setPartsSessionDirty(false);
+    setSelectedModelId("");
+    setSelectedModelColor(null);
+  }
+
+  function openModelDetails(modelId: string, rowColor: string | null) {
+    const apply = () => {
+      if (
+        selectedModelId &&
+        (selectedModelId !== modelId || selectedModelColor !== rowColor)
+      ) {
+        revertPartsSnapshot();
+        discardPartsDrafts();
+      }
+      setSelectedModelId(modelId);
+      setSelectedModelColor(rowColor);
+      setPartsSnapshot(capturePartsSnapshot(modelId, rowColor));
+      setPartsSessionDirty(false);
+    };
+    const switching =
+      Boolean(selectedModelId) &&
+      (selectedModelId !== modelId || selectedModelColor !== rowColor) &&
+      partsDraftDirty();
+    if (switching) confirmIfDirty(apply);
+    else apply();
+  }
+
+  /** Keep catalog changes made in the modal and close. */
+  function saveModelDetails() {
+    const hadChanges = partsSessionDirty;
+    discardPartsDrafts();
+    setPartsSnapshot(null);
+    setPartsSessionDirty(false);
+    setSelectedModelId("");
+    setSelectedModelColor(null);
+    setError(null);
+    setMessage(hadChanges ? "تم حفظ تعديلات الملحقات وقطع الغيار." : null);
+  }
+
+  /** Undo catalog changes from this modal session and close. */
+  function discardModelDetails() {
+    revertPartsSnapshot();
+    clearModelDetailsState();
+    setError(null);
+    setMessage(null);
+  }
+
+  /** Backdrop: ask before discarding when the session has edits. */
+  function closeModelDetails() {
+    if (partsDraftDirty()) confirmIfDirty(() => discardModelDetails());
+    else clearModelDetailsState();
+  }
+
+  function runParts(
+    action: () => { ok: true } | { ok: false; error: string },
+    success: string,
+  ) {
+    const ok = run(action, success);
+    if (ok) setPartsSessionDirty(true);
+    return ok;
+  }
+
   /** After multi-color save: offer to review accessory/spare colors if any are set. */
   function maybePromptReviewPartColors(modelId: string, colors: string[]) {
     if (colors.length < 2) return;
@@ -299,13 +509,7 @@ function CatalogAdminContent() {
       "لهذا الموديل قطع غيار أو ملحقات لها ألوان محددة. هل ترغب في مراجعة أو تعديل ألوانها الآن؟",
     );
     if (!confirmed) return;
-    setSelectedModelId(modelId);
-    setSelectedModelColor(colors[0] ?? null);
-    window.setTimeout(() => {
-      document
-        .getElementById("catalog-model-details")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    openModelDetails(modelId, colors[0] ?? null);
   }
 
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -661,12 +865,48 @@ function CatalogAdminContent() {
                 <thead>
                   <tr className="border-b border-ink-900/10 text-right text-ink-700/70 dark:border-white/10 dark:text-sand-100/70">
                     <th className="px-2 py-2 font-medium">الصورة</th>
-                    <th className="px-2 py-2 font-medium">الموديل</th>
-                    <th className="px-2 py-2 font-medium">اللون</th>
-                    <th className="px-2 py-2 font-medium">التصنيف</th>
-                    <th className="px-2 py-2 font-medium">البراند</th>
-                    <th className="px-2 py-2 font-medium">ملحقات</th>
-                    <th className="px-2 py-2 font-medium">قطع غيار</th>
+                    <SortableTh
+                      label="الموديل"
+                      columnKey="name"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
+                    <SortableTh
+                      label="اللون"
+                      columnKey="color"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
+                    <SortableTh
+                      label="التصنيف"
+                      columnKey="type"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
+                    <SortableTh
+                      label="البراند"
+                      columnKey="brand"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
+                    <SortableTh
+                      label="ملحقات"
+                      columnKey="acc"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
+                    <SortableTh
+                      label="قطع غيار"
+                      columnKey="spare"
+                      activeKey={catalogModelSortKey}
+                      direction={catalogModelSortDir}
+                      onToggle={toggleCatalogModelSort}
+                    />
                     <th className="px-2 py-2 font-medium">إجراءات</th>
                   </tr>
                 </thead>
@@ -678,23 +918,11 @@ function CatalogAdminContent() {
                       </td>
                     </tr>
                   ) : (
-                    catalog.models.flatMap((model) => {
-                      const typeName =
-                        catalog.deviceTypes.find((item) => item.id === model.deviceTypeId)?.name ??
-                        "—";
-                      const brandLabel =
-                        catalog.brands.find((item) => item.id === model.brandId)?.name ?? "—";
-                      const modelColorList = getModelColors(model);
-                      const colorEntries: Array<string | null> = modelColorList.length
-                        ? modelColorList
-                        : [null];
+                    sortedCatalogModelRows.map((row) => {
+                      const { model, rowColor, typeName, brandLabel } = row;
                       const isEditing = editingModelId === model.id;
 
-                      return colorEntries.flatMap((rowColor, colorIndex) => {
-                        const isFirst = colorIndex === 0;
-                        if (isEditing && !isFirst) return [];
-
-                        return [
+                      return (
                           <tr
                             key={`${model.id}::${rowColor ?? "__none__"}`}
                             className={`border-b border-ink-900/5 dark:border-white/5 ${
@@ -891,10 +1119,7 @@ function CatalogAdminContent() {
                                   <button
                                     type="button"
                                     className="text-right font-medium text-aroma-700 dark:text-aroma-200"
-                                    onClick={() => {
-                                      setSelectedModelId(model.id);
-                                      setSelectedModelColor(rowColor);
-                                    }}
+                                    onClick={() => openModelDetails(model.id, rowColor)}
                                   >
                                     {model.name}
                                   </button>
@@ -925,8 +1150,6 @@ function CatalogAdminContent() {
                                             ? { name: model.name, dataUrl: model.imageDataUrl }
                                             : null,
                                         );
-                                        setSelectedModelId(model.id);
-                                        setSelectedModelColor(rowColor);
                                       }}
                                     >
                                       تعديل
@@ -949,9 +1172,8 @@ function CatalogAdminContent() {
                                 </td>
                               </>
                             )}
-                          </tr>,
-                        ];
-                      });
+                          </tr>
+                      );
                     })
                   )}
                 </tbody>
@@ -959,33 +1181,67 @@ function CatalogAdminContent() {
             </div>
           </section>
 
+          <p className="text-sm text-ink-700/60 dark:text-sand-100/60">
+            اختر اسم موديل من الجدول لفتح نافذة إدارة الملحقات وقطع الغيار.
+          </p>
+
           {selectedModel ? (
-            <section
-              id="catalog-model-details"
-              className="rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel"
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-3 sm:p-4"
+              role="presentation"
+              onClick={closeModelDetails}
             >
-              <h2 className="font-display text-xl">
-                تفاصيل: {selectedModel.name}
-                {(() => {
-                  const colorLabel =
-                    activeBodyColor ||
-                    (selectedModelColors.length ? selectedModelColors.join(" · ") : "");
-                  return colorLabel ? (
-                    <span className="font-sans text-base font-normal text-ink-700/70 dark:text-sand-100/70">
-                      {" "}
-                      — {colorLabel}
-                    </span>
-                  ) : null;
-                })()}
-              </h2>
+              <div
+                id="catalog-model-details"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="catalog-model-details-title"
+                className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-5 shadow-panel dark:bg-ink-900"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h2
+                    id="catalog-model-details-title"
+                    className="font-display text-xl text-ink-900 dark:text-sand-50"
+                  >
+                    تفاصيل: {selectedModel.name}
+                    {(() => {
+                      const colorLabel =
+                        activeBodyColor ||
+                        (selectedModelColors.length ? selectedModelColors.join(" · ") : "");
+                      return colorLabel ? (
+                        <span className="font-sans text-base font-normal text-ink-700/70 dark:text-sand-100/70">
+                          {" "}
+                          — {colorLabel}
+                        </span>
+                      ) : null;
+                    })()}
+                  </h2>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+                    onClick={saveModelDetails}
+                  >
+                    حفظ
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+                    onClick={discardModelDetails}
+                  >
+                    إهمال
+                  </button>
+                </div>
+              </div>
 
-              {partsColorLocked ? (
-                <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
-                  اختر لون الجهاز من الجدول أولاً لتعديل ملحقاته وقطع غياره
-                </p>
-              ) : null}
+                {partsColorLocked ? (
+                  <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
+                    اختر لون الجهاز من الجدول أولاً لتعديل ملحقاته وقطع غياره
+                  </p>
+                ) : null}
 
-              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-medium">الملحقات الخاصة بالموديل</h3>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[1.2fr_1fr_auto]">
@@ -1013,7 +1269,7 @@ function CatalogAdminContent() {
                       onClick={() => {
                         if (!activeBodyColor) return;
                         if (
-                          run(
+                          runParts(
                             () =>
                               addModelAccessory(
                                 selectedModel.id,
@@ -1066,7 +1322,7 @@ function CatalogAdminContent() {
                                   onClick={() => {
                                     if (!activeBodyColor) return;
                                     if (
-                                      run(
+                                      runParts(
                                         () =>
                                           updateModelAccessory(
                                             selectedModel.id,
@@ -1118,7 +1374,7 @@ function CatalogAdminContent() {
                                   className="text-rose-700"
                                   onClick={() => {
                                     if (!activeBodyColor) return;
-                                    run(
+                                    runParts(
                                       () =>
                                         deleteModelAccessory(
                                           selectedModel.id,
@@ -1167,7 +1423,7 @@ function CatalogAdminContent() {
                       onClick={() => {
                         if (!activeBodyColor) return;
                         if (
-                          run(
+                          runParts(
                             () =>
                               addModelSparePart(
                                 selectedModel.id,
@@ -1237,7 +1493,7 @@ function CatalogAdminContent() {
                                   onClick={() => {
                                     if (!activeBodyColor) return;
                                     if (
-                                      run(
+                                      runParts(
                                         () =>
                                           updateModelSparePart(
                                             selectedModel.id,
@@ -1313,7 +1569,7 @@ function CatalogAdminContent() {
                                   className="text-rose-700 dark:text-rose-300"
                                   onClick={() => {
                                     if (!activeBodyColor) return;
-                                    run(
+                                    runParts(
                                       () =>
                                         deleteModelSparePart(
                                           selectedModel.id,
@@ -1334,11 +1590,10 @@ function CatalogAdminContent() {
                     )}
                   </ul>
                 </div>
+                </div>
               </div>
-            </section>
-          ) : (
-            <p className="text-sm text-ink-700/60">اختر موديلًا لإدارة ملحقاته وقطع غياره.</p>
-          )}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

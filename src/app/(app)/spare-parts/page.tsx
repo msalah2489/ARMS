@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClickableImage } from "@/components/clickable-image";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { SortableTh } from "@/components/sortable-th";
 import { getSparePartsForModel } from "@/lib/catalog-store";
 import { readSession } from "@/lib/session";
 import {
@@ -16,6 +17,7 @@ import {
   receiveSpareParts,
   updateBalanceMinimumQuantity,
 } from "@/lib/spare-inventory-store";
+import { useColumnSort } from "@/lib/table-sort";
 import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   Profile,
@@ -61,6 +63,28 @@ function SpareInventoryContent() {
 
   const models = useMemo(() => listModelsWithSpareParts(), [balances, receipts]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const getBalanceSortValue = useCallback((row: SpareInventoryBalance, key: string) => {
+    switch (key) {
+      case "model":
+        return row.modelName;
+      case "part":
+        return row.partName;
+      case "color":
+        return row.color || "";
+      case "qty":
+        return row.quantity;
+      case "min":
+        return row.minimumQuantity ?? 2;
+      default:
+        return "";
+    }
+  }, []);
+  const {
+    sorted: sortedBalances,
+    sortKey: balanceSortKey,
+    sortDirection: balanceSortDir,
+    toggleSort: toggleBalanceSort,
+  } = useColumnSort(balances, getBalanceSortValue);
 
   const receiveDirty = useMemo(
     () =>
@@ -368,15 +392,50 @@ function SpareInventoryContent() {
               <thead>
                 <tr className="border-b border-ink-900/10 text-right text-ink-700/60 dark:border-white/10 dark:text-sand-100/60">
                   <th className="px-3 py-2 font-medium">الصورة</th>
-                  <th className="px-3 py-2 font-medium">الموديل</th>
-                  <th className="px-3 py-2 font-medium">القطعة</th>
-                  <th className="px-3 py-2 font-medium">اللون</th>
-                  <th className="px-3 py-2 font-medium">الكمية</th>
-                  <th className="px-3 py-2 font-medium">الحد الأدنى</th>
+                  <SortableTh
+                    label="الموديل"
+                    columnKey="model"
+                    activeKey={balanceSortKey}
+                    direction={balanceSortDir}
+                    onToggle={toggleBalanceSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="القطعة"
+                    columnKey="part"
+                    activeKey={balanceSortKey}
+                    direction={balanceSortDir}
+                    onToggle={toggleBalanceSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="اللون"
+                    columnKey="color"
+                    activeKey={balanceSortKey}
+                    direction={balanceSortDir}
+                    onToggle={toggleBalanceSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="الكمية"
+                    columnKey="qty"
+                    activeKey={balanceSortKey}
+                    direction={balanceSortDir}
+                    onToggle={toggleBalanceSort}
+                    className="px-3 py-2 font-medium"
+                  />
+                  <SortableTh
+                    label="الحد الأدنى"
+                    columnKey="min"
+                    activeKey={balanceSortKey}
+                    direction={balanceSortDir}
+                    onToggle={toggleBalanceSort}
+                    className="px-3 py-2 font-medium"
+                  />
                 </tr>
               </thead>
               <tbody>
-                {balances.map((row) => {
+                {sortedBalances.map((row) => {
                   const image = partImageFor(row.modelId, row.partId);
                   const isLow = row.quantity <= (row.minimumQuantity ?? 2);
                   return (

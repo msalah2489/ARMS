@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { DeviceFormModal } from "@/components/device-form-modal";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { SortableTh } from "@/components/sortable-th";
 import { usePreferences } from "@/components/preferences-provider";
 import { isBranchRole, isMaintenanceManagerRole } from "@/lib/auth";
 import { EXTERNAL_CONDITION_LABELS, generateRequestNumber, isValidSaudiMobile } from "@/lib/branch-catalog";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/branch-store";
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { readSession } from "@/lib/session";
+import { useColumnSort } from "@/lib/table-sort";
 import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   BranchPriority,
@@ -43,6 +45,34 @@ function NewServiceRequestContent() {
   const [purchaseInvoice, setPurchaseInvoice] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
   const [devices, setDevices] = useState<DraftRequestDevice[]>([]);
+  const getDeviceSortValue = useCallback((device: DraftRequestDevice, key: string) => {
+    switch (key) {
+      case "code":
+        return device.deviceCode;
+      case "model":
+        return device.modelName;
+      case "color":
+        return device.color || "";
+      case "serial":
+        return device.serialNumber || "";
+      case "fault":
+        return device.fault || "";
+      case "condition":
+        return EXTERNAL_CONDITION_LABELS[device.externalCondition];
+      case "qr":
+        return isDeviceQrPrinted(device) ? "1" : "0";
+      case "accessories":
+        return device.accessoryNames.join("، ");
+      default:
+        return "";
+    }
+  }, []);
+  const {
+    sorted: sortedDevices,
+    sortKey: deviceSortKey,
+    sortDirection: deviceSortDir,
+    toggleSort: toggleDeviceSort,
+  } = useColumnSort(devices, getDeviceSortValue);
   const [modalOpen, setModalOpen] = useState(false);
   const [qrDevice, setQrDevice] = useState<DraftRequestDevice | null>(null);
   const [pendingAddAnother, setPendingAddAnother] = useState(false);
@@ -267,14 +297,62 @@ function NewServiceRequestContent() {
               <thead>
                 <tr className="border-b border-ink-900/10 text-right text-ink-700/70 dark:border-white/10 dark:text-sand-100/70">
                   <th className="px-2 py-2 font-medium">الصورة</th>
-                  <th className="px-2 py-2 font-medium">كود الجهاز</th>
-                  <th className="px-2 py-2 font-medium">الموديل</th>
-                  <th className="px-2 py-2 font-medium">اللون</th>
-                  <th className="px-2 py-2 font-medium">السيريال</th>
-                  <th className="px-2 py-2 font-medium">شكوى العميل</th>
-                  <th className="px-2 py-2 font-medium">الحالة الخارجية</th>
-                  <th className="px-2 py-2 font-medium">ملصق QR</th>
-                  <th className="px-2 py-2 font-medium">الملحقات</th>
+                  <SortableTh
+                    label="كود الجهاز"
+                    columnKey="code"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="الموديل"
+                    columnKey="model"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="اللون"
+                    columnKey="color"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="السيريال"
+                    columnKey="serial"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="شكوى العميل"
+                    columnKey="fault"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="الحالة الخارجية"
+                    columnKey="condition"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="ملصق QR"
+                    columnKey="qr"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
+                  <SortableTh
+                    label="الملحقات"
+                    columnKey="accessories"
+                    activeKey={deviceSortKey}
+                    direction={deviceSortDir}
+                    onToggle={toggleDeviceSort}
+                  />
                   <th className="px-2 py-2 font-medium">الإجراءات</th>
                 </tr>
               </thead>
@@ -286,7 +364,7 @@ function NewServiceRequestContent() {
                     </td>
                   </tr>
                 ) : (
-                  devices.map((device) => (
+                  sortedDevices.map((device) => (
                     <tr key={device.localId} className="border-b border-ink-900/5 dark:border-white/5">
                       <td className="px-2 py-3">
                         {device.deviceImageDataUrl ? (

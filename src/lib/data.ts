@@ -15,6 +15,7 @@ import {
   listOpsServiceRequests,
 } from "@/lib/ops-data";
 import { getStoredLocale, type AppLocale } from "@/lib/preferences";
+import { readSession } from "@/lib/session";
 import { listInventoryBalances } from "@/lib/spare-inventory-store";
 import { createClient } from "@/lib/supabase/client";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
@@ -31,7 +32,9 @@ import type {
 } from "@/types/domain";
 
 function resolveLocale(locale?: AppLocale): AppLocale {
-  return locale ?? getStoredLocale();
+  if (locale) return locale;
+  const userId = typeof window !== "undefined" ? readSession()?.id ?? null : null;
+  return getStoredLocale(userId);
 }
 
 async function ensureOpsHydrated() {
@@ -42,8 +45,41 @@ async function ensureOpsHydrated() {
     return;
   }
   if (!isSupabaseConfigured() || isDemoMode()) return;
-  // Session cache: hydrateOpsFromSupabase returns immediately when already hydrated.
+  // Already hydrated this tab: never block navigation or re-enter hydrate from list reads.
+  if (wasOpsHydratedThisSession()) return;
   await hydrateOpsFromSupabase();
+}
+
+/** Sync peek for instant first paint after the session has hydrated (or in demo). */
+export function peekDevices(opsBranchId?: string | null, locale?: AppLocale): Device[] {
+  if (typeof window === "undefined") return [];
+  if (isDemoMode()) return localizedDemoDevices(resolveLocale(locale));
+  if (!canUseOpsLocalCache()) return [];
+  return listOpsDevices(opsBranchId);
+}
+
+export function peekCustomers(opsBranchId?: string | null, locale?: AppLocale): Customer[] {
+  if (typeof window === "undefined") return [];
+  if (isDemoMode()) return localizedDemoCustomers(resolveLocale(locale));
+  if (!canUseOpsLocalCache()) return [];
+  return listOpsCustomers(opsBranchId);
+}
+
+export function peekBranches(locale?: AppLocale): Branch[] {
+  if (typeof window === "undefined") return [];
+  if (isDemoMode()) return localizedDemoBranches(resolveLocale(locale));
+  if (!canUseOpsLocalCache()) return [];
+  return listOpsBranches(resolveLocale(locale));
+}
+
+export function peekServiceRequests(
+  opsBranchId?: string | null,
+  locale?: AppLocale,
+): ServiceRequest[] {
+  if (typeof window === "undefined") return [];
+  if (isDemoMode()) return localizedDemoRequests(resolveLocale(locale));
+  if (!canUseOpsLocalCache()) return [];
+  return listOpsServiceRequests(opsBranchId);
 }
 
 /**

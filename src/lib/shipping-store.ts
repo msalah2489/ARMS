@@ -26,6 +26,17 @@ import type {
 
 const BATCHES_KEY = "arms_shipping_batches_v1";
 const AUDIT_KEY = "arms_audit_events_v1";
+const PICKUP_RECEIPTS_KEY = "arms_pickup_receipts_v1";
+
+/** Avoid re-parsing shipping JSON on every eligibility check (was freezing the tab). */
+let batchesMemoryCache: ShippingBatch[] | null = null;
+let openBatchIndexCache: {
+  excludeBatchId: string | undefined;
+  ids: Set<string>;
+  codes: Set<string>;
+  pairs: Array<{ batch: ShippingBatch; item: ShippingBatchItem }>;
+} | null = null;
+let pickupOpenIdsCache: { raw: string | null; ids: Set<string> } | null = null;
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -39,6 +50,11 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function invalidateShippingCaches() {
+  openBatchIndexCache = null;
+  pickupOpenIdsCache = null;
 }
 
 function schedulePersistBatches(batches: ShippingBatch[]) {
@@ -64,6 +80,8 @@ export function replaceShippingState(input: {
   audit: Array<Record<string, unknown>>;
 }) {
   if (typeof window === "undefined") return;
+  batchesMemoryCache = input.batches;
+  invalidateShippingCaches();
   writeJson(BATCHES_KEY, input.batches);
   writeJson(AUDIT_KEY, input.audit);
 }
@@ -96,10 +114,15 @@ function writeAudit(input: {
 }
 
 function readAllBatches() {
-  return readJson<ShippingBatch[]>(BATCHES_KEY, []);
+  if (batchesMemoryCache) return batchesMemoryCache;
+  batchesMemoryCache = readJson<ShippingBatch[]>(BATCHES_KEY, []);
+  openBatchIndexCache = null;
+  return batchesMemoryCache;
 }
 
 function writeBatches(batches: ShippingBatch[]) {
+  batchesMemoryCache = batches;
+  invalidateShippingCaches();
   writeJson(BATCHES_KEY, batches);
   schedulePersistBatches(batches);
 }
@@ -162,8 +185,14 @@ function assertUniqueShipmentNumber(input: {
   return { ok: true };
 }
 
-function openBatchActiveItems(excludeBatchId?: string) {
-  return readAllBatches()
+function getOpenBatchIndex(excludeBatchId?: string) {
+  if (
+    openBatchIndexCache &&
+    openBatchIndexCache.excludeBatchId === excludeBatchId
+  ) {
+    return openBatchIndexCache;
+  }
+  const pairs = readAllBatches()
     .filter(
       (batch) =>
         batch.id !== excludeBatchId &&
@@ -175,28 +204,33 @@ function openBatchActiveItems(excludeBatchId?: string) {
         .filter((item) => item.status === "active")
         .map((item) => ({ batch, item })),
     );
+  const ids = new Set(pairs.map(({ item }) => item.requestDeviceId));
+  const codes = new Set(
+    pairs.map(({ item }) => normalizeDeviceCodeKey(item.deviceCode)).filter(Boolean),
+  );
+  const next = { excludeBatchId, ids, codes, pairs };
+  // Only cache the common “no exclude” path; rare exclude calls stay uncached.
+  if (!excludeBatchId) openBatchIndexCache = next;
+  return next;
+}
+
+function openBatchActiveItems(excludeBatchId?: string) {
+  return getOpenBatchIndex(excludeBatchId).pairs;
 }
 
 function activeDeviceIdsOnOpenBatches(excludeBatchId?: string) {
-  return new Set(
-    openBatchActiveItems(excludeBatchId).map(({ item }) => item.requestDeviceId),
-  );
+  return getOpenBatchIndex(excludeBatchId).ids;
 }
 
 function activeDeviceCodeKeysOnOpenBatches(excludeBatchId?: string) {
-  return new Set(
-    openBatchActiveItems(excludeBatchId)
-      .map(({ item }) => normalizeDeviceCodeKey(item.deviceCode))
-      .filter(Boolean),
-  );
+  return getOpenBatchIndex(excludeBatchId).codes;
 }
 
 function deviceOnOpenOutboundBatch(device: DraftRequestDevice, excludeBatchId?: string) {
-  const activeIds = activeDeviceIdsOnOpenBatches(excludeBatchId);
-  const activeCodes = activeDeviceCodeKeysOnOpenBatches(excludeBatchId);
+  const index = getOpenBatchIndex(excludeBatchId);
   return (
-    activeIds.has(device.localId) ||
-    activeCodes.has(normalizeDeviceCodeKey(device.deviceCode))
+    index.ids.has(device.localId) ||
+    index.codes.has(normalizeDeviceCodeKey(device.deviceCode))
   );
 }
 
@@ -217,8 +251,10 @@ function findDeviceQueueItem(
 
 function findOpenBatchForDevice(device: DraftRequestDevice) {
   const codeKey = normalizeDeviceCodeKey(device.deviceCode);
+  const index = getOpenBatchIndex();
+  if (!index.ids.has(device.localId) && !index.codes.has(codeKey)) return null;
   return (
-    openBatchActiveItems().find(
+    index.pairs.find(
       ({ item }) =>
         item.requestDeviceId === device.localId ||
         normalizeDeviceCodeKey(item.deviceCode) === codeKey,
@@ -241,12 +277,19 @@ export function getShippingBatch(id: string) {
   return listShippingBatches().find((batch) => batch.id === id) ?? null;
 }
 
-function deviceOnOpenPickupReceiptLocal(deviceLocalId: string): boolean {
+function openPickupDeviceLocalIds(): Set<string> {
   // Inline read avoids circular import with pickup-receipt-store.
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem("arms_pickup_receipts_v1");
-    if (!raw) return false;
+    const raw = window.localStorage.getItem(PICKUP_RECEIPTS_KEY);
+    if (pickupOpenIdsCache && pickupOpenIdsCache.raw === raw) {
+      return pickupOpenIdsCache.ids;
+    }
+    const ids = new Set<string>();
+    if (!raw) {
+      pickupOpenIdsCache = { raw, ids };
+      return ids;
+    }
     const receipts = JSON.parse(raw) as Array<{
       id: string;
       status: string;
@@ -259,26 +302,39 @@ function deviceOnOpenPickupReceiptLocal(deviceLocalId: string): boolean {
       "approved",
       "pending_supervisor",
     ]);
-    return receipts.some(
-      (receipt) =>
-        open.has(receipt.status) &&
-        receipt.lines.some(
-          (line) => line.deviceLocalId === deviceLocalId && line.status !== "rejected",
-        ),
-    );
+    for (const receipt of receipts) {
+      if (!open.has(receipt.status)) continue;
+      for (const line of receipt.lines ?? []) {
+        if (line.status === "rejected") continue;
+        if (line.deviceLocalId) ids.add(line.deviceLocalId);
+      }
+    }
+    pickupOpenIdsCache = { raw, ids };
+    return ids;
   } catch {
-    return false;
+    return new Set();
   }
+}
+
+function deviceOnOpenPickupReceiptLocal(deviceLocalId: string): boolean {
+  return openPickupDeviceLocalIds().has(deviceLocalId);
 }
 
 /** Devices at branch eligible for outbound shipment (one branch only). */
 export function listDevicesEligibleForShipment(opsBranchId: string): TechnicianQueueItem[] {
+  const openIndex = getOpenBatchIndex();
+  const pickupIds = openPickupDeviceLocalIds();
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
     if (!device.qrPrintedAt) return false;
-    if (deviceOnOpenOutboundBatch(device)) return false;
-    if (deviceOnOpenPickupReceiptLocal(device.localId)) return false;
+    if (
+      openIndex.ids.has(device.localId) ||
+      openIndex.codes.has(normalizeDeviceCodeKey(device.deviceCode))
+    ) {
+      return false;
+    }
+    if (pickupIds.has(device.localId)) return false;
     const status = normalizeLifecycleStatus(device.lifecycleStatus);
     return (
       status === "received_at_branch" ||
@@ -297,6 +353,11 @@ export function listDevicesAwaitingBranchOutboundAction(
   opsBranchId: string,
 ): TechnicianQueueItem[] {
   const byId = new Map<string, TechnicianQueueItem>();
+  const all = listAllRequestDevices();
+  const byLocalId = new Map(all.map((row) => [row.device.localId, row] as const));
+  const byCode = new Map(
+    all.map((row) => [normalizeDeviceCodeKey(row.device.deviceCode), row] as const),
+  );
 
   for (const item of listDevicesEligibleForShipment(opsBranchId)) {
     byId.set(item.device.localId, item);
@@ -307,12 +368,8 @@ export function listDevicesAwaitingBranchOutboundAction(
     if (!["ready", "draft"].includes(batch.status)) continue;
     for (const batchItem of batch.items.filter((item) => item.status === "active")) {
       const match =
-        listAllRequestDevices().find((row) => row.device.localId === batchItem.requestDeviceId) ??
-        listAllRequestDevices().find(
-          (row) =>
-            normalizeDeviceCodeKey(row.device.deviceCode) ===
-            normalizeDeviceCodeKey(batchItem.deviceCode),
-        );
+        byLocalId.get(batchItem.requestDeviceId) ??
+        byCode.get(normalizeDeviceCodeKey(batchItem.deviceCode));
       if (!match) continue;
       if (match.request.opsBranchId !== opsBranchId) continue;
       byId.set(match.device.localId, match);
@@ -326,22 +383,35 @@ export function listDevicesAwaitingBranchOutboundAction(
 export function listDevicesEligibleForMobileDirectShip(
   opsBranchId: string,
 ): TechnicianQueueItem[] {
+  const openIndex = getOpenBatchIndex();
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
     if (!device.qrPrintedAt) return false;
-    if (deviceOnOpenOutboundBatch(device)) return false;
+    if (
+      openIndex.ids.has(device.localId) ||
+      openIndex.codes.has(normalizeDeviceCodeKey(device.deviceCode))
+    ) {
+      return false;
+    }
     return normalizeLifecycleStatus(device.lifecycleStatus) === "maintenance_failed";
   });
 }
 
 /** Devices ready to return to their origin branch. */
 export function listDevicesEligibleForReturn(opsBranchId: string): TechnicianQueueItem[] {
+  const openIndex = getOpenBatchIndex();
+  const pickupIds = openPickupDeviceLocalIds();
   return listAllRequestDevices().filter(({ request, device }) => {
     if (request.opsBranchId !== opsBranchId) return false;
     if (device.lockedAfterShip) return false;
-    if (deviceOnOpenOutboundBatch(device)) return false;
-    if (deviceOnOpenPickupReceiptLocal(device.localId)) return false;
+    if (
+      openIndex.ids.has(device.localId) ||
+      openIndex.codes.has(normalizeDeviceCodeKey(device.deviceCode))
+    ) {
+      return false;
+    }
+    if (pickupIds.has(device.localId)) return false;
     return normalizeLifecycleStatus(device.lifecycleStatus) === "ready_to_return";
   });
 }
@@ -1035,11 +1105,41 @@ export type BranchReadyToShipSummary = {
 
 /** Branches that currently have devices eligible for outbound shipment to service. */
 export function listBranchesReadyToShip(): BranchReadyToShipSummary[] {
-  return listOpsBranches()
-    .map((branch) => ({
-      branchId: branch.id,
-      branchName: branch.name,
-      readyCount: listDevicesEligibleForShipment(branch.id).length,
+  // Single pass over devices — per-branch full scans allocated too much memory.
+  const branches = listOpsBranches();
+  const names = new Map(branches.map((branch) => [branch.id, branch.name]));
+  const openIndex = getOpenBatchIndex();
+  const pickupIds = openPickupDeviceLocalIds();
+  const counts = new Map<string, number>();
+
+  for (const { request, device } of listAllRequestDevices()) {
+    const branchId = request.opsBranchId;
+    if (!branchId || !names.has(branchId)) continue;
+    if (device.lockedAfterShip) continue;
+    if (!device.qrPrintedAt) continue;
+    if (
+      openIndex.ids.has(device.localId) ||
+      openIndex.codes.has(normalizeDeviceCodeKey(device.deviceCode))
+    ) {
+      continue;
+    }
+    if (pickupIds.has(device.localId)) continue;
+    const status = normalizeLifecycleStatus(device.lifecycleStatus);
+    if (
+      status !== "received_at_branch" &&
+      status !== "excluded_from_shipment" &&
+      status !== "maintenance_failed"
+    ) {
+      continue;
+    }
+    counts.set(branchId, (counts.get(branchId) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([branchId, readyCount]) => ({
+      branchId,
+      branchName: names.get(branchId) ?? branchId,
+      readyCount,
     }))
     .filter((item) => item.readyCount > 0)
     .sort(
@@ -1051,11 +1151,32 @@ export function listBranchesReadyToShip(): BranchReadyToShipSummary[] {
 
 /** Branches that currently have devices at the center eligible for return. */
 export function listBranchesReadyForReturn(): BranchReadyToShipSummary[] {
-  return listOpsBranches()
-    .map((branch) => ({
-      branchId: branch.id,
-      branchName: branch.name,
-      readyCount: listDevicesEligibleForReturn(branch.id).length,
+  const branches = listOpsBranches();
+  const names = new Map(branches.map((branch) => [branch.id, branch.name]));
+  const openIndex = getOpenBatchIndex();
+  const pickupIds = openPickupDeviceLocalIds();
+  const counts = new Map<string, number>();
+
+  for (const { request, device } of listAllRequestDevices()) {
+    const branchId = request.opsBranchId;
+    if (!branchId || !names.has(branchId)) continue;
+    if (device.lockedAfterShip) continue;
+    if (
+      openIndex.ids.has(device.localId) ||
+      openIndex.codes.has(normalizeDeviceCodeKey(device.deviceCode))
+    ) {
+      continue;
+    }
+    if (pickupIds.has(device.localId)) continue;
+    if (normalizeLifecycleStatus(device.lifecycleStatus) !== "ready_to_return") continue;
+    counts.set(branchId, (counts.get(branchId) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([branchId, readyCount]) => ({
+      branchId,
+      branchName: names.get(branchId) ?? branchId,
+      readyCount,
     }))
     .filter((item) => item.readyCount > 0)
     .sort(
@@ -1347,15 +1468,17 @@ function patchForShippingStatus(
 export function listShippingStatusInconsistencies(): ShippingStatusInconsistency[] {
   const issues: ShippingStatusInconsistency[] = [];
   const seen = new Set<string>();
+  const all = listAllRequestDevices();
+  const byLocalId = new Map(all.map((row) => [row.device.localId, row] as const));
+  const byCode = new Map(
+    all.map((row) => [normalizeDeviceCodeKey(row.device.deviceCode), row] as const),
+  );
+  const openIndex = getOpenBatchIndex();
 
-  for (const { batch, item } of openBatchActiveItems()) {
+  for (const { batch, item } of openIndex.pairs) {
     const match =
-      listAllRequestDevices().find((row) => row.device.localId === item.requestDeviceId) ??
-      listAllRequestDevices().find(
-        (row) =>
-          normalizeDeviceCodeKey(row.device.deviceCode) ===
-          normalizeDeviceCodeKey(item.deviceCode),
-      );
+      byLocalId.get(item.requestDeviceId) ??
+      byCode.get(normalizeDeviceCodeKey(item.deviceCode));
     if (!match) continue;
 
     const status = normalizeLifecycleStatus(match.device.lifecycleStatus);
@@ -1388,13 +1511,15 @@ export function listShippingStatusInconsistencies(): ShippingStatusInconsistency
     });
   }
 
-  for (const { request, device } of listAllRequestDevices()) {
+  for (const { request, device } of all) {
     const status = normalizeLifecycleStatus(device.lifecycleStatus);
     // «منتهي» keeps lockedAfterShip on purpose after customer delivery — not an inconsistency.
     if (status === "delivered_to_customer" || status === "closed") continue;
 
     const locked = Boolean(device.lockedAfterShip);
-    const onOpen = Boolean(findOpenBatchForDevice(device));
+    const codeKey = normalizeDeviceCodeKey(device.deviceCode);
+    const onOpen =
+      openIndex.ids.has(device.localId) || openIndex.codes.has(codeKey);
     const key = `${device.localId}::orphan`;
     if (seen.has(`${device.localId}::batch`)) continue;
 

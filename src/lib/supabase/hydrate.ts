@@ -72,12 +72,35 @@ export type HydrateOptions = {
   force?: boolean;
 };
 
+function profilesRoughlyEqual(
+  a: ReturnType<typeof readSession>,
+  b: ReturnType<typeof managedUserToProfile>,
+) {
+  if (!a) return false;
+  return (
+    a.id === b.id &&
+    a.role === b.role &&
+    a.fullName === b.fullName &&
+    a.username === b.username &&
+    a.email === b.email &&
+    a.mobile === b.mobile &&
+    a.opsBranchId === b.opsBranchId &&
+    a.opsBranchName === b.opsBranchName &&
+    a.isActive === b.isActive &&
+    (a.photoDataUrl ?? "") === (b.photoDataUrl ?? "") &&
+    JSON.stringify(a.permissions ?? null) === JSON.stringify(b.permissions ?? null)
+  );
+}
+
 function refreshSessionProfileFromUsers() {
   const session = readSession();
   if (!session) return;
   const managed = findManagedUserForSession(session);
   if (!managed) return;
-  writeSession(managedUserToProfile(managed));
+  const next = managedUserToProfile(managed);
+  // Avoid rewriting (and re-notifying) a large session blob on every hydrate.
+  if (profilesRoughlyEqual(session, next)) return;
+  writeSession(next);
 }
 
 function markHydrated() {

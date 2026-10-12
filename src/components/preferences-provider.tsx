@@ -12,13 +12,12 @@ import {
 import { translate, type MessageKey } from "@/lib/i18n/messages";
 import {
   applyDocumentPreferences,
-  getStoredLocale,
-  getStoredTheme,
-  setStoredLocale,
-  setStoredTheme,
+  getPrefsForUser,
+  setPrefsForUser,
   type AppLocale,
   type AppTheme,
 } from "@/lib/preferences";
+import { readSession } from "@/lib/session";
 
 type PreferencesContextValue = {
   locale: AppLocale;
@@ -30,34 +29,58 @@ type PreferencesContextValue = {
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
+function readActiveUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return readSession()?.id ?? null;
+}
+
 export function PreferencesProvider({ children }: { children: ReactNode }) {
+  const [userId, setUserId] = useState<string | null>(null);
   const [locale, setLocaleState] = useState<AppLocale>("ar");
   const [theme, setThemeState] = useState<AppTheme>("light");
 
-  useEffect(() => {
-    const nextLocale = getStoredLocale();
-    const nextTheme = getStoredTheme();
-    setLocaleState(nextLocale);
-    setThemeState(nextTheme);
-    applyDocumentPreferences(nextLocale, nextTheme);
+  const applyForUser = useCallback((nextUserId: string | null) => {
+    const prefs = getPrefsForUser(nextUserId);
+    setUserId((prevId) => {
+      if (prevId === nextUserId) return prevId;
+      return nextUserId;
+    });
+    setLocaleState((prev) => (prev === prefs.locale ? prev : prefs.locale));
+    setThemeState((prev) => (prev === prefs.theme ? prev : prefs.theme));
+    applyDocumentPreferences(prefs.locale, prefs.theme);
   }, []);
+
+  useEffect(() => {
+    applyForUser(readActiveUserId());
+
+    function onSessionUpdated() {
+      applyForUser(readActiveUserId());
+    }
+
+    window.addEventListener("arms-session-updated", onSessionUpdated);
+    return () => window.removeEventListener("arms-session-updated", onSessionUpdated);
+  }, [applyForUser]);
 
   const setLocale = useCallback(
     (next: AppLocale) => {
-      setLocaleState(next);
-      setStoredLocale(next);
-      applyDocumentPreferences(next, theme);
+      const id = userId ?? readActiveUserId();
+      const prefs = setPrefsForUser(id, { locale: next });
+      setUserId(id);
+      setLocaleState(prefs.locale);
+      applyDocumentPreferences(prefs.locale, prefs.theme);
     },
-    [theme],
+    [userId],
   );
 
   const setTheme = useCallback(
     (next: AppTheme) => {
-      setThemeState(next);
-      setStoredTheme(next);
-      applyDocumentPreferences(locale, next);
+      const id = userId ?? readActiveUserId();
+      const prefs = setPrefsForUser(id, { theme: next });
+      setUserId(id);
+      setThemeState(prefs.theme);
+      applyDocumentPreferences(prefs.locale, prefs.theme);
     },
-    [locale],
+    [userId],
   );
 
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);

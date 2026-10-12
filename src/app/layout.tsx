@@ -18,7 +18,8 @@ export const metadata: Metadata = {
   description: "منصة إدارة طلبات وعمليات صيانة الأجهزة",
 };
 
-const prefsBootScript = `(function(){try{var l=localStorage.getItem('arms_locale')||'ar';var t=localStorage.getItem('arms_theme')||'light';var d=document.documentElement;d.lang=l;d.dir=l==='ar'?'rtl':'ltr';d.dataset.theme=t;if(t==='dark')d.classList.add('dark');d.style.colorScheme=t;}catch(e){}})();`;
+/** Boot flash: load theme/locale for the signed-in account (per-user map). */
+const prefsBootScript = `(function(){try{var locale='ar',theme='light';var sessionRaw=localStorage.getItem('arms_session');var prefsRaw=localStorage.getItem('arms_user_prefs_v1');if(sessionRaw&&prefsRaw){var session=JSON.parse(sessionRaw);var map=JSON.parse(prefsRaw);var p=session&&session.id?map[session.id]:null;if(p){if(p.locale==='en')locale='en';if(p.theme==='dark')theme='dark';}}else{if(localStorage.getItem('arms_locale')==='en')locale='en';if(localStorage.getItem('arms_theme')==='dark')theme='dark';}var d=document.documentElement;d.lang=locale;d.dir=locale==='ar'?'rtl':'ltr';d.dataset.theme=theme;if(theme==='dark')d.classList.add('dark');else d.classList.remove('dark');d.style.colorScheme=theme;}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

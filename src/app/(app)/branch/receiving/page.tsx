@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { SortableTh } from "@/components/sortable-th";
 import {
   deviceStatusLabel,
   listMaintenanceRequests,
@@ -15,6 +16,7 @@ import {
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { markDeliveredToCustomer } from "@/lib/technician-store";
 import { readSession } from "@/lib/session";
+import { useColumnSort } from "@/lib/table-sort";
 import { formatDate } from "@/lib/utils";
 import type { DraftRequestDevice, MaintenanceRequestRecord, Profile } from "@/types/domain";
 
@@ -128,109 +130,24 @@ function BranchReceivingContent() {
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
   function renderTable(rows: Row[], withDeliver = false) {
-    const colSpan = withDeliver ? 8 : 7;
     return (
-      <div className="arms-scroll-x mt-4">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
-              <th className="px-2 py-2 font-medium">كود الجهاز</th>
-              <th className="px-2 py-2 font-medium">الموديل</th>
-              <th className="px-2 py-2 font-medium">رقم الطلب</th>
-              <th className="px-2 py-2 font-medium">الحالة</th>
-              <th className="px-2 py-2 font-medium">ملصق QR</th>
-              <th className="px-2 py-2 font-medium">العميل</th>
-              <th className="px-2 py-2 font-medium">التاريخ</th>
-              {withDeliver ? <th className="px-2 py-2 font-medium">إجراء</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={colSpan} className="px-2 py-6 text-ink-700/60">
-                  لا توجد أجهزة في هذا القسم.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.key} className="border-b border-ink-900/5">
-                  <td className="px-2 py-3 font-medium">{row.deviceCode}</td>
-                  <td className="px-2 py-3">{row.modelName}</td>
-                  <td className="px-2 py-3">
-                    <Link
-                      href={`/service-requests/detail/?id=${encodeURIComponent(row.requestId)}`}
-                      className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 hover:text-aroma-800 dark:text-aroma-200"
-                    >
-                      {row.requestNumber}
-                    </Link>
-                  </td>
-                  <td className="px-2 py-3">{row.status}</td>
-                  <td className="px-2 py-3">
-                    {row.qrPrinted ? (
-                      <button
-                        type="button"
-                        className="text-xs text-aroma-700 underline"
-                        onClick={() =>
-                          setQrTarget({
-                            requestId: row.requestId,
-                            device: ensureDeviceQrFields(row.device),
-                          })
-                        }
-                      >
-                        مطبوع — إعادة
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
-                        onClick={() =>
-                          setQrTarget({
-                            requestId: row.requestId,
-                            device: ensureDeviceQrFields(row.device),
-                          })
-                        }
-                      >
-                        طباعة QR
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-2 py-3">
-                    {row.contactName}
-                    <span className="block text-xs text-ink-700/60">{row.mobile}</span>
-                  </td>
-                  <td className="px-2 py-3">{formatDate(row.date)}</td>
-                  {withDeliver ? (
-                    <td className="px-2 py-3">
-                      <button
-                        type="button"
-                        className="rounded-full bg-ink-900 px-3 py-1.5 text-xs text-white"
-                        onClick={() => {
-                          if (!user) return;
-                          setError(null);
-                          setMessage(null);
-                          const result = markDeliveredToCustomer({
-                            user,
-                            requestId: row.requestId,
-                            deviceLocalId: row.deviceLocalId,
-                          });
-                          if (!result.ok) {
-                            setError(result.error);
-                            return;
-                          }
-                          setMessage(`تم تسليم ${row.deviceCode} للعميل.`);
-                          refresh(user);
-                        }}
-                      >
-                        تسليم للعميل
-                      </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ReceivingDevicesTable
+        rows={rows}
+        withDeliver={withDeliver}
+        user={user}
+        onOpenQr={(requestId, device) =>
+          setQrTarget({ requestId, device: ensureDeviceQrFields(device) })
+        }
+        onDelivered={(deviceCode) => {
+          setError(null);
+          setMessage(`تم تسليم ${deviceCode} للعميل.`);
+          refresh(user);
+        }}
+        onDeliverError={(msg) => {
+          setMessage(null);
+          setError(msg);
+        }}
+      />
     );
   }
 
@@ -294,6 +211,177 @@ function BranchReceivingContent() {
         }}
         onClose={() => setQrTarget(null)}
       />
+    </div>
+  );
+}
+
+function ReceivingDevicesTable({
+  rows,
+  withDeliver,
+  user,
+  onOpenQr,
+  onDelivered,
+  onDeliverError,
+}: {
+  rows: Row[];
+  withDeliver: boolean;
+  user: Profile;
+  onOpenQr: (requestId: string, device: DraftRequestDevice) => void;
+  onDelivered: (deviceCode: string) => void;
+  onDeliverError: (message: string) => void;
+}) {
+  const getSortValue = useCallback((row: Row, key: string) => {
+    switch (key) {
+      case "code":
+        return row.deviceCode;
+      case "model":
+        return row.modelName;
+      case "request":
+        return row.requestNumber;
+      case "status":
+        return row.status;
+      case "qr":
+        return row.qrPrinted ? "1" : "0";
+      case "customer":
+        return `${row.contactName} ${row.mobile}`;
+      case "date":
+        return row.date;
+      default:
+        return "";
+    }
+  }, []);
+  const { sorted, sortKey, sortDirection, toggleSort } = useColumnSort(rows, getSortValue);
+  const colSpan = withDeliver ? 8 : 7;
+
+  return (
+    <div className="arms-scroll-x mt-4">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b border-ink-900/10 text-right text-ink-700/70">
+            <SortableTh
+              label="كود الجهاز"
+              columnKey="code"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="الموديل"
+              columnKey="model"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="رقم الطلب"
+              columnKey="request"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="الحالة"
+              columnKey="status"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="ملصق QR"
+              columnKey="qr"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="العميل"
+              columnKey="customer"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            <SortableTh
+              label="التاريخ"
+              columnKey="date"
+              activeKey={sortKey}
+              direction={sortDirection}
+              onToggle={toggleSort}
+            />
+            {withDeliver ? <th className="px-2 py-2 font-medium">إجراء</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.length === 0 ? (
+            <tr>
+              <td colSpan={colSpan} className="px-2 py-6 text-ink-700/60">
+                لا توجد أجهزة في هذا القسم.
+              </td>
+            </tr>
+          ) : (
+            sorted.map((row) => (
+              <tr key={row.key} className="border-b border-ink-900/5">
+                <td className="px-2 py-3 font-medium">{row.deviceCode}</td>
+                <td className="px-2 py-3">{row.modelName}</td>
+                <td className="px-2 py-3">
+                  <Link
+                    href={`/service-requests/detail/?id=${encodeURIComponent(row.requestId)}`}
+                    className="inline-flex font-semibold text-aroma-700 underline decoration-2 decoration-aroma-400/80 underline-offset-4 hover:text-aroma-800 dark:text-aroma-200"
+                  >
+                    {row.requestNumber}
+                  </Link>
+                </td>
+                <td className="px-2 py-3">{row.status}</td>
+                <td className="px-2 py-3">
+                  {row.qrPrinted ? (
+                    <button
+                      type="button"
+                      className="text-xs text-aroma-700 underline"
+                      onClick={() => onOpenQr(row.requestId, row.device)}
+                    >
+                      مطبوع — إعادة
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
+                      onClick={() => onOpenQr(row.requestId, row.device)}
+                    >
+                      طباعة QR
+                    </button>
+                  )}
+                </td>
+                <td className="px-2 py-3">
+                  {row.contactName}
+                  <span className="block text-xs text-ink-700/60">{row.mobile}</span>
+                </td>
+                <td className="px-2 py-3">{formatDate(row.date)}</td>
+                {withDeliver ? (
+                  <td className="px-2 py-3">
+                    <button
+                      type="button"
+                      className="rounded-full bg-ink-900 px-3 py-1.5 text-xs text-white"
+                      onClick={() => {
+                        const result = markDeliveredToCustomer({
+                          user,
+                          requestId: row.requestId,
+                          deviceLocalId: row.deviceLocalId,
+                        });
+                        if (!result.ok) {
+                          onDeliverError(result.error);
+                          return;
+                        }
+                        onDelivered(row.deviceCode);
+                      }}
+                    >
+                      تسليم للعميل
+                    </button>
+                  </td>
+                ) : null}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

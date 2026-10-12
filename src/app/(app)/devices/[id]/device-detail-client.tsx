@@ -12,6 +12,7 @@ import {
   deviceStatusLabel,
   getDeviceAssignmentPath,
   listAllRequestDevices,
+  withDevicePhotos,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
@@ -43,15 +44,16 @@ export function DeviceDetailClient({ id }: { id: string }) {
         item.device.localId === id && (!scope || item.request.opsBranchId === scope),
     );
     if (found) {
-      setMatch(found);
-      setLifecycle(found.device.lifecycleStatus ?? "");
-      setAssignmentPath(getDeviceAssignmentPath(found.request, found.device));
-      setFault(found.device.fault);
+      const device = withDevicePhotos(found.device);
+      setMatch({ ...found, device });
+      setLifecycle(device.lifecycleStatus ?? "");
+      setAssignmentPath(getDeviceAssignmentPath(found.request, device));
+      setFault(device.fault);
       setRequestNumber(found.request.requestNumber);
-      if (found.device.receiptPhotoDataUrl) {
+      if (device.receiptPhotoDataUrl) {
         setReceiptPhoto({
-          name: found.device.receiptPhotoName || "سند الاستلام",
-          dataUrl: found.device.receiptPhotoDataUrl,
+          name: device.receiptPhotoName || "سند الاستلام",
+          dataUrl: device.receiptPhotoDataUrl,
         });
       } else {
         setReceiptPhoto(null);

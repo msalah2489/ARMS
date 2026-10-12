@@ -32,6 +32,7 @@ import {
   reportBrandOptions,
   reportBranchOptions,
   reportCarrierOptions,
+  reportCityOptions,
   reportColorOptions,
   reportCustomerNameOptions,
   reportFaultCategoryOptions,
@@ -211,12 +212,16 @@ export default function ReportsPage() {
     () => (ready ? reportColorOptions(allLabel) : [{ value: ALL_FILTER_VALUE, label: allLabel }]),
     [ready, allLabel, tick],
   );
+  const cityOptions = useMemo(
+    () => (ready ? reportCityOptions(allLabel) : [{ value: ALL_FILTER_VALUE, label: allLabel }]),
+    [ready, allLabel, tick],
+  );
   const branchOptions = useMemo(
     () =>
       ready
-        ? reportBranchOptions(allLabel, branchId)
+        ? reportBranchOptions(allLabel, branchId, filters.city)
         : [{ value: ALL_FILTER_VALUE, label: allLabel }],
-    [ready, allLabel, branchId, tick],
+    [ready, allLabel, branchId, filters.city, tick],
   );
   const lifecycleOptions = useMemo(
     () => (ready ? reportLifecycleOptions(allLabel) : [{ value: ALL_FILTER_VALUE, label: allLabel }]),
@@ -621,6 +626,7 @@ export default function ReportsPage() {
     "customers",
     "maintenanceRequests",
   ].includes(reportId);
+  const showCity = showBranch;
   const showLifecycle = reportId === "devices";
   const showPriority = reportId === "devices";
   const showCustomerName = ["customers", "maintenanceRequests"].includes(reportId);
@@ -685,6 +691,17 @@ export default function ReportsPage() {
                     value={filters.color || ALL_FILTER_VALUE}
                     options={colorOptions}
                     onChange={(value) => patchFilters({ color: value })}
+                  />
+                </FilterField>
+              ) : null}
+              {showCity && !isBranchRole(user.role) ? (
+                <FilterField label={t("reports.filter.city")}>
+                  <SelectFilter
+                    value={filters.city || ALL_FILTER_VALUE}
+                    options={cityOptions}
+                    onChange={(value) =>
+                      patchFilters({ city: value, branch: ALL_FILTER_VALUE })
+                    }
                   />
                 </FilterField>
               ) : null}

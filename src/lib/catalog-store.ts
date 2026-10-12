@@ -805,6 +805,38 @@ export function deleteModelSparePart(
   return { ok: true };
 }
 
+/** Replace accessories/spares for one body-color variant (used to undo a modal editing session). */
+export function replaceModelVariantParts(
+  modelId: string,
+  bodyColor: string,
+  accessories: AccessoryItem[],
+  spareParts: SparePartItem[],
+): { ok: true } | { ok: false; error: string } {
+  const catalog = getCatalog();
+  const model = catalog.models.find((item) => item.id === modelId);
+  if (!model) return { ok: false, error: "الموديل غير موجود." };
+  const resolved = resolveVariantForMutation(model, bodyColor);
+  if (!resolved.ok) return resolved;
+  resolved.variant.accessories = accessories.map((item) =>
+    normalizeAccessory({
+      id: item.id,
+      name: item.name,
+      color: item.color,
+    }),
+  );
+  resolved.variant.spareParts = spareParts.map((item) =>
+    normalizeSparePart({
+      id: item.id,
+      name: item.name,
+      color: item.color,
+      imageDataUrl: item.imageDataUrl,
+    }),
+  );
+  mirrorLegacyFromFirstVariant(model);
+  saveCatalog(catalog);
+  return { ok: true };
+}
+
 export function resetCatalogToSeed() {
   // Cloud / production: clearing means empty catalog, never re-inject demo seed.
   if (isSupabaseConfigured() && !isDemoMode()) {

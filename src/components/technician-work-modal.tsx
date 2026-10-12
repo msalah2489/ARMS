@@ -5,6 +5,7 @@ import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import {
   formatMaintenanceDuration,
   getDeviceAssignmentPath,
+  withDevicePhotos,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { normalizeRole } from "@/lib/auth";
@@ -267,18 +268,19 @@ export function TechnicianWorkModal({
     outcome,
   });
   const elapsedLabel = formatMaintenanceDuration(startedAt);
+  const deviceWithPhotos = withDevicePhotos(item.device);
   const accessoryLabels =
-    item.device.accessoryNames?.filter((name) => Boolean(name?.trim())) ?? [];
+    deviceWithPhotos.accessoryNames?.filter((name) => Boolean(name?.trim())) ?? [];
 
   const sidebar = (
     <aside className="space-y-4 lg:sticky lg:top-0 lg:self-start">
       <section className="rounded-2xl border border-ink-900/10 bg-sand-50 p-4 dark:border-white/10 dark:bg-ink-950/40">
         <h3 className="font-display text-base text-ink-900 dark:text-sand-50">معلومات الجهاز</h3>
         <div className="mt-3 flex gap-3">
-          {item.device.deviceImageDataUrl ? (
+          {deviceWithPhotos.deviceImageDataUrl ? (
             <ClickableImage
-              src={item.device.deviceImageDataUrl}
-              alt={item.device.deviceCode}
+              src={deviceWithPhotos.deviceImageDataUrl}
+              alt={deviceWithPhotos.deviceCode}
               size="lg"
               className="h-24 w-24"
             />

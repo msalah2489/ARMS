@@ -6,6 +6,7 @@ import {
   listMaintenanceRequests,
   locationForLifecycleStatus,
   normalizeLifecycleStatus,
+  withDevicePhotos,
 } from "@/lib/branch-store";
 import { listOpsBranchRecords } from "@/lib/branches-store";
 import type { AppLocale } from "@/lib/preferences";
@@ -214,7 +215,7 @@ export function listOpsDevices(opsBranchId?: string | null): Device[] {
           device.currentLocation || locationForLifecycleStatus(lifecycleStatus),
         ),
         qrCode: device.qrToken || device.localId || device.deviceCode,
-        imageDataUrl: device.deviceImageDataUrl,
+        imageDataUrl: withDevicePhotos(device).deviceImageDataUrl,
         requestId: request.id,
         requestNumber: request.requestNumber,
         opsBranchId: request.opsBranchId,

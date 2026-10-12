@@ -14,12 +14,32 @@ import type {
 const REQUESTS_KEY = "arms_maintenance_requests_v1";
 const WAYBILLS_KEY = "arms_waybills_v1";
 const REQUESTS_SEED_FLAG = "arms_maintenance_requests_seeded_v1";
+/** Base64 device/receipt photos live here so request JSON stays small (avoids Out of Memory). */
+const DEVICE_PHOTOS_KEY = "arms_device_photos_v1";
 
 /** Fired when local maintenance-request cache changes (save / remote apply). */
 export const MAINTENANCE_REQUESTS_CHANGED_EVENT = "arms-maintenance-requests-changed";
 
+export type TechnicianQueueItem = {
+  request: MaintenanceRequestRecord;
+  device: DraftRequestDevice;
+};
+
+type DevicePhotoBlob = {
+  deviceImageDataUrl?: string;
+  receiptPhotoDataUrl?: string;
+};
+
 /** In-memory cache — avoids re-parsing large JSON on every tab switch. */
 let requestsMemoryCache: MaintenanceRequestRecord[] | null = null;
+/** Flattened device rows — invalidated whenever the requests snapshot changes. */
+let devicesFlatCache: TechnicianQueueItem[] | null = null;
+let devicePhotosMemoryCache: Record<string, DevicePhotoBlob> | null = null;
+/** Prevent repair→notify→list→repair feedback that freezes the UI. */
+let lifecycleRepairDoneForCache = false;
+let suppressRequestsChangedNotify = false;
+let lifecycleRepairTimer: ReturnType<typeof setTimeout> | null = null;
+let photoPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -31,33 +51,85 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function invalidateDevicesFlatCache() {
+  devicesFlatCache = null;
+}
+
+/** Fast equality so hydrate re-pulls do not notify when nothing meaningful changed. */
+function requestsSnapshotLooksEqual(
+  a: MaintenanceRequestRecord[],
+  b: MaintenanceRequestRecord[],
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ra = a[i];
+    const rb = b[i];
+    if (ra.id !== rb.id) return false;
+    if (ra.requestNumber !== rb.requestNumber) return false;
+    if (ra.priority !== rb.priority) return false;
+    if (ra.opsBranchId !== rb.opsBranchId) return false;
+    if ((ra.assignmentPath ?? "") !== (rb.assignmentPath ?? "")) return false;
+    if (ra.devices.length !== rb.devices.length) return false;
+    for (let j = 0; j < ra.devices.length; j++) {
+      const da = ra.devices[j];
+      const db = rb.devices[j];
+      if (da.localId !== db.localId) return false;
+      if (da.deviceCode !== db.deviceCode) return false;
+      if (da.lifecycleStatus !== db.lifecycleStatus) return false;
+      if ((da.currentLocation ?? "") !== (db.currentLocation ?? "")) return false;
+      if (Boolean(da.lockedAfterShip) !== Boolean(db.lockedAfterShip)) return false;
+      if ((da.assignedTechnicianId ?? "") !== (db.assignedTechnicianId ?? "")) return false;
+      if ((da.assignmentPath ?? "") !== (db.assignmentPath ?? "")) return false;
+      if ((da.qrPrintedAt ?? "") !== (db.qrPrintedAt ?? "")) return false;
+    }
+  }
+  return true;
+}
+
 export function notifyMaintenanceRequestsChanged() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || suppressRequestsChangedNotify) return;
   window.dispatchEvent(new CustomEvent(MAINTENANCE_REQUESTS_CHANGED_EVENT));
 }
 
 /** Re-read lists after local save, hydrate, tab focus, or bfcache restore. */
 export function subscribeMaintenanceRequestsChanged(handler: () => void) {
   if (typeof window === "undefined") return () => {};
-  const onChanged = () => handler();
-  const onVisible = () => {
-    if (document.visibilityState === "visible") handler();
+  // Coalesce bursts (hydrate write + arms-ops-hydrated + visibility) into one refresh.
+  let timer: number | null = null;
+  const schedule = () => {
+    if (timer != null) return;
+    timer = window.setTimeout(() => {
+      timer = null;
+      handler();
+    }, 48);
   };
-  window.addEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, onChanged);
-  window.addEventListener("arms-ops-hydrated", onChanged);
-  window.addEventListener("pageshow", onChanged);
+  const onVisible = () => {
+    if (document.visibilityState === "visible") schedule();
+  };
+  window.addEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, schedule);
+  window.addEventListener("arms-ops-hydrated", schedule);
+  window.addEventListener("pageshow", schedule);
   document.addEventListener("visibilitychange", onVisible);
   return () => {
-    window.removeEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, onChanged);
-    window.removeEventListener("arms-ops-hydrated", onChanged);
-    window.removeEventListener("pageshow", onChanged);
+    if (timer != null) window.clearTimeout(timer);
+    window.removeEventListener(MAINTENANCE_REQUESTS_CHANGED_EVENT, schedule);
+    window.removeEventListener("arms-ops-hydrated", schedule);
+    window.removeEventListener("pageshow", schedule);
     document.removeEventListener("visibilitychange", onVisible);
   };
 }
 
 function writeJson<T>(key: string, value: T) {
   if (key === REQUESTS_KEY) {
-    requestsMemoryCache = value as MaintenanceRequestRecord[];
+    const rows = value as MaintenanceRequestRecord[];
+    offloadDevicePhotosInPlace(rows);
+    requestsMemoryCache = rows;
+    invalidateDevicesFlatCache();
+    // New snapshot may need a single legacy pass; avoid reset storms during repair.
+    if (!suppressRequestsChangedNotify) {
+      lifecycleRepairDoneForCache = false;
+    }
   }
   window.localStorage.setItem(key, JSON.stringify(value));
   if (key === REQUESTS_KEY) {
@@ -65,10 +137,127 @@ function writeJson<T>(key: string, value: T) {
   }
 }
 
+function readDevicePhotosMap(): Record<string, DevicePhotoBlob> {
+  if (devicePhotosMemoryCache) return devicePhotosMemoryCache;
+  devicePhotosMemoryCache = readJson<Record<string, DevicePhotoBlob>>(DEVICE_PHOTOS_KEY, {});
+  return devicePhotosMemoryCache;
+}
+
+function schedulePersistDevicePhotos() {
+  if (typeof window === "undefined") return;
+  if (photoPersistTimer != null) return;
+  photoPersistTimer = window.setTimeout(() => {
+    photoPersistTimer = null;
+    const snapshot = devicePhotosMemoryCache;
+    if (!snapshot) return;
+    try {
+      window.localStorage.setItem(DEVICE_PHOTOS_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      console.error("[arms] persist device photos failed", error);
+    }
+  }, 0);
+}
+
+/** Move bulky data-URLs out of request rows so later stringify/parse stays cheap. */
+function offloadDevicePhotosInPlace(rows: MaintenanceRequestRecord[]): boolean {
+  let changed = false;
+  const photos = { ...readDevicePhotosMap() };
+  for (const request of rows) {
+    for (const device of request.devices) {
+      const deviceImg = device.deviceImageDataUrl;
+      const receiptImg = device.receiptPhotoDataUrl;
+      const hasDevice = typeof deviceImg === "string" && deviceImg.length > 64;
+      const hasReceipt = typeof receiptImg === "string" && receiptImg.length > 64;
+      if (!hasDevice && !hasReceipt) continue;
+      const prev = photos[device.localId] ?? {};
+      photos[device.localId] = {
+        ...prev,
+        ...(hasDevice ? { deviceImageDataUrl: deviceImg } : {}),
+        ...(hasReceipt ? { receiptPhotoDataUrl: receiptImg } : {}),
+      };
+      if (hasDevice) {
+        device.deviceImageDataUrl = undefined;
+        changed = true;
+      }
+      if (hasReceipt) {
+        device.receiptPhotoDataUrl = undefined;
+        changed = true;
+      }
+    }
+  }
+  if (!changed) return false;
+  devicePhotosMemoryCache = photos;
+  schedulePersistDevicePhotos();
+  return true;
+}
+
+/** Re-attach offloaded photos when a screen needs to display them. */
+export function withDevicePhotos(device: DraftRequestDevice): DraftRequestDevice {
+  if (typeof window === "undefined") return device;
+  const blob = readDevicePhotosMap()[device.localId];
+  if (!blob) return device;
+  return {
+    ...device,
+    deviceImageDataUrl: device.deviceImageDataUrl || blob.deviceImageDataUrl,
+    receiptPhotoDataUrl: device.receiptPhotoDataUrl || blob.receiptPhotoDataUrl,
+  };
+}
+
+function stashPhotosFromDevices(devices: DraftRequestDevice[]) {
+  if (typeof window === "undefined" || !devices.length) return;
+  const photos = { ...readDevicePhotosMap() };
+  let changed = false;
+  for (const device of devices) {
+    const deviceImg = device.deviceImageDataUrl;
+    const receiptImg = device.receiptPhotoDataUrl;
+    const hasDevice = typeof deviceImg === "string" && deviceImg.length > 64;
+    const hasReceipt = typeof receiptImg === "string" && receiptImg.length > 64;
+    if (!hasDevice && !hasReceipt) continue;
+    photos[device.localId] = {
+      ...(photos[device.localId] ?? {}),
+      ...(hasDevice ? { deviceImageDataUrl: deviceImg } : {}),
+      ...(hasReceipt ? { receiptPhotoDataUrl: receiptImg } : {}),
+    };
+    if (hasDevice) device.deviceImageDataUrl = undefined;
+    if (hasReceipt) device.receiptPhotoDataUrl = undefined;
+    changed = true;
+  }
+  if (!changed) return;
+  devicePhotosMemoryCache = photos;
+  schedulePersistDevicePhotos();
+}
+
+function scheduleLifecycleRepairOnce() {
+  if (typeof window === "undefined") return;
+  if (lifecycleRepairDoneForCache || lifecycleRepairTimer != null) return;
+  lifecycleRepairTimer = window.setTimeout(() => {
+    lifecycleRepairTimer = null;
+    repairLegacyDeviceStatuses();
+  }, 0);
+}
+
 function readRequestsCached(): MaintenanceRequestRecord[] {
   if (requestsMemoryCache) return requestsMemoryCache;
   const rows = readJson<MaintenanceRequestRecord[]>(REQUESTS_KEY, []);
+  // Strip photos before anything else touches / re-stringifies this snapshot.
+  const stripped = offloadDevicePhotosInPlace(rows);
   requestsMemoryCache = rows;
+  invalidateDevicesFlatCache();
+  lifecycleRepairDoneForCache = false;
+  if (stripped) {
+    // Persist slim requests on the next tick (photos persist separately).
+    window.setTimeout(() => {
+      if (suppressRequestsChangedNotify) return;
+      suppressRequestsChangedNotify = true;
+      try {
+        window.localStorage.setItem(REQUESTS_KEY, JSON.stringify(rows));
+      } catch (error) {
+        console.error("[arms] persist slim requests failed", error);
+      } finally {
+        suppressRequestsChangedNotify = false;
+      }
+    }, 0);
+  }
   return rows;
 }
 
@@ -107,6 +296,10 @@ export function listMaintenanceRequestsLocal(options?: { skipSeed?: boolean }) {
 
 export function replaceMaintenanceRequests(requests: MaintenanceRequestRecord[]) {
   if (typeof window === "undefined") return;
+  // Skip no-op remote applies — identical snapshots used to reset repair + notify every hydrate.
+  if (requestsMemoryCache && requestsSnapshotLooksEqual(requestsMemoryCache, requests)) {
+    return;
+  }
   writeJson(REQUESTS_KEY, requests);
   window.localStorage.setItem(REQUESTS_SEED_FLAG, "1");
 }
@@ -295,7 +488,8 @@ function ensureSeededMaintenanceRequests() {
 
 export function listMaintenanceRequests(opsBranchId?: string | null) {
   ensureSeededMaintenanceRequests();
-  repairLegacyDeviceStatuses();
+  // Repair on next tick — never block the first paint / dashboard shell.
+  scheduleLifecycleRepairOnce();
   const all = readRequestsCached();
   if (!opsBranchId) return all;
   return all.filter((item) => item.opsBranchId === opsBranchId);
@@ -392,6 +586,7 @@ export function saveMaintenanceRequest(input: {
     }),
   };
 
+  stashPhotosFromDevices(record.devices);
   const all = listMaintenanceRequests();
   const next = [record, ...all];
   writeJson(REQUESTS_KEY, next);
@@ -522,30 +717,38 @@ export function updateDevicesLifecycle(
   }
 
   const all = listMaintenanceRequests();
+  let anyTouched = false;
   const next = all.map((request) => {
     let touched = false;
     const devices = request.devices.map((device) => {
       const patch = patchByDevice.get(`${request.id}::${device.localId}`);
       if (!patch) return device;
+      let changed = false;
+      for (const key of Object.keys(patch) as Array<keyof DraftRequestDevice>) {
+        if ((device[key] ?? null) !== (patch[key] ?? null)) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return device;
       touched = true;
+      anyTouched = true;
       return { ...device, ...patch };
     });
     return touched ? { ...request, devices } : request;
   });
+  if (!anyTouched) return all;
   writeJson(REQUESTS_KEY, next);
   schedulePersistRequests(next);
   return next;
 }
 
-export type TechnicianQueueItem = {
-  request: MaintenanceRequestRecord;
-  device: DraftRequestDevice;
-};
-
 export function listAllRequestDevices(): TechnicianQueueItem[] {
-  return listMaintenanceRequests().flatMap((request) =>
+  if (devicesFlatCache) return devicesFlatCache;
+  devicesFlatCache = listMaintenanceRequests().flatMap((request) =>
     request.devices.map((device) => ({ request, device })),
   );
+  return devicesFlatCache;
 }
 
 /** Devices already at the service center awaiting technician work. */
@@ -761,6 +964,7 @@ export function deviceLocationLabel(location: string | null | undefined) {
 /** Rewrite legacy statuses/locations on stored devices so demo data keeps working. */
 export function repairLegacyDeviceStatuses() {
   if (typeof window === "undefined") return;
+  if (lifecycleRepairDoneForCache) return;
   const all = readRequestsCached();
   let changed = false;
   for (const request of all) {
@@ -785,8 +989,21 @@ export function repairLegacyDeviceStatuses() {
       }
     }
   }
+  // Mark done before any write so subscribers cannot re-enter repair in a loop.
+  lifecycleRepairDoneForCache = true;
   if (changed) {
-    writeJson(REQUESTS_KEY, all);
+    // Persist quietly on next tick — stringify of large snapshots must not block paint.
+    requestsMemoryCache = all;
+    window.setTimeout(() => {
+      suppressRequestsChangedNotify = true;
+      try {
+        window.localStorage.setItem(REQUESTS_KEY, JSON.stringify(all));
+      } catch (error) {
+        console.error("[arms] repair persist failed", error);
+      } finally {
+        suppressRequestsChangedNotify = false;
+      }
+    }, 0);
     schedulePersistRequests(all);
   }
 }

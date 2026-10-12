@@ -2,6 +2,7 @@ import {
   getDeviceAssignmentPath,
   listAllRequestDevices,
   listMaintenanceRequests,
+  listMaintenanceRequestsLocal,
   normalizeLifecycleStatus,
   updateDeviceLifecycle,
   updateDevicesLifecycle,
@@ -14,6 +15,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { HOLD_REASON_LABELS } from "@/lib/technician-catalog";
 import type {
   DraftRequestDevice,
+  MaintenanceRequestRecord,
   ManagerDeviceDecision,
   Profile,
   TechnicianWorkRecord,
@@ -23,6 +25,9 @@ const WORK_KEY = "arms_technician_work_v1";
 
 const CLAIM_RACE_MESSAGE =
   "الجهاز غير متاح يرجى اختيار جهاز آخر";
+
+/** In-memory cache — re-parsing work JSON (often with photos) on every queue froze the tab. */
+let workMemoryCache: TechnicianWorkRecord[] | null = null;
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -35,6 +40,9 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function writeJson<T>(key: string, value: T) {
+  if (key === WORK_KEY) {
+    workMemoryCache = value as TechnicianWorkRecord[];
+  }
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
@@ -44,7 +52,9 @@ function schedulePersist(work: TechnicianWorkRecord[]) {
 }
 
 export function listTechnicianWorkLocal(): TechnicianWorkRecord[] {
-  return readJson<TechnicianWorkRecord[]>(WORK_KEY, []);
+  if (workMemoryCache) return workMemoryCache;
+  workMemoryCache = readJson<TechnicianWorkRecord[]>(WORK_KEY, []);
+  return workMemoryCache;
 }
 
 export function replaceTechnicianWork(work: TechnicianWorkRecord[]) {
@@ -87,11 +97,43 @@ function isSuccessfulOutcome(outcome: TechnicianWorkRecord["outcome"] | null | u
   return outcome === "repaired" || outcome === "no_repair_needed";
 }
 
+function devicePatchChanges(
+  device: DraftRequestDevice,
+  patch: Partial<DraftRequestDevice>,
+): boolean {
+  for (const key of Object.keys(patch) as Array<keyof DraftRequestDevice>) {
+    const next = patch[key];
+    const current = device[key];
+    if ((current ?? null) !== (next ?? null)) return true;
+  }
+  return false;
+}
+
+function queueDevicePatch(
+  updates: Array<{
+    requestId: string;
+    deviceLocalId: string;
+    patch: Partial<DraftRequestDevice>;
+  }>,
+  item: TechnicianQueueItem,
+  patch: Partial<DraftRequestDevice>,
+) {
+  if (!devicePatchChanges(item.device, patch)) return;
+  updates.push({
+    requestId: item.request.id,
+    deviceLocalId: item.device.localId,
+    patch,
+  });
+}
+
 /**
  * Free devices stuck in maintenance with no assignee after hold/complete left a bad status.
  * Also upgrades successful completed work still stuck at awaiting/in_maintenance → ready_to_return.
  * Never clears an existing assignedTechnicianId — missing local work is sync lag, not an orphan,
  * and wiping it would push a stale unlock to Supabase for other technicians.
+ *
+ * Critical: never write no-op patches. Rewriting the same status notified subscribers on every
+ * listOps* call and froze the tab (Page Unresponsive / Out of Memory).
  */
 function repairOrphanedMaintenanceDevices() {
   const work = listTechnicianWork();
@@ -115,28 +157,20 @@ function repairOrphanedMaintenanceDevices() {
       ["awaiting_maintenance", "in_maintenance", "in_maintenance_at_branch"].includes(status)
     ) {
       if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
-        updates.push({
-          requestId: item.request.id,
-          deviceLocalId: item.device.localId,
-          patch: {
-            lifecycleStatus: "awaiting_customer",
-            currentLocation: "branch",
-            assignedTechnicianId: null,
-            assignedTechnicianName: null,
-            maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
-          },
+        queueDevicePatch(updates, item, {
+          lifecycleStatus: "awaiting_customer",
+          currentLocation: "branch",
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+          maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
         });
       } else {
-        updates.push({
-          requestId: item.request.id,
-          deviceLocalId: item.device.localId,
-          patch: {
-            lifecycleStatus: "ready_to_return",
-            currentLocation: "service_center",
-            assignedTechnicianId: null,
-            assignedTechnicianName: null,
-            maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
-          },
+        queueDevicePatch(updates, item, {
+          lifecycleStatus: "ready_to_return",
+          currentLocation: "service_center",
+          assignedTechnicianId: null,
+          assignedTechnicianName: null,
+          maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
         });
       }
       continue;
@@ -150,24 +184,20 @@ function repairOrphanedMaintenanceDevices() {
         (latest.status === "completed" && !isSuccessfulOutcome(latest.outcome))) &&
       ["awaiting_maintenance", "in_maintenance", "in_maintenance_at_branch"].includes(status)
     ) {
-      updates.push({
-        requestId: item.request.id,
-        deviceLocalId: item.device.localId,
-        patch: {
-          lifecycleStatus:
-            path === "mobile_technician" || status === "in_maintenance_at_branch"
-              ? latest.status === "completed" && latest.outcome === "not_repairable"
-                ? "maintenance_failed"
-                : "awaiting_manager_decision"
-              : "awaiting_manager_decision",
-          currentLocation:
-            path === "mobile_technician" || status === "in_maintenance_at_branch"
-              ? "branch"
-              : "service_center",
-          assignedTechnicianId: null,
-          assignedTechnicianName: null,
-          maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
-        },
+      queueDevicePatch(updates, item, {
+        lifecycleStatus:
+          path === "mobile_technician" || status === "in_maintenance_at_branch"
+            ? latest.status === "completed" && latest.outcome === "not_repairable"
+              ? "maintenance_failed"
+              : "awaiting_manager_decision"
+            : "awaiting_manager_decision",
+        currentLocation:
+          path === "mobile_technician" || status === "in_maintenance_at_branch"
+            ? "branch"
+            : "service_center",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceFinishedAt: latest.finishedAt ?? item.device.maintenanceFinishedAt ?? null,
       });
       continue;
     }
@@ -187,40 +217,42 @@ function repairOrphanedMaintenanceDevices() {
 
     const held = latest?.status === "held" ? latest : undefined;
 
+    // Mobile path: only move when held → manager decision. Never rewrite same status
+    // (that notify loop froze the browser).
     if (path === "mobile_technician" || status === "in_maintenance_at_branch") {
-      updates.push({
-        requestId: item.request.id,
-        deviceLocalId: item.device.localId,
-        patch: {
-          lifecycleStatus: held ? "awaiting_manager_decision" : "in_maintenance_at_branch",
-          currentLocation: "branch",
-          assignedTechnicianId: null,
-          assignedTechnicianName: null,
-          maintenanceStartedAt: held ? item.device.maintenanceStartedAt ?? null : null,
-          maintenanceFinishedAt: held ? item.device.maintenanceFinishedAt ?? null : null,
-        },
+      if (!held) continue;
+      queueDevicePatch(updates, item, {
+        lifecycleStatus: "awaiting_manager_decision",
+        currentLocation: "branch",
+        assignedTechnicianId: null,
+        assignedTechnicianName: null,
+        maintenanceStartedAt: item.device.maintenanceStartedAt ?? null,
+        maintenanceFinishedAt: item.device.maintenanceFinishedAt ?? null,
       });
       continue;
     }
 
-    updates.push({
-      requestId: item.request.id,
-      deviceLocalId: item.device.localId,
-      patch: {
-        lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
-        currentLocation: "service_center",
-        assignedTechnicianId: null,
-        assignedTechnicianName: null,
-        maintenanceStartedAt: null,
-      },
+    // Service-center orphan: unlock stuck in_maintenance back to the claim queue.
+    queueDevicePatch(updates, item, {
+      lifecycleStatus: held ? "awaiting_manager_decision" : "awaiting_maintenance",
+      currentLocation: "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      maintenanceStartedAt: null,
     });
   }
 
-  updateDevicesLifecycle(updates);
+  if (updates.length) updateDevicesLifecycle(updates);
 }
+
+/** One repair pass per in-memory requests snapshot — listOps* calls this often. */
+let orphanRepairDoneForRequestsRef: MaintenanceRequestRecord[] | null | undefined;
 
 /** Run status repairs when listing devices outside the technician queue. */
 export function ensureDeviceLifecycleRepairs() {
+  const requests = listMaintenanceRequestsLocal({ skipSeed: true });
+  if (orphanRepairDoneForRequestsRef === requests) return;
+  orphanRepairDoneForRequestsRef = requests;
   repairOrphanedMaintenanceDevices();
 }
 

@@ -63,7 +63,8 @@ function TechnicianWorkContent() {
   }
 
   function pullAndRefresh() {
-    void hydrateOpsFromSupabase({ force: true }).then(() => {
+    // Soft hydrate (session-cached) so navigation / polls never wait on a full re-pull.
+    void hydrateOpsFromSupabase().then(() => {
       refresh(readSession());
     });
   }
@@ -72,7 +73,7 @@ function TechnicianWorkContent() {
     const session = readSession();
     setUser(session);
     if (session) refresh(session);
-    // Fresh cloud snapshot on open so claims from other sessions are visible.
+    // Background sync after local paint.
     pullAndRefresh();
 
     const unsubscribe = subscribeMaintenanceRequestsChanged(() => {

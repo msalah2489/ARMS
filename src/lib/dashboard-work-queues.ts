@@ -296,23 +296,12 @@ export function countLowStockParts(): number {
 }
 
 export function listBranchesNeedMaintenance(): TechnicianQueueItem[] {
+  const readyIds = new Set(listBranchesReadyToShip().map((row) => row.branchId));
+  if (readyIds.size === 0) return [];
   const byId = new Map<string, TechnicianQueueItem>();
-  const ready = listBranchesReadyToShip();
-  if (ready.length > 0) {
-    for (const branch of ready) {
-      for (const item of listDevicesEligibleForShipment(branch.branchId)) {
-        byId.set(item.device.localId, item);
-      }
-    }
-  } else {
-    const seenBranches = new Set<string>();
-    for (const item of listAllRequestDevices()) {
-      const branchId = item.request.opsBranchId;
-      if (!branchId || seenBranches.has(branchId)) continue;
-      seenBranches.add(branchId);
-      for (const row of listDevicesEligibleForShipment(branchId)) {
-        byId.set(row.device.localId, row);
-      }
+  for (const branchId of readyIds) {
+    for (const item of listDevicesEligibleForShipment(branchId)) {
+      byId.set(item.device.localId, item);
     }
   }
   return [...byId.values()];
@@ -323,18 +312,45 @@ export function getLatestDecisionReason(
   requestId: string,
   deviceLocalId: string,
 ): string | undefined {
-  const latest = listTechnicianWork()
-    .filter(
-      (record) =>
-        record.requestId === requestId &&
-        record.deviceLocalId === deviceLocalId &&
-        (record.status === "held" || record.status === "completed"),
-    )
-    .sort((a, b) =>
-      (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt),
-    )[0];
+  const work = listTechnicianWork();
+  let latest: TechnicianWorkRecord | undefined;
+  for (const record of work) {
+    if (record.requestId !== requestId) continue;
+    if (record.deviceLocalId !== deviceLocalId) continue;
+    if (record.status !== "held" && record.status !== "completed") continue;
+    if (!latest) {
+      latest = record;
+      continue;
+    }
+    const a = latest.finishedAt ?? latest.startedAt;
+    const b = record.finishedAt ?? record.startedAt;
+    if (b.localeCompare(a) > 0) latest = record;
+  }
   if (!latest) return undefined;
   return formatDecisionReason(latest);
+}
+
+/** One pass over work records → latest decision reason per device (for list screens). */
+function buildLatestDecisionReasonMap(): Map<string, string> {
+  const latestByKey = new Map<string, TechnicianWorkRecord>();
+  for (const record of listTechnicianWork()) {
+    if (record.status !== "held" && record.status !== "completed") continue;
+    const key = `${record.requestId}::${record.deviceLocalId}`;
+    const prev = latestByKey.get(key);
+    if (!prev) {
+      latestByKey.set(key, record);
+      continue;
+    }
+    const a = prev.finishedAt ?? prev.startedAt;
+    const b = record.finishedAt ?? record.startedAt;
+    if (b.localeCompare(a) > 0) latestByKey.set(key, record);
+  }
+  const reasons = new Map<string, string>();
+  for (const [key, record] of latestByKey) {
+    const reason = formatDecisionReason(record);
+    if (reason) reasons.set(key, reason);
+  }
+  return reasons;
 }
 
 function formatDecisionReason(record: TechnicianWorkRecord): string | undefined {
@@ -353,6 +369,7 @@ function formatDecisionReason(record: TechnicianWorkRecord): string | undefined 
 }
 
 export function listNeedMaintenanceDecision(): ManagerWorkQueueItem[] {
+  const reasons = buildLatestDecisionReasonMap();
   return listAllRequestDevices()
     .filter((item) => {
       const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
@@ -360,7 +377,7 @@ export function listNeedMaintenanceDecision(): ManagerWorkQueueItem[] {
     })
     .map((item) => ({
       ...item,
-      decisionReason: getLatestDecisionReason(item.request.id, item.device.localId),
+      decisionReason: reasons.get(`${item.request.id}::${item.device.localId}`),
     }));
 }
 
@@ -442,15 +459,57 @@ export function listInMaintenance(): ManagerWorkQueueItem[] {
 }
 
 export function getManagerDailyWorkCounts(): ManagerDailyWorkCounts {
+  // Cheap counters only — never build full queue lists or decision-reason maps here.
+  // Building those on every hydrate notify previously exhausted tab memory (Out of Memory).
+  let needMaintenanceDecision = 0;
+  let readyToReturnToBranches = 0;
+  let deliveringStatus = 0;
+  let needReceiveStatus = 0;
+  let inMaintenance = 0;
+
+  for (const item of listAllRequestDevices()) {
+    const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+    if (status === "awaiting_manager_decision" || status === "maintenance_failed") {
+      needMaintenanceDecision += 1;
+    }
+    if (status === "ready_to_return") readyToReturnToBranches += 1;
+    if (status === "in_return_transit") deliveringStatus += 1;
+    if (status === "in_transit_to_service") needReceiveStatus += 1;
+    if (
+      (status === "awaiting_maintenance" || status === "in_maintenance") &&
+      getDeviceAssignmentPath(item.request, item.device) === "service_center"
+    ) {
+      inMaintenance += 1;
+    }
+  }
+
+  const deliveringIds = new Set<string>();
+  const receiveIds = new Set<string>();
+  for (const batch of listShippingBatches()) {
+    if (batch.direction === "return" && ["ready", "draft", "handed_to_carrier"].includes(batch.status)) {
+      for (const row of batch.items) {
+        if (row.status === "active") deliveringIds.add(row.requestDeviceId);
+      }
+    }
+    if (batch.direction === "to_service" && batch.status === "handed_to_carrier") {
+      for (const row of batch.items) {
+        if (row.status === "active") receiveIds.add(row.requestDeviceId);
+      }
+    }
+  }
+
   return {
-    branchesNeedMaintenance: listBranchesNeedMaintenance().length,
-    needMaintenanceDecision: listNeedMaintenanceDecision().length,
+    branchesNeedMaintenance: listBranchesReadyToShip().reduce(
+      (sum, row) => sum + row.readyCount,
+      0,
+    ),
+    needMaintenanceDecision,
     lowStockParts: countLowStockParts(),
     replacedDevicesStock: totalReplacedDevicesQuantity(),
-    readyToReturnToBranches: listReadyToReturnToBranches().length,
-    deliveringToBranches: listDeliveringToBranches().length,
-    needReceiveAtService: listNeedReceiveAtService().length,
-    inMaintenance: listInMaintenance().length,
+    readyToReturnToBranches,
+    deliveringToBranches: Math.max(deliveringStatus, deliveringIds.size),
+    needReceiveAtService: Math.max(needReceiveStatus, receiveIds.size),
+    inMaintenance,
   };
 }
 

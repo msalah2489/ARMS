@@ -42,7 +42,7 @@ function TechnicianReportsContent() {
     setReady(true);
 
     if (isSupabaseConfigured() && !isDemoMode()) {
-      void hydrateOpsFromSupabase({ force: true }).then(() => setTick((n) => n + 1));
+      void hydrateOpsFromSupabase().then(() => setTick((n) => n + 1));
     }
 
     const unsubscribe = subscribeMaintenanceRequestsChanged(() => {

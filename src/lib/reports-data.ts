@@ -9,7 +9,9 @@ import {
 import { getBrands, getDeviceTypes, getModelById } from "@/lib/catalog-store";
 import { listOpsCustomers } from "@/lib/ops-data";
 import {
+  cityForBranchName,
   isAllFilter,
+  matchesBranchCityFilter,
   matchesDateFilter,
   matchesExactFilter,
   matchesTextFilter,
@@ -351,6 +353,7 @@ function matchesDeviceFilters(row: DeviceReportRow, filters: ReportFilters) {
   if (!matchesExactFilter(row.brand === "—" ? "" : row.brand, filters.brand)) return false;
   if (!matchesExactFilter(row.model === "—" ? "" : row.model, filters.model)) return false;
   if (!matchesExactFilter(row.color === "—" ? "" : row.color, filters.color)) return false;
+  if (!matchesBranchCityFilter(row.branch, filters)) return false;
   if (!matchesExactFilter(row.branch === "—" ? "" : row.branch, filters.branch)) return false;
   if (!isAllFilter(filters.lifecycleStatus) && row.lifecycleStatus !== filters.lifecycleStatus) {
     return false;
@@ -431,6 +434,7 @@ export function buildMaintenanceRequestReport(
         return false;
       }
       if (!matchesTextFilter(row.mobile === "—" ? "" : row.mobile, filters.mobile)) return false;
+      if (!matchesBranchCityFilter(row.branch, filters)) return false;
       if (!matchesExactFilter(row.branch === "—" ? "" : row.branch, filters.branch)) return false;
       if (filters.urgency && row.urgency !== filters.urgency) return false;
       if (!isAllFilter(filters.currentStatus) && row.currentStatus !== filters.currentStatus) {
@@ -565,6 +569,15 @@ export function buildCustomersReport(
     )
     .filter((row) => {
       if (!matchesExactFilter(row.name, filters.customerName)) return false;
+      if (!isAllFilter(filters.city)) {
+        const city = (filters.city || "").trim().toLowerCase();
+        const hit = row.branches
+          .split(" · ")
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .some((part) => cityForBranchName(part).toLowerCase() === city);
+        if (!hit) return false;
+      }
       if (!isAllFilter(filters.branch)) {
         const branch = (filters.branch || "").trim().toLowerCase();
         const hit = row.branches

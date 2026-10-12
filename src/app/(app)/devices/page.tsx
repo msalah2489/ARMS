@@ -28,7 +28,7 @@ import {
   listSendToService,
   type SendToServiceSublabel,
 } from "@/lib/dashboard-work-queues";
-import { getDevices } from "@/lib/data";
+import { getDevices, peekDevices } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { readSession } from "@/lib/session";
 import type { Device } from "@/types/domain";
@@ -110,9 +110,17 @@ export default function DevicesPage() {
   const { t, locale } = usePreferences();
   const searchParams = useSearchParams();
   const focus = readFocus(searchParams?.get("focus") ?? null);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [branchId, setBranchId] = useState<string | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? branchScopeId(readSession()) : null,
+  );
+  const [devices, setDevices] = useState<Device[]>(() =>
+    typeof window !== "undefined" ? peekDevices(branchScopeId(readSession()), locale) : [],
+  );
+  const [loading, setLoading] = useState(() =>
+    typeof window !== "undefined"
+      ? peekDevices(branchScopeId(readSession()), locale).length === 0
+      : true,
+  );
 
   useEffect(() => {
     setBranchId(branchScopeId(readSession()));
@@ -121,16 +129,22 @@ export default function DevicesPage() {
   useEffect(() => {
     let cancelled = false;
     const load = (opts?: { quiet?: boolean }) => {
-      if (!opts?.quiet) setLoading(true);
       const scope = branchScopeId(readSession());
       setBranchId(scope);
+      const cached = peekDevices(scope, locale);
+      if (cached.length > 0) {
+        setDevices(cached);
+        setLoading(false);
+      } else if (!opts?.quiet) {
+        setLoading(true);
+      }
       void getDevices(locale, scope).then((rows) => {
         if (cancelled) return;
         setDevices(rows);
         setLoading(false);
       });
     };
-    load();
+    load({ quiet: true });
     const unsubscribe = subscribeMaintenanceRequestsChanged(() => load({ quiet: true }));
     return () => {
       cancelled = true;
@@ -294,6 +308,7 @@ export default function DevicesPage() {
         <DataTable
           mobilePrimaryIndex={0}
           mobileBadgeIndexes={[6]}
+          unsortableIndexes={[columns.length - 1]}
           columns={columns}
           rows={visible.map((device) => {
             const queueNote = (() => {
