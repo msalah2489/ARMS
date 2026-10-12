@@ -71,18 +71,21 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
 
   if (!active) return null;
 
+  // Capture after null check so nested handlers stay typed as ArmsNotification (CI/tsc).
+  const notification = active;
+
   function dismissOnly() {
-    dismissForSession(active.id);
+    dismissForSession(notification.id);
     setActive(null);
   }
 
   function acknowledge() {
-    markNotificationRead(active.id, user);
+    markNotificationRead(notification.id, user);
     dismissOnly();
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink-950/50 p-4">
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink-950/60 p-4">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -93,7 +96,7 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-login-title"
-        className="relative z-10 w-full max-w-md rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900 sm:p-6"
+        className="relative z-10 w-full max-w-md rounded-2xl border border-ink-900/10 bg-white p-5 text-ink-900 shadow-panel dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 sm:p-6"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -101,15 +104,15 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
               id="notification-login-title"
               className="font-display text-lg text-ink-900 dark:text-sand-50 sm:text-xl"
             >
-              {active.title}
+              {notification.title}
             </h2>
-            <p className="mt-3 whitespace-pre-wrap text-sm text-ink-800/85 dark:text-sand-100/80">
-              {active.body}
+            <p className="mt-3 whitespace-pre-wrap text-sm text-ink-700 dark:text-sand-100">
+              {notification.body}
             </p>
           </div>
           <button
             type="button"
-            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg text-ink-700/70 hover:bg-ink-900/5 dark:text-sand-100/70 dark:hover:bg-white/10"
+            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg text-ink-700 hover:bg-ink-900/5 dark:text-sand-50 dark:hover:bg-white/10"
             aria-label="إغلاق"
             onClick={dismissOnly}
           >
@@ -119,14 +122,14 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600 dark:text-sand-50"
             onClick={acknowledge}
           >
             تمت القراءة
           </button>
           <button
             type="button"
-            className="rounded-full border border-ink-900/15 bg-white px-5 py-2.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+            className="rounded-full border border-ink-900/15 bg-white px-5 py-2.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/25 dark:bg-ink-950 dark:text-sand-50"
             onClick={dismissOnly}
           >
             قراءة لاحقاً
