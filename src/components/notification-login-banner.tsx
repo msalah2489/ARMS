@@ -27,9 +27,16 @@ function writeDismissed(ids: Set<string>) {
   window.sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...ids]));
 }
 
+function dismissForSession(notificationId: string) {
+  const dismissed = readDismissed();
+  dismissed.add(notificationId);
+  writeDismissed(dismissed);
+}
+
 /**
- * Shows unread messages above the page after login.
- * Dismiss hides for this browser tab session only — messages stay in the bell list.
+ * Post-login unread notification overlay (modal).
+ * «قراءة لاحقاً» hides for this browser tab session only — message stays unread in the bell.
+ * «تمت القراءة» marks read via the notifications store / reads table.
  */
 export function NotificationLoginBanner({ user }: { user: Profile }) {
   const [active, setActive] = useState<ArmsNotification | null>(null);
@@ -45,58 +52,86 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
     setActive(unread[0] ?? null);
   }, [user, tick]);
 
+  useEffect(() => {
+    if (!active) return;
+    const notificationId = active.id;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      dismissForSession(notificationId);
+      setActive(null);
+    }
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [active]);
+
   if (!active) return null;
 
   function dismissOnly() {
-    if (!active) return;
-    const dismissed = readDismissed();
-    dismissed.add(active.id);
-    writeDismissed(dismissed);
+    dismissForSession(active.id);
     setActive(null);
   }
 
   function acknowledge() {
-    if (!active) return;
     markNotificationRead(active.id, user);
     dismissOnly();
   }
 
   return (
-    <div
-      className="border-b border-aroma-300/50 bg-aroma-50 px-3 py-3 text-ink-900 dark:border-aroma-500/30 dark:bg-aroma-950/40 dark:text-sand-50 sm:px-4 md:px-8"
-      role="status"
-    >
-      <div className="mx-auto flex max-w-5xl items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{active.title}</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-ink-800/85 dark:text-sand-100/80">
-            {active.body}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-full bg-ink-900 px-3 py-1.5 text-xs text-white dark:bg-aroma-600"
-              onClick={acknowledge}
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink-950/50 p-4">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="إغلاق"
+        onClick={dismissOnly}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notification-login-title"
+        className="relative z-10 w-full max-w-md rounded-2xl border border-ink-900/10 bg-white p-5 shadow-panel dark:border-white/10 dark:bg-ink-900 sm:p-6"
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2
+              id="notification-login-title"
+              className="font-display text-lg text-ink-900 dark:text-sand-50 sm:text-xl"
             >
-              حسناً — تعليم كمقروء
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-ink-900/15 bg-white px-3 py-1.5 text-xs dark:border-white/15 dark:bg-ink-900"
-              onClick={dismissOnly}
-            >
-              إخفاء الآن
-            </button>
+              {active.title}
+            </h2>
+            <p className="mt-3 whitespace-pre-wrap text-sm text-ink-800/85 dark:text-sand-100/80">
+              {active.body}
+            </p>
           </div>
+          <button
+            type="button"
+            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg text-ink-700/70 hover:bg-ink-900/5 dark:text-sand-100/70 dark:hover:bg-white/10"
+            aria-label="إغلاق"
+            onClick={dismissOnly}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
         </div>
-        <button
-          type="button"
-          className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg text-ink-700/70 hover:bg-white/60 dark:text-sand-100/70 dark:hover:bg-white/10"
-          aria-label="إغلاق"
-          onClick={dismissOnly}
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600"
+            onClick={acknowledge}
+          >
+            تمت القراءة
+          </button>
+          <button
+            type="button"
+            className="rounded-full border border-ink-900/15 bg-white px-5 py-2.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+            onClick={dismissOnly}
+          >
+            قراءة لاحقاً
+          </button>
+        </div>
       </div>
     </div>
   );
