@@ -129,19 +129,22 @@ function BranchReceivingContent() {
 
   if (!user) return <p className="text-sm text-ink-700/70">جاري التحميل…</p>;
 
+  // Narrow for nested helpers — TypeScript does not keep the null-check inside closures.
+  const currentUser = user;
+
   function renderTable(rows: Row[], withDeliver = false) {
     return (
       <ReceivingDevicesTable
         rows={rows}
         withDeliver={withDeliver}
-        user={user}
+        user={currentUser}
         onOpenQr={(requestId, device) =>
           setQrTarget({ requestId, device: ensureDeviceQrFields(device) })
         }
         onDelivered={(deviceCode) => {
           setError(null);
           setMessage(`تم تسليم ${deviceCode} للعميل.`);
-          refresh(user);
+          refresh(currentUser);
         }}
         onDeliverError={(msg) => {
           setMessage(null);
