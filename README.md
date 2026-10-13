@@ -21,17 +21,22 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Demo logins (password `demo`)
+### Demo / seed logins (password `demo`)
 
-| Role | Email |
-| --- | --- |
-| Manager | manager@arms.local |
-| Supervisor | supervisor@arms.local |
-| Technician | tech@arms.local |
-| Branch employee | branch@arms.local |
-| Service center | center@arms.local |
+Used in **demo mode** (`NEXT_PUBLIC_USE_DEMO=true`) or as the starter seed when the cloud DB is empty.
+On the **live GitHub Pages** site, passwords come from Supabase `app_users.password_plain` — use the temporary account shortcuts on the login page (they show `demo` only when that account’s password is still `demo`).
 
-The sidebar changes with the role.
+| Role | Username | Email |
+| --- | --- | --- |
+| System admin | `admin` | `admin@arms.local` |
+| Maintenance manager | `maint-manager` | `maint-manager@arms.local` |
+| Supervisor | `supervisor` | `supervisor@arms.local` |
+| Technician | `tech` | `tech@arms.local` |
+| Branch employee | `branch` | `branch@arms.local` |
+| Mobile technician | `mobile` | `mobile@arms.local` |
+| Pickup courier | `courier` | `courier@arms.local` |
+
+Prefer **username** (e.g. `admin`) on the login form. The sidebar changes with the role.
 
 ## User manual (Arabic, by role)
 

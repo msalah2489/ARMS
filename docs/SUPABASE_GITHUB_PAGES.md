@@ -97,7 +97,7 @@ Do **not** look at classic CRM `service_requests` / `profiles` — after **`015_
 
 1. Run **`013_normalized_app_tables.sql`** once in SQL Editor
 2. Open https://msalah2489.github.io/ARMS/
-3. Sign in (e.g. `admin` / `demo` or `branch@arms.local` / `demo`)
+3. Sign in from the temporary account list on `/login/` (tap a row to fill username + password). Seed defaults are `admin` / `demo`. **Live passwords** are whatever is stored in `app_users.password_plain` — many branch/tech accounts may use a different password than `demo`. Login does **not** require creating users in Supabase Auth for the Pages prototype.
 4. If a yellow sync banner appears, fix the anon JWT secret and redeploy
 5. Change shared data: create a maintenance request, user, shipping batch, etc.
 6. In Supabase → **Table Editor** → open **`app_maintenance_requests`** / **`v_app_users`** — rows/columns (not giant JSON)

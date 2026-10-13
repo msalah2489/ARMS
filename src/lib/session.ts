@@ -51,6 +51,24 @@ export function clearSession() {
   window.dispatchEvent(new CustomEvent("arms-session-updated"));
 }
 
+function findManagedLoginMatch(login: string) {
+  const key = login.trim().toLowerCase();
+  const mobileKey = login.trim();
+  return listManagedUsers({ includeArchived: true }).find(
+    (item) =>
+      item.username.toLowerCase() === key ||
+      item.email.toLowerCase() === key ||
+      item.mobile === mobileKey,
+  );
+}
+
+/** True when login is a real Auth email (not username / @arms.local managed accounts). */
+function looksLikeSupabaseAuthEmail(login: string) {
+  const value = login.trim().toLowerCase();
+  if (!value.includes("@") || value.endsWith("@arms.local")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function tryLocalSignIn(login: string, password: string) {
   const managed = authenticateManagedUser(login, password);
   if (managed) {
@@ -58,19 +76,16 @@ function tryLocalSignIn(login: string, password: string) {
     return { error: null as string | null };
   }
 
-  const key = login.trim().toLowerCase();
-  const blocked = listManagedUsers({ includeArchived: true }).find(
-    (item) =>
-      (item.isArchived || !item.isActive) &&
-      (item.username.toLowerCase() === key ||
-        item.email.toLowerCase() === key ||
-        item.mobile === login.trim()),
-  );
-  if (blocked?.isArchived) {
+  const match = findManagedLoginMatch(login);
+  if (match?.isArchived) {
     return { error: "هذا الحساب مؤرشف. راجع مدير النظام." };
   }
-  if (blocked) {
+  if (match && !match.isActive) {
     return { error: "هذا الحساب معطّل. راجع مدير النظام." };
+  }
+  // Known managed user + wrong password: stop here (do not show Supabase Auth English errors).
+  if (match) {
+    return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
   }
 
   return null;
@@ -115,10 +130,20 @@ export async function signIn(email: string, password: string) {
     return { error: null };
   }
 
+  // Pages prototype logins are managed users in app_users. Only fall through to
+  // Supabase Auth for real email addresses (not bare usernames / @arms.local).
+  if (!looksLikeSupabaseAuthEmail(email)) {
+    return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
+  }
+
   const supabase = createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
-    return { error: error?.message ?? "اسم المستخدم أو كلمة المرور غير صحيحة." };
+    const raw = error?.message ?? "";
+    if (/invalid login credentials/i.test(raw) || /email not confirmed/i.test(raw)) {
+      return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
+    }
+    return { error: raw || "اسم المستخدم أو كلمة المرور غير صحيحة." };
   }
 
   const { data: profile } = await supabase
