@@ -21,6 +21,8 @@ import {
   buildSpareConsumeDetailReport,
   buildSpareStockMovementReport,
   canViewDelayReport,
+  canViewReportType,
+  reportCatalogIdsForUser,
   type CustomerReportRow,
   type DelayAggregateRow,
   type DelayPeriodDays,
@@ -28,6 +30,7 @@ import {
   type DeviceReportRow,
   type FaultAnalysisRow,
   type MaintenanceRequestReportRow,
+  type OpsReportId,
   type ShippingBatchReportRow,
   type SpareConsumeReportRow,
   type SpareStockMovementReportRow,
@@ -57,31 +60,21 @@ import { formatDate } from "@/lib/utils";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { Profile } from "@/types/domain";
 
-type ReportId =
-  | "devices"
-  | "customers"
-  | "shippingBatches"
-  | "maintenanceRequests"
-  | "sentDevices"
-  | "excludedDevices"
-  | "spareByTech"
-  | "spareConsume"
-  | "spareMovements"
-  | "faultAnalysis"
-  | "delays";
+type ReportId = OpsReportId;
 
-const BASE_REPORT_TYPES: { id: ReportId; labelKey: MessageKey }[] = [
-  { id: "devices", labelKey: "reports.section.devices" },
-  { id: "customers", labelKey: "reports.section.customers" },
-  { id: "shippingBatches", labelKey: "reports.section.shippingBatches" },
-  { id: "maintenanceRequests", labelKey: "reports.section.maintenanceRequests" },
-  { id: "sentDevices", labelKey: "reports.section.sentDevices" },
-  { id: "excludedDevices", labelKey: "reports.section.excludedDevices" },
-  { id: "spareByTech", labelKey: "reports.section.spareByTech" },
-  { id: "spareConsume", labelKey: "reports.section.spareConsume" },
-  { id: "spareMovements", labelKey: "reports.section.spareMovements" },
-  { id: "faultAnalysis", labelKey: "reports.section.faultAnalysis" },
-];
+const REPORT_TYPE_LABELS: Record<ReportId, MessageKey> = {
+  devices: "reports.section.devices",
+  customers: "reports.section.customers",
+  shippingBatches: "reports.section.shippingBatches",
+  maintenanceRequests: "reports.section.maintenanceRequests",
+  sentDevices: "reports.section.sentDevices",
+  excludedDevices: "reports.section.excludedDevices",
+  spareByTech: "reports.section.spareByTech",
+  spareConsume: "reports.section.spareConsume",
+  spareMovements: "reports.section.spareMovements",
+  faultAnalysis: "reports.section.faultAnalysis",
+  delays: "reports.section.delays",
+};
 
 function downloadCsv(filename: string, columns: string[], rows: string[][]) {
   const escape = (value: string) => {
@@ -244,18 +237,18 @@ export default function ReportsPage() {
     };
   }, []);
 
-  const showDelayReport = canViewDelayReport(user);
   const reportTypes = useMemo(() => {
-    if (!showDelayReport) return BASE_REPORT_TYPES;
-    return [
-      ...BASE_REPORT_TYPES,
-      { id: "delays" as const, labelKey: "reports.section.delays" as MessageKey },
-    ];
-  }, [showDelayReport]);
+    return reportCatalogIdsForUser(user).map((id) => ({
+      id,
+      labelKey: REPORT_TYPE_LABELS[id],
+    }));
+  }, [user]);
 
   useEffect(() => {
-    if (reportId === "delays" && user && !canViewDelayReport(user)) {
-      setReportId("devices");
+    if (!user) return;
+    if (!canViewReportType(user, reportId)) {
+      const fallback = reportCatalogIdsForUser(user)[0] ?? "devices";
+      setReportId(fallback);
     }
   }, [reportId, user]);
 
@@ -351,6 +344,7 @@ export default function ReportsPage() {
     return value || "—";
   }
 
+  const showDelayReport = canViewDelayReport(user);
   const delayReport = useMemo(() => {
     if (!ready || !isDelayReport || !showDelayReport) return null;
     return buildDelayReport(delayPeriodDays);

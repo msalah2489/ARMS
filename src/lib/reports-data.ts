@@ -1,4 +1,5 @@
 import {
+  isBranchRole,
   isMaintenanceManagerRole,
   isSystemAdminRole,
   normalizeRole,
@@ -947,6 +948,48 @@ const UNASSIGNED_TECH_LABEL = "غير معيّن";
 const UNKNOWN_FAULT_LABEL = "غير محدد";
 const UNKNOWN_MODEL_LABEL = "بدون موديل";
 
+/** Hub report ids on `/reports` (matches the page catalog). */
+export type OpsReportId =
+  | "devices"
+  | "customers"
+  | "shippingBatches"
+  | "maintenanceRequests"
+  | "sentDevices"
+  | "excludedDevices"
+  | "spareByTech"
+  | "spareConsume"
+  | "spareMovements"
+  | "faultAnalysis"
+  | "delays";
+
+/**
+ * Branch staff: requests / devices / shipping / faults for their branch only.
+ * Spare inventory + delay concentration stay admin/maintenance.
+ */
+export const BRANCH_REPORT_IDS: readonly OpsReportId[] = [
+  "devices",
+  "customers",
+  "shippingBatches",
+  "maintenanceRequests",
+  "sentDevices",
+  "excludedDevices",
+  "faultAnalysis",
+] as const;
+
+/** Full base catalog for manager / system_admin / maintenance (delays appended separately). */
+export const ADMIN_BASE_REPORT_IDS: readonly OpsReportId[] = [
+  "devices",
+  "customers",
+  "shippingBatches",
+  "maintenanceRequests",
+  "sentDevices",
+  "excludedDevices",
+  "spareByTech",
+  "spareConsume",
+  "spareMovements",
+  "faultAnalysis",
+] as const;
+
 /** Roles that see the delay concentration report (plus view_reports). */
 export function canViewDelayReport(user: Profile | null | undefined): boolean {
   if (!user || !hasPermission(user, "view_reports")) return false;
@@ -957,6 +1000,26 @@ export function canViewDelayReport(user: Profile | null | undefined): boolean {
     role === "supervisor" ||
     role === "manager"
   );
+}
+
+/** Report types shown in «نوع التقرير» for the signed-in role. */
+export function reportCatalogIdsForUser(
+  user: Profile | null | undefined,
+): OpsReportId[] {
+  if (!user || !hasPermission(user, "view_reports")) return [];
+  const role = normalizeRole(user.role) as AppRole;
+  const base: OpsReportId[] = isBranchRole(role)
+    ? [...BRANCH_REPORT_IDS]
+    : [...ADMIN_BASE_REPORT_IDS];
+  if (canViewDelayReport(user)) base.push("delays");
+  return base;
+}
+
+export function canViewReportType(
+  user: Profile | null | undefined,
+  reportId: OpsReportId,
+): boolean {
+  return reportCatalogIdsForUser(user).includes(reportId);
 }
 
 function stageStartedWithinPeriod(stageStartedAt: string, periodDays: DelayPeriodDays): boolean {
