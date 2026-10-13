@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
+import { RequestTimeline } from "@/components/request-timeline";
 import { StatusBadge } from "@/components/status-badge";
 import { branchScopeId } from "@/lib/auth";
 import {
@@ -16,6 +17,7 @@ import {
   withDevicePhotos,
 } from "@/lib/branch-store";
 import { getOpsServiceRequest } from "@/lib/ops-data";
+import { buildRequestTimeline, type TimelineEvent } from "@/lib/request-timeline";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type { MaintenanceRequestRecord, ServiceRequest } from "@/types/domain";
@@ -23,6 +25,7 @@ import type { MaintenanceRequestRecord, ServiceRequest } from "@/types/domain";
 export function RequestDetailClient({ id }: { id: string }) {
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   const [record, setRecord] = useState<MaintenanceRequestRecord | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
 
@@ -32,6 +35,7 @@ export function RequestDetailClient({ id }: { id: string }) {
     if (scope && opsRecord && opsRecord.opsBranchId !== scope) {
       setRecord(null);
       setRequest(null);
+      setTimeline([]);
       setForbidden(true);
       setLoading(false);
       return;
@@ -39,6 +43,7 @@ export function RequestDetailClient({ id }: { id: string }) {
     setForbidden(false);
     setRecord(opsRecord);
     setRequest(getOpsServiceRequest(id, scope));
+    setTimeline(opsRecord ? buildRequestTimeline(opsRecord) : []);
     setLoading(false);
   }, [id]);
 
@@ -232,6 +237,12 @@ export function RequestDetailClient({ id }: { id: string }) {
           </div>
         </section>
       </div>
+
+      {record ? (
+        <div className="mt-6">
+          <RequestTimeline events={timeline} title="الخط الزمني للطلب" />
+        </div>
+      ) : null}
     </div>
   );
 }

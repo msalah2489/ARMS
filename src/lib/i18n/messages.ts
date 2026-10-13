@@ -22,6 +22,7 @@ const messagesAr = {
   "sync.genericError": "تعذّرت مزامنة البيانات مع Supabase. تُعرض النسخة المحلية مؤقتًا — تحقق من الاتصال ثم حدّث الصفحة.",
 
   "nav.dashboard": "الرئيسية",
+  "nav.myTasks": "مهامي اليوم",
   "nav.serviceRequests": "طلبات الصيانة",
   "nav.newRequest": "إنشاء طلب",
   "nav.devices": "الأجهزة",
@@ -434,6 +435,7 @@ const messagesEn: Record<MessageKey, string> = {
   "sync.genericError": "Could not sync with Supabase. Showing the local cache temporarily — check the connection and refresh.",
 
   "nav.dashboard": "Dashboard",
+  "nav.myTasks": "My tasks today",
   "nav.serviceRequests": "Service requests",
   "nav.newRequest": "New request",
   "nav.devices": "Devices",

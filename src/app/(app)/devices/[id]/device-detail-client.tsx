@@ -6,6 +6,7 @@ import { DeviceHistoryPanel } from "@/components/device-history-panel";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
+import { RequestTimeline } from "@/components/request-timeline";
 import { StatusBadge } from "@/components/status-badge";
 import { branchScopeId, isBranchRole } from "@/lib/auth";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/lib/branch-store";
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { getOpsDevice } from "@/lib/ops-data";
+import { buildRequestTimeline, type TimelineEvent } from "@/lib/request-timeline";
 import { readSession } from "@/lib/session";
 import type { Device, DraftRequestDevice, MaintenanceAssignmentPath } from "@/types/domain";
 
@@ -28,6 +30,7 @@ export function DeviceDetailClient({ id }: { id: string }) {
   const [fault, setFault] = useState("");
   const [requestNumber, setRequestNumber] = useState("");
   const [receiptPhoto, setReceiptPhoto] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -50,6 +53,9 @@ export function DeviceDetailClient({ id }: { id: string }) {
       setAssignmentPath(getDeviceAssignmentPath(found.request, device));
       setFault(device.fault);
       setRequestNumber(found.request.requestNumber);
+      setTimeline(
+        buildRequestTimeline(found.request, { deviceLocalId: device.localId }),
+      );
       if (device.receiptPhotoDataUrl) {
         setReceiptPhoto({
           name: device.receiptPhotoName || "سند الاستلام",
@@ -61,9 +67,11 @@ export function DeviceDetailClient({ id }: { id: string }) {
       setForbidden(false);
     } else if (scope && listAllRequestDevices().some((item) => item.device.localId === id)) {
       setMatch(null);
+      setTimeline([]);
       setForbidden(true);
     } else {
       setMatch(null);
+      setTimeline([]);
       setForbidden(false);
     }
     setLoading(false);
@@ -167,7 +175,12 @@ export function DeviceDetailClient({ id }: { id: string }) {
       </section>
 
       {match ? (
-        <div className="mt-6">
+        <div className="mt-6 space-y-6">
+          <RequestTimeline
+            events={timeline}
+            title="الخط الزمني للجهاز"
+            emptyMessage="لا توجد أحداث مسجّلة بعد لهذا الجهاز."
+          />
           <DeviceHistoryPanel request={match.request} device={match.device} />
         </div>
       ) : null}

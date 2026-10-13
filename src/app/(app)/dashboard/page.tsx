@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { DelayAlertsStrip } from "@/components/delay-alerts-strip";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import {
@@ -32,6 +33,7 @@ import {
   type ManagerDailyWorkCounts,
   type TechnicianHomeQueues,
 } from "@/lib/dashboard-work-queues";
+import { getDelayAlertsSummary, type DelayAlertItem } from "@/lib/delay-alerts";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { readSession } from "@/lib/session";
@@ -59,6 +61,7 @@ export default function DashboardPage() {
   const [techQueues, setTechQueues] = useState<TechnicianHomeQueues | null>(null);
   const [branchWork, setBranchWork] = useState<BranchDailyWorkCounts | null>(null);
   const [managerWork, setManagerWork] = useState<ManagerDailyWorkCounts | null>(null);
+  const [delayAlerts, setDelayAlerts] = useState<DelayAlertItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +78,7 @@ export default function DashboardPage() {
       const current = readSession();
       if (!current) return;
       setUser(current);
+      setDelayAlerts(getDelayAlertsSummary(current, 5).preview);
 
       if (isBranchRole(current.role)) {
         setBranchRequests(listMaintenanceRequests(current.opsBranchId));
@@ -153,14 +157,23 @@ export default function DashboardPage() {
           title={welcome}
           description="لوحة مندوب الاستلام — نماذج بانتظار المراجعة والأجهزة لديك"
           action={
-            <Link
-              href="/courier/receipts"
-              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
-            >
-              نماذج الاستلام
-            </Link>
+            <>
+              <Link
+                href="/my-tasks"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                مهامي اليوم
+              </Link>
+              <Link
+                href="/courier/receipts"
+                className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+              >
+                نماذج الاستلام
+              </Link>
+            </>
           }
         />
+        <DelayAlertsStrip alerts={delayAlerts} />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <DashboardColumn title="بانتظار المراجعة">
             <StatRow label="نماذج معلّقة" value={pending.length} />
@@ -196,14 +209,23 @@ export default function DashboardPage() {
           title={welcome}
           description={t("dashboard.techDescription")}
           action={
-            <Link
-              href="/technician/work"
-              className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
-            >
-              {t("dashboard.techWork")}
-            </Link>
+            <>
+              <Link
+                href="/my-tasks"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                مهامي اليوم
+              </Link>
+              <Link
+                href="/technician/work"
+                className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+              >
+                {t("dashboard.techWork")}
+              </Link>
+            </>
           }
         />
+        <DelayAlertsStrip alerts={delayAlerts} />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900">
             <div className="flex items-start justify-between gap-3">
@@ -364,6 +386,12 @@ export default function DashboardPage() {
           action={
             <>
               <Link
+                href="/my-tasks"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                مهامي اليوم
+              </Link>
+              <Link
                 href="/branch/receiving"
                 className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
               >
@@ -378,6 +406,8 @@ export default function DashboardPage() {
             </>
           }
         />
+
+        <DelayAlertsStrip alerts={delayAlerts} />
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {workCards.map((card) => (
@@ -512,6 +542,12 @@ export default function DashboardPage() {
           action={
             <>
               <Link
+                href="/my-tasks"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                مهامي اليوم
+              </Link>
+              <Link
                 href="/service-requests/new"
                 className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
               >
@@ -532,6 +568,7 @@ export default function DashboardPage() {
             </>
           }
         />
+        <DelayAlertsStrip alerts={delayAlerts} />
         {!managerWork ? (
           <p className="mt-4 text-sm text-ink-700/70 dark:text-sand-100/70">{t("dashboard.loading")}</p>
         ) : null}
@@ -560,6 +597,12 @@ export default function DashboardPage() {
           showOpsQuickActions || user.role === "maintenance_supervisor" ? (
             <>
               <Link
+                href="/my-tasks"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+              >
+                مهامي اليوم
+              </Link>
+              <Link
                 href="/service-requests/new"
                 className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
               >
@@ -572,9 +615,17 @@ export default function DashboardPage() {
                 {t("dashboard.quickWaybill")}
               </Link>
             </>
-          ) : undefined
+          ) : (
+            <Link
+              href="/my-tasks"
+              className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 dark:hover:border-aroma-400"
+            >
+              مهامي اليوم
+            </Link>
+          )
         }
       />
+      <DelayAlertsStrip alerts={delayAlerts} />
       <AttentionWidgets
         counts={attention}
         t={t}
