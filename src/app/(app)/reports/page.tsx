@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Download, RotateCcw } from "lucide-react";
+import { FileSpreadsheet, FileText, RotateCcw } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { branchScopeId, isBranchRole, isDemoMode } from "@/lib/auth";
 import { deviceStatusLabel } from "@/lib/branch-store";
+import {
+  downloadReportExcel,
+  printReportAsPdf,
+} from "@/lib/report-export";
 import {
   buildCustomersReport,
   buildDelayReport,
@@ -75,27 +79,6 @@ const REPORT_TYPE_LABELS: Record<ReportId, MessageKey> = {
   faultAnalysis: "reports.section.faultAnalysis",
   delays: "reports.section.delays",
 };
-
-function downloadCsv(filename: string, columns: string[], rows: string[][]) {
-  const escape = (value: string) => {
-    const text = value ?? "";
-    if (/[",\n\r]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
-    return text;
-  };
-  const lines = [
-    columns.map(escape).join(","),
-    ...rows.map((row) => row.map(escape).join(",")),
-  ];
-  const blob = new Blob(["\uFEFF" + lines.join("\n")], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
 
 function formatMaybeDate(value: string, locale: "ar" | "en") {
   if (!value) return "—";
@@ -212,6 +195,7 @@ export default function ReportsPage() {
   const [reportId, setReportId] = useState<ReportId>("devices");
   const [filters, setFilters] = useState<ReportFilters>(() => emptyReportFilters());
   const [delayPeriodDays, setDelayPeriodDays] = useState<DelayPeriodDays>(30);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +327,20 @@ export default function ReportsPage() {
     if (value === "return") return t("reports.direction.return");
     return value || "—";
   }
+
+  const reportTitle = t(REPORT_TYPE_LABELS[reportId]);
+
+  const dateRangeSummary = useMemo(() => {
+    if (isDelayReport) {
+      return delayPeriodDays
+        ? `${delayPeriodDays} ${locale === "ar" ? "يوم" : "days"}`
+        : t("reports.pdf.allDates");
+    }
+    if (filters.allDates !== false) return t("reports.pdf.allDates");
+    const from = filters.dateFrom || "—";
+    const to = filters.dateTo || "—";
+    return `${from} → ${to}`;
+  }, [isDelayReport, delayPeriodDays, filters.allDates, filters.dateFrom, filters.dateTo, locale, t]);
 
   const showDelayReport = canViewDelayReport(user);
   const delayReport = useMemo(() => {
@@ -719,6 +717,39 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t/urgencyLabel are stable enough for this page
   }, [ready, reportId, branchId, filters, locale, tick, delayReport]);
 
+  async function handleExportExcel() {
+    if (result.csvRows.length === 0 || exportingExcel) return;
+    setExportingExcel(true);
+    try {
+      await downloadReportExcel(result.filename, result.columns, result.csvRows, {
+        sheetName: reportTitle.slice(0, 28) || "Report",
+        rightToLeft: locale !== "en",
+      });
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
+  function handleExportPdf() {
+    if (result.csvRows.length === 0) return;
+    const now = new Date().toISOString();
+    printReportAsPdf({
+      meta: {
+        title: reportTitle,
+        subtitle: t("reports.title"),
+        dateRangeLabel: t("reports.pdf.dateRange").replace("{range}", dateRangeSummary),
+        rowsLabel: t("reports.rows").replace("{count}", String(result.csvRows.length)),
+        generatedAtLabel: t("reports.pdf.generatedAt").replace(
+          "{date}",
+          formatDate(now, locale),
+        ),
+        locale,
+      },
+      columns: result.columns,
+      rows: result.csvRows,
+    });
+  }
+
   if (!user) {
     return <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{t("reports.loading")}</p>;
   }
@@ -1084,15 +1115,26 @@ export default function ReportsPage() {
               <span className="pb-1 text-[11px] text-ink-700/60 dark:text-sand-100/60">
                 {t("reports.rows").replace("{count}", String(result.tableRows.length))}
               </span>
-              <button
-                type="button"
-                disabled={result.csvRows.length === 0}
-                onClick={() => downloadCsv(result.filename, result.columns, result.csvRows)}
-                className="ms-auto inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
-              >
-                <Download className="h-3 w-3" />
-                {t("reports.exportCsv")}
-              </button>
+              <div className="ms-auto flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={result.csvRows.length === 0 || exportingExcel}
+                  onClick={() => void handleExportExcel()}
+                  className="inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  {exportingExcel ? t("reports.exporting") : t("reports.exportExcel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={result.csvRows.length === 0}
+                  onClick={handleExportPdf}
+                  className="inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium disabled:opacity-40 dark:border-white/10"
+                >
+                  <FileText className="h-3 w-3" />
+                  {t("reports.exportPdf")}
+                </button>
+              </div>
             </div>
           </section>
 

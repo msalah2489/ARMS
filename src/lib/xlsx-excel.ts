@@ -134,6 +134,60 @@ export async function downloadXlsxTemplate(spec: XlsxTemplateSpec): Promise<void
   URL.revokeObjectURL(url);
 }
 
+/** Static report export: Arabic headers + RTL sheet, client-side only. */
+export async function downloadXlsxReport(input: {
+  filename: string;
+  sheetName?: string;
+  columns: string[];
+  rows: string[][];
+  rightToLeft?: boolean;
+}): Promise<void> {
+  if (typeof document === "undefined") return;
+
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "ARMS";
+  const rawName = (input.sheetName || "Report").replace(/[\\/?*[\]:]/g, "").trim();
+  const sheetName = (rawName.slice(0, 31) || "Report");
+  const sheet = wb.addWorksheet(sheetName, {
+    views: [{ rightToLeft: input.rightToLeft !== false }],
+  });
+
+  sheet.addRow(input.columns);
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.alignment = { horizontal: "center", vertical: "middle" };
+
+  input.rows.forEach((row) => {
+    sheet.addRow(row);
+  });
+
+  input.columns.forEach((header, idx) => {
+    const col = sheet.getColumn(idx + 1);
+    let maxLen = header.length;
+    input.rows.forEach((row) => {
+      const cell = row[idx] ?? "";
+      if (cell.length > maxLen) maxLen = cell.length;
+    });
+    col.width = Math.min(48, Math.max(12, maxLen + 2));
+  });
+
+  const safeName = input.filename.toLowerCase().endsWith(".xlsx")
+    ? input.filename
+    : `${input.filename.replace(/\.csv$/i, "")}.xlsx`;
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer as ArrayBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = safeName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function cellToString(value: ExcelCellValue): string {
   if (value == null) return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
