@@ -830,12 +830,23 @@ export function managedUserToProfile(user: ManagedUser): Profile {
   };
 }
 
+/** Strip ZWSP/BOM and map Arabic-Indic digits → ASCII (common on mobile RTL keyboards). */
+export function normalizeCredentialText(value: string): string {
+  return value
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .trim();
+}
+
 export function authenticateManagedUser(
   login: string,
   password: string,
 ): ManagedUser | null {
-  const key = login.trim().toLowerCase();
-  const mobileKey = login.trim();
+  const normalizedLogin = normalizeCredentialText(login);
+  const key = normalizedLogin.toLowerCase();
+  const mobileKey = normalizedLogin;
+  const normalizedPassword = normalizeCredentialText(password);
   const user = listManagedUsers({ includeArchived: true }).find(
     (item) =>
       item.username.toLowerCase() === key ||
@@ -845,6 +856,6 @@ export function authenticateManagedUser(
   if (!user) return null;
   if (user.isArchived) return null;
   if (!user.isActive) return null;
-  if (user.password !== password) return null;
+  if (normalizeCredentialText(user.password) !== normalizedPassword) return null;
   return user;
 }

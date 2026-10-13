@@ -4,6 +4,7 @@ import {
   authenticateManagedUser,
   listManagedUsers,
   managedUserToProfile,
+  normalizeCredentialText,
 } from "@/lib/users-store";
 import type { AppRole, Profile } from "@/types/domain";
 
@@ -52,8 +53,9 @@ export function clearSession() {
 }
 
 function findManagedLoginMatch(login: string) {
-  const key = login.trim().toLowerCase();
-  const mobileKey = login.trim();
+  const normalized = normalizeCredentialText(login);
+  const key = normalized.toLowerCase();
+  const mobileKey = normalized;
   return listManagedUsers({ includeArchived: true }).find(
     (item) =>
       item.username.toLowerCase() === key ||
@@ -64,7 +66,7 @@ function findManagedLoginMatch(login: string) {
 
 /** True when login is a real Auth email (not username / @arms.local managed accounts). */
 function looksLikeSupabaseAuthEmail(login: string) {
-  const value = login.trim().toLowerCase();
+  const value = normalizeCredentialText(login).toLowerCase();
   if (!value.includes("@") || value.endsWith("@arms.local")) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -92,6 +94,9 @@ function tryLocalSignIn(login: string, password: string) {
 }
 
 export async function signIn(email: string, password: string) {
+  const login = normalizeCredentialText(email);
+  const pass = normalizeCredentialText(password);
+
   // Pull cloud users (and other ops) before authenticating so Pages logins see shared accounts.
   try {
     const { hydrateOpsFromSupabase } = await import("@/lib/supabase/hydrate");
@@ -101,16 +106,18 @@ export async function signIn(email: string, password: string) {
   }
 
   // Local managed users work in demo and on GitHub Pages static export.
-  const local = tryLocalSignIn(email, password);
+  const local = tryLocalSignIn(login, pass);
   if (local) return local;
 
   if (isDemoMode()) {
     const user = DEMO_USERS.find(
-      (item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password,
+      (item) =>
+        item.email.toLowerCase() === login.toLowerCase() &&
+        normalizeCredentialText(item.password) === pass,
     );
     if (!user) return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
 
-    const managed = authenticateManagedUser(user.email, password);
+    const managed = authenticateManagedUser(user.email, pass);
     if (managed) {
       writeSession(managedUserToProfile(managed));
       return { error: null };
@@ -132,12 +139,15 @@ export async function signIn(email: string, password: string) {
 
   // Pages prototype logins are managed users in app_users. Only fall through to
   // Supabase Auth for real email addresses (not bare usernames / @arms.local).
-  if (!looksLikeSupabaseAuthEmail(email)) {
+  if (!looksLikeSupabaseAuthEmail(login)) {
     return { error: "اسم المستخدم أو كلمة المرور غير صحيحة." };
   }
 
   const supabase = createClient();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: login,
+    password: pass,
+  });
   if (error || !data.user) {
     const raw = error?.message ?? "";
     if (/invalid login credentials/i.test(raw) || /email not confirmed/i.test(raw)) {
@@ -153,22 +163,22 @@ export async function signIn(email: string, password: string) {
     .maybeSingle();
 
   let role = normalizeRole((profile?.role as AppRole | undefined) ?? "branch");
-  if (email.toLowerCase() === "tech@arms.app") role = "technician";
-  if (email.toLowerCase() === "branch@arms.app") role = "branch";
+  if (login.toLowerCase() === "tech@arms.app") role = "technician";
+  if (login.toLowerCase() === "branch@arms.app") role = "branch";
 
   // Prefer managed-user branch assignment from cloud cache — never invent demo branch IDs.
   const managedMatch = listManagedUsers().find(
     (item) =>
       item.id === data.user.id ||
-      (item.email && item.email.toLowerCase() === (data.user.email ?? email).toLowerCase()),
+      (item.email && item.email.toLowerCase() === (data.user.email ?? login).toLowerCase()),
   );
 
   writeSession({
     id: data.user.id,
     fullName: profile?.full_name ?? managedMatch?.fullName ?? data.user.email ?? "مستخدم",
-    username: managedMatch?.username ?? (data.user.email ?? email).split("@")[0],
+    username: managedMatch?.username ?? (data.user.email ?? login).split("@")[0],
     role: managedMatch ? normalizeRole(managedMatch.role) : role,
-    email: data.user.email ?? email,
+    email: data.user.email ?? login,
     mobile: managedMatch?.mobile ?? null,
     opsBranchId: managedMatch?.opsBranchId ?? null,
     opsBranchName:

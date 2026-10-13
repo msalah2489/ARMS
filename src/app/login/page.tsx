@@ -92,14 +92,16 @@ function LoginPageContent() {
               </p>
               <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                 {accounts.map((user) => {
-                  const showDemoHint = demo || user.password === "demo";
+                  // TEMPORARY setup picker: always show+fill password so switching
+                  // accounts never leaves a stale "demo" while the real pw is AAA3.
                   return (
                     <button
                       key={user.id}
                       type="button"
                       onClick={() => {
                         setEmail(user.username);
-                        if (showDemoHint) setPassword(user.password);
+                        setPassword(user.password);
+                        setError(null);
                       }}
                       className="rounded-xl border border-ink-900/10 bg-white px-3 py-2 text-right text-sm hover:border-aroma-400 dark:border-white/10 dark:bg-ink-900 dark:hover:border-aroma-400"
                     >
@@ -110,11 +112,9 @@ function LoginPageContent() {
                         {user.username}
                         {ROLE_LABELS[user.role] ? ` · ${ROLE_LABELS[user.role]}` : ""}
                       </span>
-                      {showDemoHint ? (
-                        <span className="mt-0.5 block text-[11px] text-aroma-700/80 dark:text-aroma-200/80">
-                          كلمة المرور: {user.password}
-                        </span>
-                      ) : null}
+                      <span className="mt-0.5 block text-[11px] text-aroma-700/80 dark:text-aroma-200/80">
+                        كلمة المرور: {user.password}
+                      </span>
                     </button>
                   );
                 })}
