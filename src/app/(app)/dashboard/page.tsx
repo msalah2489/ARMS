@@ -2,6 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  Archive,
+  ClipboardList,
+  Inbox,
+  Package,
+  PackageCheck,
+  Smartphone,
+  Store,
+  Truck,
+  UserRound,
+  Users,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { DelayAlertsCard } from "@/components/delay-alerts-card";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -50,6 +64,7 @@ type WorkCard = {
   hint: string;
   count: number;
   href: string;
+  icon: LucideIcon;
   actionHref?: string;
   actionLabel?: string;
 };
@@ -361,6 +376,7 @@ export default function DashboardPage() {
         hint: t("dashboard.work.customersAtBranchHint"),
         count: work.customersAtBranch,
         href: "/devices?focus=customers_at_branch",
+        icon: Users,
       },
       {
         key: "send",
@@ -368,6 +384,7 @@ export default function DashboardPage() {
         hint: t("dashboard.work.sendToServiceHint"),
         count: work.sendToService,
         href: "/devices?focus=send_to_service",
+        icon: Truck,
         actionHref: "/branch/shipping",
         actionLabel: t("dashboard.work.openShipping"),
       },
@@ -377,6 +394,7 @@ export default function DashboardPage() {
         hint: t("dashboard.work.incomingHint"),
         count: work.incomingFromService,
         href: "/devices?focus=returning",
+        icon: PackageCheck,
         actionHref: "/branch/shipping",
         actionLabel: t("dashboard.work.openShipping"),
       },
@@ -386,6 +404,7 @@ export default function DashboardPage() {
         hint: t("dashboard.work.handToMobileHint"),
         count: work.handToMobile,
         href: "/devices?focus=hand_to_mobile",
+        icon: Smartphone,
       },
       {
         key: "customer",
@@ -393,6 +412,7 @@ export default function DashboardPage() {
         hint: t("dashboard.work.handToCustomerHint"),
         count: work.handToCustomer,
         href: "/devices?focus=awaiting_customer",
+        icon: UserRound,
       },
     ];
 
@@ -493,6 +513,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.branchesNeedMaintenanceHint"),
         count: counts.branchesNeedMaintenance,
         href: "/devices?focus=branches_need_maintenance",
+        icon: Store,
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
       },
@@ -502,6 +523,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.needDecisionHint"),
         count: counts.needMaintenanceDecision,
         href: "/devices?focus=need_decision",
+        icon: ClipboardList,
       },
       {
         key: "lowStock",
@@ -509,6 +531,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.lowStockHint"),
         count: counts.lowStockParts,
         href: "/spare-parts",
+        icon: Package,
       },
       {
         key: "replaced",
@@ -516,6 +539,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.replacedStockHint"),
         count: counts.replacedDevicesStock,
         href: "/replaced-devices",
+        icon: Archive,
       },
       {
         key: "readyReturn",
@@ -523,6 +547,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.readyToReturnHint"),
         count: counts.readyToReturnToBranches,
         href: "/devices?focus=ready_to_return",
+        icon: PackageCheck,
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
       },
@@ -532,6 +557,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.deliveringToBranchesHint"),
         count: counts.deliveringToBranches,
         href: "/devices?focus=delivering_to_branches",
+        icon: Truck,
       },
       {
         key: "needReceive",
@@ -539,6 +565,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.needReceiveAtServiceHint"),
         count: counts.needReceiveAtService,
         href: "/devices?focus=need_receive_at_service",
+        icon: Inbox,
         actionHref: "/maintenance/shipping",
         actionLabel: t("dashboard.work.openShipping"),
       },
@@ -548,6 +575,7 @@ export default function DashboardPage() {
         hint: t("dashboard.mgr.inMaintenanceHint"),
         count: counts.inMaintenance,
         href: "/devices?focus=in_maintenance",
+        icon: Wrench,
       },
     ];
 
@@ -705,10 +733,16 @@ function WorkCardPanel({
   card: WorkCard;
   openListLabel: string;
 }) {
+  const Icon = card.icon;
   return (
     <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900">
       <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">{card.title}</h2>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-ink-900/10 bg-sand-50 text-ink-800 dark:border-white/10 dark:bg-ink-950/40 dark:text-sand-100">
+            <Icon className="h-5 w-5 shrink-0 opacity-80" aria-hidden />
+          </span>
+          <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">{card.title}</h2>
+        </div>
         <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-ink-900 px-3 py-1 text-sm font-semibold text-white dark:bg-aroma-600">
           {card.count}
         </span>

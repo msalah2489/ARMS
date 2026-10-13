@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ClockAlert } from "lucide-react";
 import type { DelayAlertItem } from "@/lib/delay-alerts";
 import { formatDate } from "@/lib/utils";
 
@@ -46,7 +47,19 @@ export function DelayAlertsCard({
     <>
       <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">{title}</h2>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              className={[
+                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-sand-50 dark:bg-ink-950/40",
+                hasOverdue
+                  ? "border-rose-300/70 text-rose-700 dark:border-rose-400/40 dark:text-rose-300"
+                  : "border-ink-900/10 text-ink-800 dark:border-white/10 dark:text-sand-100",
+              ].join(" ")}
+            >
+              <ClockAlert className="h-5 w-5 shrink-0 opacity-80" aria-hidden />
+            </span>
+            <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">{title}</h2>
+          </div>
           <div className="flex items-center gap-1.5">
             {hasOverdue ? (
               <span
