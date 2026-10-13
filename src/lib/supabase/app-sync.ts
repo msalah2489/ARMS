@@ -386,6 +386,10 @@ function requestToRow(request: MaintenanceRequestRecord) {
     purchase_invoice: request.purchaseInvoice,
     general_notes: request.generalNotes,
     device_count: request.devices?.length ?? 0,
+    parent_request_id: request.parentRequestId ?? null,
+    parent_request_number: request.parentRequestNumber ?? null,
+    link_reason: request.linkReason ?? null,
+    link_note: request.linkNote ?? null,
     payload: request,
     synced_at: nowIso(),
   };

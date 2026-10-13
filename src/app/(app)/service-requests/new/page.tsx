@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
 import { DeviceFormModal } from "@/components/device-form-modal";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
@@ -17,9 +17,15 @@ import {
   ASSIGNMENT_PATH_LABELS,
   findCustomersByMobile,
   findCustomersByName,
+  getMaintenanceRequestById,
   saveMaintenanceRequest,
 } from "@/lib/branch-store";
 import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
+import {
+  REQUEST_RETURN_REASON_OPTIONS,
+  requestReturnReasonLabel,
+  validateReturnReason,
+} from "@/lib/request-return";
 import { readSession } from "@/lib/session";
 import { useColumnSort } from "@/lib/table-sort";
 import { useUnsavedChanges } from "@/lib/unsaved-changes";
@@ -28,10 +34,12 @@ import type {
   DraftRequestDevice,
   MaintenanceAssignmentPath,
   Profile,
+  RequestReturnReason,
 } from "@/types/domain";
 
 function NewServiceRequestContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = usePreferences();
   const { setDirty, clearDirty } = useUnsavedChanges("service-request-new");
   const [user, setUser] = useState<Profile | null>(null);
@@ -45,6 +53,10 @@ function NewServiceRequestContent() {
   const [purchaseInvoice, setPurchaseInvoice] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
   const [devices, setDevices] = useState<DraftRequestDevice[]>([]);
+  const [parentRequestId, setParentRequestId] = useState<string | null>(null);
+  const [parentRequestNumber, setParentRequestNumber] = useState<string | null>(null);
+  const [linkReason, setLinkReason] = useState<RequestReturnReason | null>(null);
+  const [linkNote, setLinkNote] = useState("");
   const getDeviceSortValue = useCallback((device: DraftRequestDevice, key: string) => {
     switch (key) {
       case "code":
@@ -86,7 +98,36 @@ function NewServiceRequestContent() {
     setUser(session);
     setRequestNumber(generateRequestNumber());
     setBranchOptions(listBranchOptions());
-  }, []);
+
+    const fromId = (searchParams?.get("from") ?? "").trim();
+    const reasonRaw = (searchParams?.get("reason") ?? "").trim() as RequestReturnReason;
+    const noteRaw = searchParams?.get("note") ?? "";
+    if (!fromId) return;
+    const parent = getMaintenanceRequestById(fromId);
+    if (!parent) {
+      setError("الطلب السابق غير موجود — لا يمكن إنشاء طلب متابعة.");
+      return;
+    }
+    setParentRequestId(parent.id);
+    setParentRequestNumber(parent.requestNumber);
+    setMobile(parent.customerMobile);
+    setContactName(parent.contactName);
+    setPurchaseInvoice(parent.purchaseInvoice || "");
+    setPriority(parent.priority);
+    if (parent.assignmentPath) setAssignmentPath(parent.assignmentPath);
+    setSelectedBranchId(parent.opsBranchId);
+    if ((REQUEST_RETURN_REASON_OPTIONS as string[]).includes(reasonRaw)) {
+      setLinkReason(reasonRaw);
+    }
+    setLinkNote(noteRaw);
+    if (noteRaw.trim()) {
+      setGeneralNotes(`متابعة للطلب ${parent.requestNumber}: ${noteRaw.trim()}`);
+    } else if (reasonRaw) {
+      setGeneralNotes(
+        `متابعة للطلب ${parent.requestNumber} — ${requestReturnReasonLabel(reasonRaw)}`,
+      );
+    }
+  }, [searchParams]);
 
   const requestDirty = useMemo(
     () =>
@@ -143,8 +184,12 @@ function NewServiceRequestContent() {
   return (
     <div>
       <PageHeader
-        title="إنشاء طلب صيانة"
-        description="تسجيل استلام أجهزة من العميل مع بيانات الطلب والأجهزة المرفقة."
+        title={parentRequestId ? "إنشاء طلب متابعة" : "إنشاء طلب صيانة"}
+        description={
+          parentRequestId
+            ? "نفس خطوات إنشاء الطلب، مع ربط تلقائي بالطلب السابق بعد التسليم."
+            : "تسجيل استلام أجهزة من العميل مع بيانات الطلب والأجهزة المرفقة."
+        }
         action={
           <Link
             href="/service-requests"
@@ -154,6 +199,27 @@ function NewServiceRequestContent() {
           </Link>
         }
       />
+
+      {parentRequestId ? (
+        <div className="mb-6 rounded-2xl border border-ink-900/10 bg-white p-4 shadow-panel dark:border-white/10 dark:bg-ink-900">
+          <p className="text-sm text-ink-800 dark:text-sand-100">
+            تابع للطلب السابق{" "}
+            <Link
+              href={`/service-requests/detail/?id=${encodeURIComponent(parentRequestId)}`}
+              className="font-medium underline"
+            >
+              {parentRequestNumber || parentRequestId}
+            </Link>
+            {linkReason ? (
+              <span className="text-ink-700/70 dark:text-sand-100/70">
+                {" "}
+                · السبب: {requestReturnReasonLabel(linkReason)}
+                {linkNote.trim() ? ` — ${linkNote.trim()}` : ""}
+              </span>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
 
       <div className="space-y-6 rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-900">
         <div className="grid gap-4 md:grid-cols-2">
@@ -456,6 +522,13 @@ function NewServiceRequestContent() {
                 setError("أضف جهازًا واحدًا على الأقل قبل حفظ الطلب.");
                 return;
               }
+              if (parentRequestId) {
+                const linkErr = validateReturnReason(linkReason, linkNote);
+                if (linkErr) {
+                  setError(linkErr);
+                  return;
+                }
+              }
               const missingQr = devices.find((device) => !isDeviceQrPrinted(device));
               if (missingQr) {
                 setError(
@@ -481,6 +554,14 @@ function NewServiceRequestContent() {
                         opsBranchName:
                           getOpsBranch(selectedBranch.id)?.name ??
                           selectedBranch.name,
+                      }
+                    : {}),
+                  ...(parentRequestId && linkReason
+                    ? {
+                        parentRequestId,
+                        parentRequestNumber,
+                        linkReason,
+                        linkNote: linkNote.trim() || null,
                       }
                     : {}),
                 });
@@ -551,7 +632,9 @@ function NewServiceRequestContent() {
 export default function NewServiceRequestPage() {
   return (
     <RoleGuard allow="branch" permission="create_edit_request">
-      <NewServiceRequestContent />
+      <Suspense fallback={<p className="text-sm text-ink-700/70">جاري التحميل…</p>}>
+        <NewServiceRequestContent />
+      </Suspense>
     </RoleGuard>
   );
 }

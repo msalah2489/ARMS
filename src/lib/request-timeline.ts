@@ -8,6 +8,7 @@ import { listPickupReceipts } from "@/lib/pickup-receipt-store";
 import { listShippingBatches } from "@/lib/shipping-store";
 import { listTechnicianWork } from "@/lib/technician-store";
 import { OUTCOME_LABELS, HOLD_REASON_LABELS } from "@/lib/technician-catalog";
+import { requestReturnReasonLabel } from "@/lib/request-return";
 import type {
   DraftRequestDevice,
   MaintenanceRequestRecord,
@@ -21,7 +22,8 @@ export type TimelineEventKind =
   | "receipt"
   | "work"
   | "status_note"
-  | "delivery";
+  | "delivery"
+  | "return_link";
 
 export type TimelineEvent = {
   id: string;
@@ -319,6 +321,27 @@ export function buildRequestTimeline(
     detail: `${request.requestNumber} · ${request.contactName} · ${devices.length} جهاز`,
     actor: request.branchStaffName,
   });
+
+  for (const link of request.linkEvents ?? []) {
+    const reason = requestReturnReasonLabel(link.reason);
+    const notePart = link.note?.trim() ? ` · ${link.note.trim()}` : "";
+    const related =
+      link.relatedRequestNumber || link.relatedRequestId
+        ? ` · ${link.relatedRequestNumber || link.relatedRequestId}`
+        : "";
+    let title = "حدث ربط / إرجاع";
+    if (link.kind === "follow_up_created") title = "إنشاء طلب متابعة مرتبط";
+    else if (link.kind === "follow_up_linked") title = "ربط طلب متابعة لاحق";
+    else if (link.kind === "reopened") title = "إعادة فتح الطلب";
+    pushUnique(events, {
+      id: `link:${link.id}`,
+      at: link.at,
+      kind: "return_link",
+      title,
+      detail: `${reason}${related}${notePart}`,
+      actor: link.actorName,
+    });
+  }
 
   collectShippingEvents(events, request, devices, batches);
   collectPickupEvents(events, request, devices);

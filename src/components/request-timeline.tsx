@@ -21,6 +21,8 @@ function kindTone(kind: TimelineEvent["kind"]): string {
       return "bg-emerald-700 dark:bg-emerald-500";
     case "delivery":
       return "bg-teal-700 dark:bg-teal-500";
+    case "return_link":
+      return "bg-violet-700 dark:bg-violet-500";
     default:
       return "bg-ink-500 dark:bg-sand-400";
   }

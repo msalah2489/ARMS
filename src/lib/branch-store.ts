@@ -8,6 +8,8 @@ import type {
   MaintenanceAssignmentPath,
   MaintenanceRequestRecord,
   Profile,
+  RequestLinkEvent,
+  RequestReturnReason,
   WaybillRecord,
 } from "@/types/domain";
 
@@ -513,12 +515,31 @@ export function saveMaintenanceRequest(input: {
   /** When set (e.g. manager picking a branch), overrides the user's own branch. */
   opsBranchId?: string;
   opsBranchName?: string;
+  /** Follow-up after delivery: link to previous closed request */
+  parentRequestId?: string | null;
+  parentRequestNumber?: string | null;
+  linkReason?: RequestReturnReason | null;
+  linkNote?: string | null;
 }) {
   if (
     input.assignmentPath !== "mobile_technician" &&
     input.assignmentPath !== "service_center"
   ) {
     throw new Error("يجب اختيار مسار الصيانة: فني متنقل أو إرسال لمركز الصيانة.");
+  }
+
+  const parentId = (input.parentRequestId || "").trim();
+  if (parentId) {
+    if (!input.linkReason) {
+      throw new Error("يجب اختيار سبب الإرجاع عند إنشاء طلب متابعة.");
+    }
+    if (input.linkReason === "other" && !(input.linkNote || "").trim()) {
+      throw new Error("الملاحظة إلزامية عند اختيار «أخرى».");
+    }
+    const parent = getMaintenanceRequestById(parentId);
+    if (!parent) {
+      throw new Error("الطلب السابق المرتبط غير موجود.");
+    }
   }
 
   const existingReceipts = new Set(
@@ -549,11 +570,33 @@ export function saveMaintenanceRequest(input: {
   }
 
   const isMobile = input.assignmentPath === "mobile_technician";
+  const newId = crypto.randomUUID();
+  const requestNumber = input.requestNumber || generateRequestNumber();
+  const parentNumber =
+    (input.parentRequestNumber || "").trim() ||
+    (parentId ? getMaintenanceRequestById(parentId)?.requestNumber ?? "" : "");
+  const linkNote = (input.linkNote || "").trim() || undefined;
+  const now = new Date().toISOString();
+
+  const childLinkEvent: RequestLinkEvent | undefined =
+    parentId && input.linkReason
+      ? {
+          id: crypto.randomUUID(),
+          at: now,
+          kind: "follow_up_created",
+          reason: input.linkReason,
+          note: linkNote,
+          actorId: input.user.id,
+          actorName: input.user.fullName,
+          relatedRequestId: parentId,
+          relatedRequestNumber: parentNumber || undefined,
+        }
+      : undefined;
 
   const record: MaintenanceRequestRecord = {
-    id: crypto.randomUUID(),
-    requestNumber: input.requestNumber || generateRequestNumber(),
-    receivedAt: new Date().toISOString(),
+    id: newId,
+    requestNumber,
+    receivedAt: now,
     opsBranchId,
     opsBranchName,
     branchStaffId: input.user.id,
@@ -564,6 +607,11 @@ export function saveMaintenanceRequest(input: {
     contactName: input.contactName,
     purchaseInvoice: input.purchaseInvoice,
     generalNotes: input.generalNotes,
+    parentRequestId: parentId || null,
+    parentRequestNumber: parentNumber || null,
+    linkReason: input.linkReason ?? null,
+    linkNote: linkNote ?? null,
+    linkEvents: childLinkEvent ? [childLinkEvent] : undefined,
     devices: input.devices.map((device) => {
       const localId = (device.localId || "").trim() || crypto.randomUUID();
       const qrToken = (device.qrToken || "").trim() || localId;
@@ -588,10 +636,41 @@ export function saveMaintenanceRequest(input: {
 
   stashPhotosFromDevices(record.devices);
   const all = listMaintenanceRequests();
-  const next = [record, ...all];
+  let next = [record, ...all];
+
+  if (parentId && input.linkReason) {
+    const parentEvent: RequestLinkEvent = {
+      id: crypto.randomUUID(),
+      at: now,
+      kind: "follow_up_linked",
+      reason: input.linkReason,
+      note: linkNote,
+      actorId: input.user.id,
+      actorName: input.user.fullName,
+      relatedRequestId: newId,
+      relatedRequestNumber: requestNumber,
+    };
+    next = next.map((item) => {
+      if (item.id !== parentId) return item;
+      return {
+        ...item,
+        linkEvents: [...(item.linkEvents ?? []), parentEvent],
+      };
+    });
+  }
+
   writeJson(REQUESTS_KEY, next);
   schedulePersistRequests(next);
   return record;
+}
+
+/** Replace one request in the local cache (and schedule remote push). */
+export function replaceMaintenanceRequest(updated: MaintenanceRequestRecord) {
+  const all = listMaintenanceRequests();
+  const next = all.map((item) => (item.id === updated.id ? updated : item));
+  writeJson(REQUESTS_KEY, next);
+  schedulePersistRequests(next);
+  return updated;
 }
 
 export function findCustomersByMobile(mobile: string) {

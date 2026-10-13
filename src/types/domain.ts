@@ -537,6 +537,29 @@ export type TechnicianWorkRecord = {
   holdOtherNote?: string;
 };
 
+/** Fixed Arabic list for return / reopen / follow-up linking */
+export type RequestReturnReason =
+  | "repeat_fault"
+  | "new_fault"
+  | "wrong_delivery"
+  | "customer_refusal"
+  | "missing_part_or_approval"
+  | "closed_by_mistake"
+  | "other";
+
+/** Timeline / history entry for return, reopen, or parent↔child link */
+export type RequestLinkEvent = {
+  id: string;
+  at: string;
+  kind: "follow_up_created" | "follow_up_linked" | "reopened";
+  reason: RequestReturnReason;
+  note?: string;
+  actorId: string;
+  actorName: string;
+  relatedRequestId?: string;
+  relatedRequestNumber?: string;
+};
+
 export type MaintenanceRequestRecord = {
   id: string;
   requestNumber: string;
@@ -553,6 +576,13 @@ export type MaintenanceRequestRecord = {
   purchaseInvoice: string;
   generalNotes: string;
   devices: DraftRequestDevice[];
+  /** Follow-up request → previous (usually closed) request */
+  parentRequestId?: string | null;
+  parentRequestNumber?: string | null;
+  linkReason?: RequestReturnReason | null;
+  linkNote?: string | null;
+  /** Return / reopen / link events for the unified timeline */
+  linkEvents?: RequestLinkEvent[];
 };
 
 /** @deprecated use ShippingBatch — kept for older local keys */
