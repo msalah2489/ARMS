@@ -334,6 +334,11 @@ export type SpareInventoryBalance = {
   quantity: number;
   /** Alert when quantity is at or below this threshold (default 2). */
   minimumQuantity: number;
+  /**
+   * Set after a low-stock in-app notification was sent for this balance.
+   * Cleared when quantity rises above minimumQuantity (allows a fresh alert later).
+   */
+  lowStockNotified?: boolean;
   updatedAt: string;
 };
 

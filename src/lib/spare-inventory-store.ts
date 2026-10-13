@@ -1,8 +1,10 @@
 import { getModelById, getModels, getSparePartsForModel } from "@/lib/catalog-store";
 import { isDemoMode } from "@/lib/auth";
+import { createSystemNotification } from "@/lib/notifications-store";
 import { pushAppSpareInventory } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
+  AppRole,
   Profile,
   SpareInventoryBalance,
   SpareReceiveLine,
@@ -17,13 +19,74 @@ const MOVEMENTS_KEY = "arms_spare_movements_v1";
 /** Default low-stock threshold for new balances. */
 export const DEFAULT_MINIMUM_QUANTITY = 2;
 
+/** Roles that receive in-app low-stock alerts (bell + banner). */
+const LOW_STOCK_NOTIFY_ROLES: AppRole[] = [
+  "system_admin",
+  "maintenance_manager",
+  "maintenance_supervisor",
+];
+
 function normalizeBalance(raw: SpareInventoryBalance): SpareInventoryBalance {
   const min = Number(raw.minimumQuantity);
   return {
     ...raw,
     minimumQuantity:
       Number.isFinite(min) && min >= 0 ? Math.floor(min) : DEFAULT_MINIMUM_QUANTITY,
+    lowStockNotified: Boolean(raw.lowStockNotified),
   };
+}
+
+export function isBalanceLowStock(balance: SpareInventoryBalance): boolean {
+  return balance.quantity <= balance.minimumQuantity;
+}
+
+function sendLowStockNotifications(balance: SpareInventoryBalance) {
+  if (typeof window === "undefined") return;
+  const label = partLabel(balance);
+  const title = "تنبيه نقص مخزون";
+  const body = `القطعة «${label}» للموديل «${balance.modelName}» — المتبقي ${balance.quantity} (الحد الأدنى ${balance.minimumQuantity}).`;
+  for (const role of LOW_STOCK_NOTIFY_ROLES) {
+    createSystemNotification({
+      title,
+      body,
+      audienceType: "role",
+      audienceRole: role,
+    });
+  }
+}
+
+/**
+ * On transition into low stock → notify once and set flag.
+ * When stock recovers above minimum → clear flag (allows a future alert).
+ * No-op while remaining low with flag already set (anti-spam).
+ */
+export function applyLowStockAlertTransition(
+  balance: SpareInventoryBalance,
+): SpareInventoryBalance {
+  const low = isBalanceLowStock(balance);
+  if (low && !balance.lowStockNotified) {
+    sendLowStockNotifications(balance);
+    return { ...balance, lowStockNotified: true };
+  }
+  if (!low && balance.lowStockNotified) {
+    return { ...balance, lowStockNotified: false };
+  }
+  return balance;
+}
+
+/** Scan all balances after sync/hydrate; notify only on first transition into low. */
+export function checkLowStockAlerts(): void {
+  if (typeof window === "undefined") return;
+  const all = listInventoryBalances();
+  let changed = false;
+  const next = all.map((row) => {
+    const evaluated = applyLowStockAlertTransition(row);
+    if (evaluated.lowStockNotified !== row.lowStockNotified) changed = true;
+    return evaluated;
+  });
+  if (!changed) return;
+  writeJson(BALANCE_KEY, next);
+  schedulePersist();
 }
 
 export type SpareInventoryState = {
@@ -75,6 +138,8 @@ export function applyRemoteSpareInventory(state: SpareInventoryState) {
     receipts: (state.receipts ?? []).map(normalizeReceipt),
     movements: state.movements ?? [],
   });
+  // After sync: only notify parts that crossed into low without a prior flag.
+  checkLowStockAlerts();
 }
 
 /** Update the low-stock threshold for one balance row. */
@@ -89,11 +154,11 @@ export function updateBalanceMinimumQuantity(
   const all = listInventoryBalances();
   const existing = all.find((item) => item.id === balanceId);
   if (!existing) return { ok: false, error: "رصيد المخزون غير موجود." };
-  const balance: SpareInventoryBalance = {
+  const balance = applyLowStockAlertTransition({
     ...existing,
     minimumQuantity: qty,
     updatedAt: new Date().toISOString(),
-  };
+  });
   writeJson(
     BALANCE_KEY,
     all.map((item) => (item.id === balanceId ? balance : item)),
@@ -172,7 +237,7 @@ function upsertBalance(input: {
     };
   }
 
-  const balance: SpareInventoryBalance = {
+  const balance = applyLowStockAlertTransition({
     id,
     modelId: input.modelId,
     modelName: input.modelName,
@@ -181,8 +246,9 @@ function upsertBalance(input: {
     color: input.color || existing?.color,
     quantity: nextQty,
     minimumQuantity: existing?.minimumQuantity ?? DEFAULT_MINIMUM_QUANTITY,
+    lowStockNotified: existing?.lowStockNotified ?? false,
     updatedAt: new Date().toISOString(),
-  };
+  });
 
   writeJson(
     BALANCE_KEY,

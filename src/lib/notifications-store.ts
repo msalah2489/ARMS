@@ -174,6 +174,42 @@ export function markAllNotificationsRead(user: Profile) {
   }
 }
 
+function persistNewNotification(notification: ArmsNotification) {
+  saveNotifications([notification, ...listNotificationsLocal()]);
+  if (isSupabaseConfigured() && !isDemoMode()) {
+    void pushAppNotifications([notification]);
+  }
+}
+
+/**
+ * Automated system alert (no admin sender required).
+ * Used for low-stock and similar operational notices.
+ */
+export function createSystemNotification(input: {
+  title: string;
+  body: string;
+  audienceType: NotificationAudienceType;
+  audienceRole?: AppRole | null;
+  audienceUserId?: string | null;
+}): ArmsNotification {
+  const notification: ArmsNotification = {
+    id: crypto.randomUUID(),
+    title: input.title.trim(),
+    body: input.body.trim(),
+    audienceType: input.audienceType,
+    audienceRole: input.audienceType === "role" ? (input.audienceRole ?? null) : null,
+    audienceUserId:
+      input.audienceType === "user"
+        ? String(input.audienceUserId ?? "").trim() || null
+        : null,
+    createdBy: "system",
+    createdByName: "النظام",
+    createdAt: new Date().toISOString(),
+  };
+  persistNewNotification(notification);
+  return notification;
+}
+
 export function sendNotification(input: {
   title: string;
   body: string;
@@ -208,10 +244,7 @@ export function sendNotification(input: {
     createdAt: new Date().toISOString(),
   };
 
-  saveNotifications([notification, ...listNotificationsLocal()]);
-  if (isSupabaseConfigured() && !isDemoMode()) {
-    void pushAppNotifications([notification]);
-  }
+  persistNewNotification(notification);
   return { ok: true, notification };
 }
 
