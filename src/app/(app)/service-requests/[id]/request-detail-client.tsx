@@ -320,6 +320,16 @@ export function RequestDetailClient({ id }: { id: string }) {
                     <p className="mt-1 text-xs text-ink-700/70 dark:text-sand-100/70">
                       العطل: {device.fault || "—"}
                     </p>
+                    {device.replacedByDeviceCode ? (
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        استُبدل بـ {device.replacedByDeviceCode}
+                      </p>
+                    ) : null}
+                    {device.replacementOfDeviceCode ? (
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        بديل عن {device.replacementOfDeviceCode}
+                      </p>
+                    ) : null}
                     {device.assignedTechnicianName ? (
                       <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
                         الفني: {device.assignedTechnicianName}

@@ -48,6 +48,8 @@ export type DeviceLifecycleStatus =
   | "awaiting_customer"
   /** 9 منتهي — location: customer */
   | "delivered_to_customer"
+  /** تم استبدال الجهاز — الأصل يبقى متتبَّعًا حتى إغلاق الحالة */
+  | "replaced"
   | "excluded_from_shipment"
   | "ready_to_send"
   | "excluded"
@@ -68,7 +70,8 @@ export type DeviceLifecycleStatus =
 export type ManagerDeviceDecision =
   | "requeue_technician"
   | "approve_return"
-  | "close_case";
+  | "close_case"
+  | "approve_replacement";
 
 export type ShipmentDirection = "inbound" | "to_service" | "return";
 export type ShippingBatchStatus = "draft" | "ready" | "handed_to_carrier" | "received" | "cancelled";
@@ -500,6 +503,17 @@ export type DraftRequestDevice = {
   qrToken?: string;
   /** ISO timestamp when branch staff printed (or confirmed) the device QR label */
   qrPrintedAt?: string | null;
+  /**
+   * Device replacement link (same service request).
+   * Original → replacedBy*; replacement device → replacementOf*.
+   */
+  replacedByLocalId?: string | null;
+  replacedByDeviceCode?: string | null;
+  replacementOfLocalId?: string | null;
+  replacementOfDeviceCode?: string | null;
+  replacementStockItemId?: string | null;
+  replacementDecidedAt?: string | null;
+  replacementDecidedByName?: string | null;
 };
 
 export type TechnicianExternalCheck = "damaged" | "intact";
@@ -514,6 +528,7 @@ export type HoldReason =
   | "no_spare_parts"
   | "unrepairable_fault"
   | "fully_damaged"
+  | "needs_replacement"
   | "other";
 
 export type TechnicianWorkRecord = {
@@ -556,17 +571,22 @@ export type RequestReturnReason =
   | "closed_by_mistake"
   | "other";
 
-/** Timeline / history entry for return, reopen, or parent↔child link */
+/** Timeline / history entry for return, reopen, parent↔child link, or device replacement */
 export type RequestLinkEvent = {
   id: string;
   at: string;
-  kind: "follow_up_created" | "follow_up_linked" | "reopened";
-  reason: RequestReturnReason;
+  kind: "follow_up_created" | "follow_up_linked" | "reopened" | "device_replaced";
+  /** Required for follow-up / reopen; optional for device_replaced */
+  reason?: RequestReturnReason;
   note?: string;
   actorId: string;
   actorName: string;
   relatedRequestId?: string;
   relatedRequestNumber?: string;
+  originalDeviceLocalId?: string;
+  originalDeviceCode?: string;
+  replacementDeviceLocalId?: string;
+  replacementDeviceCode?: string;
 };
 
 export type MaintenanceRequestRecord = {

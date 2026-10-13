@@ -48,6 +48,7 @@ function mapLifecycleToRequestStatus(status: string | undefined): ServiceRequest
     case "awaiting_customer":
       return "completed";
     case "delivered_to_customer":
+    case "replaced":
     case "closed":
       return "closed";
     default:
@@ -73,6 +74,7 @@ function mapLifecycleToDeviceStatus(status: string | undefined): DeviceStatus {
     case "awaiting_customer":
       return "ready";
     case "delivered_to_customer":
+    case "replaced":
     case "closed":
       return "active";
     default:

@@ -24,6 +24,11 @@ import {
   replaceSpareInventory,
   type SpareInventoryState,
 } from "@/lib/spare-inventory-store";
+import {
+  applyRemoteReplacedDevices,
+  listReplacedDevices,
+  replaceReplacedDevices,
+} from "@/lib/replaced-devices-store";
 import { applyRemoteTechnicianWork } from "@/lib/technician-store";
 import {
   applyRemoteNotificationReads,
@@ -48,6 +53,7 @@ import {
   pullAppNotificationReads,
   pullAppNotifications,
   pullAppPickupReceipts,
+  pullAppReplacedDevices,
   pullAppShippingBatches,
   pullAppSpareInventory,
   pullAppTechnicianWork,
@@ -56,6 +62,7 @@ import {
   pushAppMaintenanceRequests,
   pushAppNotificationReads,
   pushAppNotifications,
+  pushAppReplacedDevices,
   pushAppUsers,
 } from "@/lib/supabase/app-sync";
 import { getSupabaseConfigProblem, isSupabaseConfigured } from "@/lib/supabase/config";
@@ -208,6 +215,7 @@ async function runHydratePull(): Promise<boolean> {
       remotePickupReceipts,
       remoteNotifications,
       remoteNotificationReads,
+      remoteReplacedDevices,
     ] = await Promise.all([
       pullAppBranches(),
       pullAppMaintenanceRequests(),
@@ -221,6 +229,7 @@ async function runHydratePull(): Promise<boolean> {
       pullAppPickupReceipts(),
       pullAppNotifications(),
       pullAppNotificationReads(),
+      pullAppReplacedDevices(),
     ]);
 
     reconcilePayload({
@@ -338,6 +347,29 @@ async function runHydratePull(): Promise<boolean> {
         else replacePickupReceipts([]);
       },
     });
+
+    // Replaced-devices stock: merge local-only rows when remote empty / migration pending.
+    {
+      const localReplaced = listReplacedDevices();
+      if (remoteReplacedDevices.length === 0) {
+        if (localReplaced.length > 0) {
+          await pushAppReplacedDevices(localReplaced);
+        } else {
+          replaceReplacedDevices([]);
+        }
+      } else {
+        const remoteIds = new Set(remoteReplacedDevices.map((row) => row.id));
+        const localOnly = localReplaced.filter((row) => row.id && !remoteIds.has(row.id));
+        const merged =
+          localOnly.length > 0
+            ? [...localOnly, ...remoteReplacedDevices]
+            : remoteReplacedDevices;
+        applyRemoteReplacedDevices(merged);
+        if (localOnly.length > 0) {
+          await pushAppReplacedDevices(merged);
+        }
+      }
+    }
 
     // Notifications: always merge (never wipe local history when remote is empty /
     // migration not applied yet). Push any local-only rows so offline sends catch up.

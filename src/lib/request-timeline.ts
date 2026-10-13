@@ -323,11 +323,25 @@ export function buildRequestTimeline(
   });
 
   for (const link of request.linkEvents ?? []) {
+    const notePart = link.note?.trim() ? ` · ${link.note.trim()}` : "";
+    if (link.kind === "device_replaced") {
+      const fromCode = link.originalDeviceCode || "—";
+      const toCode = link.replacementDeviceCode || "—";
+      pushUnique(events, {
+        id: `link:${link.id}`,
+        at: link.at,
+        kind: "return_link",
+        title: "اعتماد استبدال جهاز",
+        detail: `الأصل ${fromCode} ← البديل ${toCode}${notePart}`,
+        deviceCode: toCode !== "—" ? toCode : fromCode,
+        actor: link.actorName,
+      });
+      continue;
+    }
     const reason = requestReturnReasonLabel(
       link.reason,
       link.kind === "reopened" ? "reopen" : "follow_up",
     );
-    const notePart = link.note?.trim() ? ` · ${link.note.trim()}` : "";
     const related =
       link.relatedRequestNumber || link.relatedRequestId
         ? ` · ${link.relatedRequestNumber || link.relatedRequestId}`
@@ -344,6 +358,32 @@ export function buildRequestTimeline(
       detail: `${reason}${related}${notePart}`,
       actor: link.actorName,
     });
+  }
+
+  // Surface replacement links from device fields (covers older payloads without linkEvents).
+  for (const device of devices) {
+    if (device.replacementDecidedAt && device.replacedByDeviceCode) {
+      pushUnique(events, {
+        id: `repl-orig:${device.localId}`,
+        at: device.replacementDecidedAt,
+        kind: "status_note",
+        title: "تم استبدال الجهاز",
+        detail: `${device.deviceCode} ← ${device.replacedByDeviceCode}`,
+        deviceCode: device.deviceCode,
+        actor: device.replacementDecidedByName ?? undefined,
+      });
+    }
+    if (device.replacementDecidedAt && device.replacementOfDeviceCode) {
+      pushUnique(events, {
+        id: `repl-new:${device.localId}`,
+        at: device.replacementDecidedAt,
+        kind: "status_note",
+        title: "جهاز استبدال مرتبط",
+        detail: `${device.deviceCode} (بديل عن ${device.replacementOfDeviceCode})`,
+        deviceCode: device.deviceCode,
+        actor: device.replacementDecidedByName ?? undefined,
+      });
+    }
   }
 
   collectShippingEvents(events, request, devices, batches);

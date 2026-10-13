@@ -37,6 +37,7 @@ function resolveStepIndex(
     maintenance_failed: "awaiting_manager_decision",
     excluded_from_shipment: "received_at_branch",
     closed: "delivered_to_customer",
+    replaced: "delivered_to_customer",
     under_maintenance: "in_maintenance",
     at_service_center: "awaiting_maintenance",
     returning_from_service: "in_return_transit",

@@ -681,13 +681,13 @@ export function TechnicianWorkModal({
 
             {showHold ? (
               <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/40">
-                <h3 className="font-display text-lg dark:text-sand-50">إرجاع الجهاز للمشرف</h3>
+                <h3 className="font-display text-lg dark:text-sand-50">تعليق الصيانة</h3>
                 <p className="mt-1 text-xs text-ink-700/70 dark:text-sand-100/70">
-                  سيُحرَّر الجهاز من عملك وتظهر لك الأجهزة الجاهزة للصيانة فورًا. المشرف يمكنه إعادة
-                  الجهاز لطابور الصيانة لاحقًا.
+                  سيُحرَّر الجهاز من عملك ويُرسل لمدير الصيانة للقرار. إن كان الجهاز يحتاج استبدالًا
+                  اختر «يحتاج استبدال» — الفني لا ينفّذ الاستبدال بنفسه.
                 </p>
                 <label className="mt-3 block text-sm dark:text-sand-100">
-                  سبب الإرجاع *
+                  سبب التعليق *
                   <select
                     value={holdReason}
                     onChange={(e) => setHoldReason(e.target.value as HoldReason)}
@@ -701,11 +701,16 @@ export function TechnicianWorkModal({
                     ))}
                   </select>
                 </label>
+                {holdReason === "needs_replacement" ? (
+                  <p className="mt-2 text-xs text-amber-900 dark:text-amber-200">
+                    سيُبلَّغ مدير الصيانة لمراجعة الحالة واعتماد جهاز الاستبدال من المخزون.
+                  </p>
+                ) : null}
                 {holdReason === "other" ? (
                   <input
                     value={holdOtherNote}
                     onChange={(e) => setHoldOtherNote(e.target.value)}
-                    placeholder="سجّل سبب الإرجاع"
+                    placeholder="سجّل سبب التعليق"
                     className="mt-3 w-full rounded-xl border border-ink-900/15 px-3 py-2 text-sm dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
                   />
                 ) : null}
@@ -832,7 +837,7 @@ export function TechnicianWorkModal({
               ) : null}
               {hasFailedTest ? (
                 <p className="w-full text-sm text-rose-700 dark:text-rose-300">
-                  فشل أحد اختبارات الإنهاء — استخدم «إرجاع للمشرف» فقط.
+                  فشل أحد اختبارات الإنهاء — استخدم «تعليق الصيانة» فقط.
                 </p>
               ) : null}
               {isMobilePath ? (
@@ -870,11 +875,11 @@ export function TechnicianWorkModal({
                   }
                   setError(null);
                   if (!holdReason) {
-                    setError("سبب الإرجاع للمشرف إلزامي.");
+                    setError("سبب تعليق الصيانة إلزامي.");
                     return;
                   }
                   if (holdReason === "other" && !holdOtherNote.trim()) {
-                    setError("سجّل سبب الإرجاع.");
+                    setError("سجّل سبب التعليق.");
                     return;
                   }
                   const record = patchWork({
@@ -890,7 +895,7 @@ export function TechnicianWorkModal({
                 }}
                 className="rounded-full border border-rose-300 px-5 py-2.5 text-sm text-rose-700 dark:border-rose-700 dark:text-rose-300"
               >
-                {showHold ? "تأكيد الإرجاع للمشرف" : "إرجاع للمشرف"}
+                {showHold ? "تأكيد تعليق الصيانة" : "تعليق الصيانة"}
               </button>
             </div>
           </div>

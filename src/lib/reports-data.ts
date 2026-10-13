@@ -279,6 +279,7 @@ function currentStatusDate(input: {
       return request.receivedAt;
     }
     case "delivered_to_customer":
+    case "replaced":
     case "closed":
       return (
         deliveredToCustomerDate(batches, device, work) ||

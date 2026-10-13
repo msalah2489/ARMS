@@ -870,6 +870,7 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   in_return_transit: "جاري الإرجاع",
   awaiting_customer: "بانتظار التسليم للعميل",
   delivered_to_customer: "منتهي",
+  replaced: "تم الاستبدال",
   closed: "منتهي",
   excluded_from_shipment: "مستبعد من البوليصة",
   // Legacy → same wording as the 9 statuses
@@ -900,6 +901,7 @@ export const DEVICE_STATUS_LABELS_EN: Record<string, string> = {
   in_return_transit: "Returning",
   awaiting_customer: "Awaiting customer handover",
   delivered_to_customer: "Completed",
+  replaced: "Replaced",
   closed: "Completed",
   excluded_from_shipment: "Excluded from shipment",
   awaiting_branch_handover: "Sending",
@@ -965,6 +967,7 @@ export function normalizeLifecycleStatus(
     received_damaged: "awaiting_customer",
     excluded_from_shipment: "excluded_from_shipment",
     delivered_to_customer: "delivered_to_customer",
+    replaced: "replaced",
     closed: "closed",
   };
   return map[key] ?? (key as DeviceLifecycleStatus);
@@ -987,6 +990,7 @@ export function locationForLifecycleStatus(
     case "in_maintenance":
     case "awaiting_manager_decision":
     case "ready_to_return":
+    case "replaced":
     case "closed":
       return "service_center";
     case "in_return_transit":

@@ -38,6 +38,7 @@ export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   no_spare_parts: "عدم توفر قطع غيار",
   unrepairable_fault: "عطل غير قابل للإصلاح",
   fully_damaged: "جهاز تالف بالكامل",
+  needs_replacement: "يحتاج استبدال",
   other: "أخرى",
 };
 

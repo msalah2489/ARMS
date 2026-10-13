@@ -309,6 +309,7 @@ const messagesAr = {
   "status.in_return_transit": "جاري الإرجاع",
   "status.awaiting_customer": "بانتظار التسليم للعميل",
   "status.delivered_to_customer": "منتهي",
+  "status.replaced": "تم الاستبدال",
   "status.excluded_from_shipment": "مستبعد من البوليصة",
 
   "reports.title": "التقارير",
@@ -722,6 +723,7 @@ const messagesEn: Record<MessageKey, string> = {
   "status.in_return_transit": "Returning",
   "status.awaiting_customer": "Awaiting customer handover",
   "status.delivered_to_customer": "Completed",
+  "status.replaced": "Replaced",
   "status.excluded_from_shipment": "Excluded from shipment",
 
   "reports.title": "Reports",

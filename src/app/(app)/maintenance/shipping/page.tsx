@@ -41,6 +41,7 @@ import {
   resolveManagerDecision,
   returnSuspendedDeviceToMaintenance,
 } from "@/lib/technician-store";
+import { listAvailableReplacedDevices } from "@/lib/replaced-devices-store";
 import {
   deviceStatusLabel,
   formatMaintenanceDuration,
@@ -48,6 +49,26 @@ import {
 } from "@/lib/branch-store";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import type { ManagerDeviceDecision, Profile, ShippingBatch } from "@/types/domain";
+
+type ManagerDraft = {
+  decision: ManagerDeviceDecision | "";
+  note: string;
+  stockItemId: string;
+  registerType: string;
+  registerModel: string;
+  registerSerial: string;
+};
+
+function emptyManagerDraft(): ManagerDraft {
+  return {
+    decision: "",
+    note: "",
+    stockItemId: "",
+    registerType: "",
+    registerModel: "",
+    registerSerial: "",
+  };
+}
 
 type ReturnMethod = "shipping" | "courier";
 
@@ -73,9 +94,8 @@ function MaintenanceShippingContent() {
   const [returnNotes, setReturnNotes] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [returnSelected, setReturnSelected] = useState<string[]>([]);
-  const [managerDraft, setManagerDraft] = useState<
-    Record<string, { decision: ManagerDeviceDecision | ""; note: string }>
-  >({});
+  const [managerDraft, setManagerDraft] = useState<Record<string, ManagerDraft>>({});
+  const [replacedStock, setReplacedStock] = useState(() => listAvailableReplacedDevices());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [siblingGaps, setSiblingGaps] = useState<ReturnSiblingGapGroup[]>([]);
@@ -104,6 +124,7 @@ function MaintenanceShippingContent() {
     setReadyBranches(listBranchesReadyToShip());
     setReturnReadyBranches(listBranchesReadyForReturn());
     setBranches(listOpsBranchesWithReadyCounts());
+    setReplacedStock(listAvailableReplacedDevices());
   }
 
   useEffect(() => {
@@ -760,7 +781,8 @@ function MaintenanceShippingContent() {
         className="dark:border-white/15"
       >
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">
-          أجهزة أرجعها الفني أو تحتاج قرارًا — يمكنك إعادتها للصيانة لتظهر للفنيين كـ«بانتظار الصيانة».
+          أجهزة علّقها الفني بانتظار قرار المدير — يمكنك إعادتها للصيانة، أو اعتماد الاستبدال من
+          مخزون الأجهزة المستبدلة، أو إرجاع/إغلاق الحالة.
         </p>
         <div className="mt-4 space-y-3">
           {pendingManager.length === 0 ? (
@@ -768,8 +790,11 @@ function MaintenanceShippingContent() {
           ) : (
             pendingManager.map((item) => {
               const key = `${item.request.id}:${item.device.localId}`;
-              const draft = managerDraft[key] ?? { decision: "", note: "" };
+              const draft = managerDraft[key] ?? emptyManagerDraft();
               const hold = getDeviceHoldSummary(item.request.id, item.device.localId);
+              const needsReplacement =
+                hold?.reason.includes("يحتاج استبدال") ||
+                hold?.reason.toLowerCase().includes("needs_replacement");
               return (
                 <div
                   key={key}
@@ -777,6 +802,11 @@ function MaintenanceShippingContent() {
                 >
                   <p className="font-medium dark:text-sand-50">
                     {item.device.deviceCode} · {item.request.requestNumber}
+                    {needsReplacement ? (
+                      <span className="ms-2 text-xs font-normal text-amber-800 dark:text-amber-200">
+                        (طلب استبدال)
+                      </span>
+                    ) : null}
                   </p>
                   <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
                     {item.request.opsBranchName} · {item.device.modelName} ·{" "}
@@ -863,6 +893,96 @@ function MaintenanceShippingContent() {
                       />
                     </label>
                   </div>
+                  {draft.decision === "approve_replacement" ? (
+                    <div className="mt-3 space-y-3 rounded-xl border border-amber-200/80 bg-amber-50/60 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                      <p className="text-xs text-ink-700/70 dark:text-sand-100/70">
+                        اختر جهازًا من مخزون المستبدلة، أو سجّل بيانات جهاز الاستبدال يدويًا. سيُربط
+                        بالأصل على نفس الطلب ويظهر في الخط الزمني.
+                      </p>
+                      <label className="block dark:text-sand-100">
+                        من مخزون الأجهزة المستبدلة
+                        <select
+                          value={draft.stockItemId}
+                          onChange={(e) =>
+                            setManagerDraft((prev) => ({
+                              ...prev,
+                              [key]: {
+                                ...draft,
+                                stockItemId: e.target.value,
+                                // Clear manual register when picking stock
+                                registerType: e.target.value ? "" : draft.registerType,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+                        >
+                          <option value="">— اختر من المخزون —</option>
+                          {replacedStock.map((stock) => (
+                            <option key={stock.id} value={stock.id}>
+                              {stock.deviceTypeName}
+                              {stock.modelName ? ` · ${stock.modelName}` : ""}
+                              {stock.serialOrCode ? ` · ${stock.serialOrCode}` : ""}
+                              {` (×${stock.quantity})`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {!draft.stockItemId ? (
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <label className="block dark:text-sand-100">
+                            نوع الجهاز *
+                            <input
+                              value={draft.registerType}
+                              onChange={(e) =>
+                                setManagerDraft((prev) => ({
+                                  ...prev,
+                                  [key]: { ...draft, registerType: e.target.value },
+                                }))
+                              }
+                              placeholder={item.device.deviceTypeName || "نوع الجهاز"}
+                              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+                            />
+                          </label>
+                          <label className="block dark:text-sand-100">
+                            الموديل
+                            <input
+                              value={draft.registerModel}
+                              onChange={(e) =>
+                                setManagerDraft((prev) => ({
+                                  ...prev,
+                                  [key]: { ...draft, registerModel: e.target.value },
+                                }))
+                              }
+                              placeholder={item.device.modelName || ""}
+                              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+                            />
+                          </label>
+                          <label className="block dark:text-sand-100">
+                            الرقم / الكود
+                            <input
+                              value={draft.registerSerial}
+                              onChange={(e) =>
+                                setManagerDraft((prev) => ({
+                                  ...prev,
+                                  [key]: { ...draft, registerSerial: e.target.value },
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                      {replacedStock.length === 0 && !draft.registerType ? (
+                        <p className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                          المخزون فارغ — سجّل جهازًا أعلاه أو أضف وحدات من صفحة{" "}
+                          <Link href="/replaced-devices" className="underline">
+                            الأجهزة المستبدلة
+                          </Link>
+                          .
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className="mt-3 rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-700"
@@ -873,12 +993,31 @@ function MaintenanceShippingContent() {
                         setError("اختر قرارًا للجهاز أو استخدم «إعادة للصيانة».");
                         return;
                       }
+                      const replacement =
+                        draft.decision === "approve_replacement"
+                          ? draft.stockItemId
+                            ? { stockItemId: draft.stockItemId }
+                            : {
+                                register: {
+                                  deviceTypeName:
+                                    draft.registerType.trim() ||
+                                    item.device.deviceTypeName ||
+                                    "",
+                                  modelName:
+                                    draft.registerModel.trim() ||
+                                    item.device.modelName ||
+                                    undefined,
+                                  serialOrCode: draft.registerSerial.trim() || undefined,
+                                },
+                              }
+                          : undefined;
                       const result = resolveManagerDecision({
                         user,
                         requestId: item.request.id,
                         deviceLocalId: item.device.localId,
                         decision: draft.decision,
                         note: draft.note,
+                        replacement,
                       });
                       if (!result.ok) {
                         setError(result.error);

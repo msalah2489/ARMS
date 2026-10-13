@@ -16,6 +16,7 @@ import type {
   NotificationAudienceType,
   OpsBranchRecord,
   PickupReceipt,
+  ReplacedDeviceStockItem,
   ShippingBatch,
   ShippingBatchItem,
   SpareInventoryBalance,
@@ -1358,6 +1359,92 @@ export async function pushAppNotificationReads(
     const message = error instanceof Error ? error.message : String(error);
     console.error("[arms] pushAppNotificationReads", error);
     reportError("app_notification_reads", error);
+    return { ok: false, error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Replaced-devices stock (مخزون الأجهزة المستبدلة)
+// ---------------------------------------------------------------------------
+
+function replacedDeviceToRow(item: ReplacedDeviceStockItem) {
+  return {
+    id: item.id,
+    device_type_name: item.deviceTypeName,
+    model_name: item.modelName ?? null,
+    serial_or_code: item.serialOrCode ?? null,
+    quantity: item.quantity,
+    notes: item.notes ?? null,
+    created_at: item.createdAt,
+    updated_at: item.updatedAt,
+    created_by_id: item.createdById ?? null,
+    created_by_name: item.createdByName ?? null,
+    payload: item,
+    synced_at: nowIso(),
+  };
+}
+
+function rowToReplacedDevice(row: Record<string, unknown>): ReplacedDeviceStockItem {
+  const fromPayload = asRecord(row.payload) as ReplacedDeviceStockItem | null;
+  if (fromPayload?.id && fromPayload.deviceTypeName) {
+    return {
+      ...fromPayload,
+      id: String(row.id ?? fromPayload.id),
+      quantity: Number(row.quantity ?? fromPayload.quantity ?? 0),
+      updatedAt: String(row.updated_at ?? fromPayload.updatedAt ?? nowIso()),
+    };
+  }
+  return {
+    id: String(row.id ?? ""),
+    deviceTypeName: String(row.device_type_name ?? ""),
+    modelName: row.model_name ? String(row.model_name) : undefined,
+    serialOrCode: row.serial_or_code ? String(row.serial_or_code) : undefined,
+    quantity: Number(row.quantity ?? 0),
+    notes: row.notes ? String(row.notes) : undefined,
+    createdAt: String(row.created_at ?? nowIso()),
+    updatedAt: String(row.updated_at ?? nowIso()),
+    createdById: row.created_by_id ? String(row.created_by_id) : undefined,
+    createdByName: row.created_by_name ? String(row.created_by_name) : undefined,
+  };
+}
+
+export async function pullAppReplacedDevices(): Promise<ReplacedDeviceStockItem[]> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") return [];
+  const supabase = createClient();
+  const { data, error } = await supabase.from("app_replaced_devices").select("*");
+  if (error) {
+    // Table may not exist until migration 025 — soft-fail.
+    if (/does not exist|Could not find the table|PGRST|42P01|schema cache/i.test(error.message ?? "")) {
+      console.warn("[arms] pullAppReplacedDevices:", error.message);
+      return [];
+    }
+    reportError("app_replaced_devices", error);
+    throw error;
+  }
+  return (data ?? []).map((row) => rowToReplacedDevice(row as Record<string, unknown>));
+}
+
+export async function pushAppReplacedDevices(
+  items: ReplacedDeviceStockItem[],
+): Promise<SyncResult> {
+  if (!isSupabaseConfigured() || typeof window === "undefined") {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+  try {
+    await deleteAll("app_replaced_devices");
+    if (items.length) {
+      await insertRows("app_replaced_devices", items.map(replacedDeviceToRow));
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Soft-fail when migration not applied yet.
+    if (/does not exist|Could not find the table|PGRST|42P01|schema cache/i.test(message)) {
+      console.warn("[arms] pushAppReplacedDevices:", message);
+      return { ok: false, error: message };
+    }
+    console.error("[arms] pushAppReplacedDevices", error);
+    reportError("app_replaced_devices", error);
     return { ok: false, error: message };
   }
 }

@@ -66,7 +66,7 @@ function ReplacedDevicesContent() {
     <div className="space-y-6">
       <PageHeader
         title={t("nav.replacedDevices")}
-        description="سجّل الأجهزة المستبدلة المحتفظ بها في المخزون وعدّل الكميات عند الحاجة."
+        description="مخزون أجهزة الاستبدال لمدير الصيانة — يُستهلك عند اعتماد قرار «استبدال» على جهاز معلّق."
       />
 
       {error ? <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}

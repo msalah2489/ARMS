@@ -171,6 +171,25 @@ export function DeviceDetailClient({ id }: { id: string }) {
             <dt className="text-ink-700/60 dark:text-sand-100/60">العطل</dt>
             <dd className="mt-1">{fault || "—"}</dd>
           </div>
+          {draftDevice?.replacedByDeviceCode ? (
+            <div className="sm:col-span-2">
+              <dt className="text-ink-700/60 dark:text-sand-100/60">استُبدل بـ</dt>
+              <dd className="mt-1 font-medium text-amber-900 dark:text-amber-200">
+                {draftDevice.replacedByDeviceCode}
+                {draftDevice.replacementDecidedByName
+                  ? ` · بواسطة ${draftDevice.replacementDecidedByName}`
+                  : ""}
+              </dd>
+            </div>
+          ) : null}
+          {draftDevice?.replacementOfDeviceCode ? (
+            <div className="sm:col-span-2">
+              <dt className="text-ink-700/60 dark:text-sand-100/60">بديل عن</dt>
+              <dd className="mt-1 font-medium text-amber-900 dark:text-amber-200">
+                {draftDevice.replacementOfDeviceCode}
+              </dd>
+            </div>
+          ) : null}
         </dl>
       </section>
 

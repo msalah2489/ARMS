@@ -145,6 +145,7 @@ export function getDeviceStageStartedAt(input: {
       );
     }
     case "delivered_to_customer":
+    case "replaced":
     case "closed": {
       for (const batch of related
         .filter((item) => item.direction === "return")

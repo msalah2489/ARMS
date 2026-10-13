@@ -1,14 +1,22 @@
 import {
   getDeviceAssignmentPath,
+  getMaintenanceRequestById,
   listAllRequestDevices,
   listMaintenanceRequests,
   listMaintenanceRequestsLocal,
   normalizeLifecycleStatus,
+  replaceMaintenanceRequest,
   updateDeviceLifecycle,
   updateDevicesLifecycle,
   type TechnicianQueueItem,
 } from "@/lib/branch-store";
 import { isDemoMode, normalizeRole } from "@/lib/auth";
+import { createSystemNotification } from "@/lib/notifications-store";
+import {
+  addReplacedDevice,
+  adjustReplacedDeviceQuantity,
+  listReplacedDevices,
+} from "@/lib/replaced-devices-store";
 import { consumeSpareParts } from "@/lib/spare-inventory-store";
 import { pushAppTechnicianWork } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -18,8 +26,22 @@ import type {
   MaintenanceRequestRecord,
   ManagerDeviceDecision,
   Profile,
+  RequestLinkEvent,
   TechnicianWorkRecord,
 } from "@/types/domain";
+
+/** Options when manager decides «استبدال» */
+export type ReplacementDecisionInput = {
+  /** Consume one unit from replaced-devices stock */
+  stockItemId?: string;
+  /** Register (or describe) a replacement device not picked from existing stock */
+  register?: {
+    deviceTypeName: string;
+    modelName?: string;
+    serialOrCode?: string;
+    notes?: string;
+  };
+};
 
 const WORK_KEY = "arms_technician_work_v1";
 
@@ -577,13 +599,13 @@ export function completeTechnicianWork(
 }
 
 function formatHoldReasonNote(record: TechnicianWorkRecord) {
-  if (!record.holdReason) return "إرجاع للمشرف بدون سبب مسجّل";
+  if (!record.holdReason) return "تعليق الصيانة بدون سبب مسجّل";
   const label = HOLD_REASON_LABELS[record.holdReason] ?? record.holdReason;
   const extra =
     record.holdReason === "other" && record.holdOtherNote?.trim()
       ? ` — ${record.holdOtherNote.trim()}`
       : "";
-  return `إرجاع للمشرف: ${label}${extra}`;
+  return `تعليق الصيانة: ${label}${extra}`;
 }
 
 /** Explicit «تعذر الصيانة» for mobile technicians. */
@@ -712,6 +734,25 @@ export function holdTechnicianWork(record: TechnicianWorkRecord) {
     maintenanceFinishedAt: finishedAt,
     extraDetails: [match?.device.extraDetails, reasonNote].filter(Boolean).join(" | "),
   });
+
+  // Notify maintenance managers when the hold is specifically for replacement.
+  if (held.holdReason === "needs_replacement" && typeof window !== "undefined") {
+    const code = held.deviceCode || match?.device.deviceCode || "—";
+    const reqNo = held.requestNumber || match?.request.requestNumber || "—";
+    createSystemNotification({
+      title: "تعليق صيانة — يحتاج استبدال",
+      body: `الجهاز ${code} في الطلب ${reqNo} عُلّق بانتظار قرار الاستبدال من مدير الصيانة.`,
+      audienceType: "role",
+      audienceRole: "maintenance_manager",
+    });
+    createSystemNotification({
+      title: "تعليق صيانة — يحتاج استبدال",
+      body: `الجهاز ${code} في الطلب ${reqNo} عُلّق بانتظار قرار الاستبدال من مدير الصيانة.`,
+      audienceType: "role",
+      audienceRole: "system_admin",
+    });
+  }
+
   return held;
 }
 
@@ -795,6 +836,7 @@ export const MANAGER_DECISION_LABELS: Record<ManagerDeviceDecision, string> = {
   requeue_technician: "إعادة للصيانة",
   approve_return: "اعتماد الإرجاع للفرع",
   close_case: "إغلاق الحالة بدون إرجاع",
+  approve_replacement: "استبدال",
 };
 
 /** Supervisor sends a suspended device back into the technician queue. */
@@ -810,12 +852,178 @@ export function returnSuspendedDeviceToMaintenance(input: {
   });
 }
 
+function uniqueReplacementDeviceCode(
+  preferred: string | undefined,
+  originalCode: string,
+  existingCodes: Set<string>,
+): string {
+  const base =
+    (preferred || "").trim() ||
+    `REP-${originalCode}`.replace(/\s+/g, "-").slice(0, 40);
+  if (!existingCodes.has(base)) return base;
+  let n = 2;
+  while (existingCodes.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+/**
+ * Manager approves device replacement: link original ↔ replacement on the same
+ * request, optionally consume from replaced-devices stock, update statuses + timeline.
+ */
+function applyApproveReplacement(input: {
+  user: Profile;
+  request: MaintenanceRequestRecord;
+  original: DraftRequestDevice;
+  note?: string;
+  replacement?: ReplacementDecisionInput;
+}): { ok: true } | { ok: false; error: string } {
+  const stockItemId = input.replacement?.stockItemId?.trim();
+  const register = input.replacement?.register;
+  if (!stockItemId && !register?.deviceTypeName?.trim()) {
+    return {
+      ok: false,
+      error: "لاعتماد الاستبدال: اختر جهازًا من مخزون المستبدلة أو سجّل بيانات جهاز الاستبدال.",
+    };
+  }
+
+  let deviceTypeName = "";
+  let modelName = "";
+  let serialOrCode = "";
+  let consumedStockId: string | null = null;
+
+  if (stockItemId) {
+    const stock = listReplacedDevices().find((row) => row.id === stockItemId);
+    if (!stock) return { ok: false, error: "عنصر المخزون المحدد غير موجود." };
+    if (stock.quantity < 1) {
+      return { ok: false, error: `الكمية غير كافية في المخزون (المتاح: ${stock.quantity}).` };
+    }
+    const consumed = adjustReplacedDeviceQuantity({ id: stockItemId, delta: -1 });
+    if (!consumed.ok) return consumed;
+    consumedStockId = stockItemId;
+    deviceTypeName = stock.deviceTypeName;
+    modelName = stock.modelName || input.original.modelName || "";
+    serialOrCode = stock.serialOrCode || "";
+  } else if (register) {
+    deviceTypeName = register.deviceTypeName.trim();
+    modelName = register.modelName?.trim() || input.original.modelName || "";
+    serialOrCode = register.serialOrCode?.trim() || "";
+    // Keep stock page useful: register the unit then consume it for this case.
+    const added = addReplacedDevice({
+      user: input.user,
+      deviceTypeName,
+      modelName: modelName || undefined,
+      serialOrCode: serialOrCode || undefined,
+      quantity: 1,
+      notes: register.notes?.trim() || input.note?.trim() || "تسجيل لاستبدال معتمد",
+    });
+    if (!added.ok) return added;
+    const consumed = adjustReplacedDeviceQuantity({ id: added.item.id, delta: -1 });
+    if (!consumed.ok) return consumed;
+    consumedStockId = added.item.id;
+  }
+
+  const path = getDeviceAssignmentPath(input.request, input.original);
+  const now = new Date().toISOString();
+  const existingCodes = new Set(
+    listAllRequestDevices().map((item) => item.device.deviceCode),
+  );
+  const replacementLocalId = crypto.randomUUID();
+  const replacementCode = uniqueReplacementDeviceCode(
+    serialOrCode,
+    input.original.deviceCode,
+    existingCodes,
+  );
+
+  const replacementDevice: DraftRequestDevice = {
+    localId: replacementLocalId,
+    deviceCode: replacementCode,
+    deviceTypeId: input.original.deviceTypeId,
+    deviceTypeName: deviceTypeName || input.original.deviceTypeName,
+    brandId: input.original.brandId,
+    brandName: input.original.brandName,
+    modelId: input.original.modelId,
+    modelName: modelName || input.original.modelName,
+    serialNumber: serialOrCode || replacementCode,
+    fault: "جهاز استبدال معتمد من مدير الصيانة",
+    externalCondition: "intact",
+    accessoryIds: [],
+    accessoryNames: [],
+    extraDetails: [
+      `استبدال عن ${input.original.deviceCode}`,
+      input.note?.trim() ? `ملاحظة: ${input.note.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | "),
+    devicePhotoNames: [],
+    color: input.original.color,
+    receiptNumber: `REP-${input.request.requestNumber}-${Date.now().toString(36)}`,
+    receiptPhotoName: "",
+    assignmentPath: path,
+    lifecycleStatus: path === "mobile_technician" ? "awaiting_customer" : "ready_to_return",
+    currentLocation: path === "mobile_technician" ? "branch" : "service_center",
+    lockedAfterShip: false,
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
+    replacementOfLocalId: input.original.localId,
+    replacementOfDeviceCode: input.original.deviceCode,
+    replacementStockItemId: consumedStockId,
+    replacementDecidedAt: now,
+    replacementDecidedByName: input.user.fullName,
+  };
+
+  const linkEvent: RequestLinkEvent = {
+    id: crypto.randomUUID(),
+    at: now,
+    kind: "device_replaced",
+    note: input.note?.trim() || undefined,
+    actorId: input.user.id,
+    actorName: input.user.fullName,
+    originalDeviceLocalId: input.original.localId,
+    originalDeviceCode: input.original.deviceCode,
+    replacementDeviceLocalId: replacementLocalId,
+    replacementDeviceCode: replacementCode,
+  };
+
+  const updatedDevices = input.request.devices.map((device) => {
+    if (device.localId !== input.original.localId) return device;
+    return {
+      ...device,
+      lifecycleStatus: "replaced" as const,
+      currentLocation: path === "mobile_technician" ? "branch" : "service_center",
+      assignedTechnicianId: null,
+      assignedTechnicianName: null,
+      lockedAfterShip: true,
+      replacedByLocalId: replacementLocalId,
+      replacedByDeviceCode: replacementCode,
+      replacementDecidedAt: now,
+      replacementDecidedByName: input.user.fullName,
+      replacementStockItemId: consumedStockId,
+      extraDetails: [
+        device.extraDetails,
+        `تم الاستبدال بالجهاز ${replacementCode}`,
+        input.note?.trim() ? `ملاحظة المدير: ${input.note.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    };
+  });
+
+  replaceMaintenanceRequest({
+    ...input.request,
+    devices: [...updatedDevices, replacementDevice],
+    linkEvents: [...(input.request.linkEvents ?? []), linkEvent],
+  });
+
+  return { ok: true };
+}
+
 export function resolveManagerDecision(input: {
   user: Profile;
   requestId: string;
   deviceLocalId: string;
   decision: ManagerDeviceDecision;
   note?: string;
+  replacement?: ReplacementDecisionInput;
 }): { ok: true } | { ok: false; error: string } {
   const role = input.user.role;
   if (
@@ -874,6 +1082,18 @@ export function resolveManagerDecision(input: {
       assignedTechnicianName: null,
       lockedAfterShip: false,
     });
+  } else if (input.decision === "approve_replacement") {
+    const request = getMaintenanceRequestById(input.requestId);
+    if (!request) return { ok: false, error: "الطلب غير موجود." };
+    const original = request.devices.find((d) => d.localId === input.deviceLocalId);
+    if (!original) return { ok: false, error: "الجهاز غير موجود." };
+    return applyApproveReplacement({
+      user: input.user,
+      request,
+      original,
+      note: input.note,
+      replacement: input.replacement,
+    });
   } else {
     updateDeviceLifecycle(input.requestId, input.deviceLocalId, {
       lifecycleStatus: "closed",
@@ -921,6 +1141,25 @@ export function markDeliveredToCustomer(input: {
     currentLocation: "customer",
     lockedAfterShip: true,
   });
+
+  // When delivering a replacement device, close the tracked original on the same request.
+  const originalLocalId = match.device.replacementOfLocalId?.trim();
+  if (originalLocalId) {
+    const original = match.request.devices.find((d) => d.localId === originalLocalId);
+    if (original && normalizeLifecycleStatus(original.lifecycleStatus) === "replaced") {
+      updateDeviceLifecycle(input.requestId, originalLocalId, {
+        lifecycleStatus: "closed",
+        lockedAfterShip: true,
+        extraDetails: [
+          original.extraDetails,
+          `أُغلق بعد تسليم جهاز الاستبدال ${match.device.deviceCode} للعميل`,
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      });
+    }
+  }
+
   return { ok: true };
 }
 

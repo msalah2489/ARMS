@@ -1,11 +1,14 @@
 /**
- * Replaced-devices inventory (localStorage).
- * No dedicated Supabase table yet — keep local-only until a migration exists.
+ * Replaced-devices inventory (localStorage + optional app_replaced_devices sync).
  * Mirrors spare-inventory localStorage patterns for UI consistency.
  */
+import { isDemoMode } from "@/lib/auth";
+import { pushAppReplacedDevices } from "@/lib/supabase/app-sync";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Profile, ReplacedDeviceStockItem } from "@/types/domain";
 
 const STORAGE_KEY = "arms_replaced_devices_v1";
+export const REPLACED_DEVICES_CHANGED_EVENT = "arms-replaced-devices-changed";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -20,6 +23,16 @@ function readJson<T>(key: string, fallback: T): T {
 function writeJson<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function notifyChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(REPLACED_DEVICES_CHANGED_EVENT));
+}
+
+function schedulePersist(items: ReplacedDeviceStockItem[]) {
+  if (!isSupabaseConfigured() || isDemoMode()) return;
+  void pushAppReplacedDevices(items);
 }
 
 function normalizeItem(raw: Partial<ReplacedDeviceStockItem>): ReplacedDeviceStockItem | null {
@@ -47,8 +60,23 @@ export function listReplacedDevices(): ReplacedDeviceStockItem[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+/** Available stock rows (quantity > 0) for manager replacement picker. */
+export function listAvailableReplacedDevices(): ReplacedDeviceStockItem[] {
+  return listReplacedDevices().filter((item) => item.quantity > 0);
+}
+
 export function replaceReplacedDevices(items: ReplacedDeviceStockItem[]) {
   writeJson(STORAGE_KEY, items);
+  notifyChanged();
+}
+
+export function applyRemoteReplacedDevices(items: ReplacedDeviceStockItem[]) {
+  if (typeof window === "undefined") return;
+  replaceReplacedDevices(
+    (items ?? [])
+      .map((row) => normalizeItem(row))
+      .filter((item): item is ReplacedDeviceStockItem => item != null),
+  );
 }
 
 /** Total quantity across all stock rows (manager dashboard card). */
@@ -83,7 +111,10 @@ export function addReplacedDevice(input: {
     createdById: input.user.id,
     createdByName: input.user.fullName,
   };
-  writeJson(STORAGE_KEY, [item, ...listReplacedDevices()]);
+  const next = [item, ...listReplacedDevices()];
+  writeJson(STORAGE_KEY, next);
+  notifyChanged();
+  schedulePersist(next);
   return { ok: true, item };
 }
 
@@ -107,19 +138,19 @@ export function adjustReplacedDeviceQuantity(input: {
     quantity: nextQty,
     updatedAt: new Date().toISOString(),
   };
-  writeJson(
-    STORAGE_KEY,
-    all.map((row) => (row.id === input.id ? item : row)),
-  );
+  const next = all.map((row) => (row.id === input.id ? item : row));
+  writeJson(STORAGE_KEY, next);
+  notifyChanged();
+  schedulePersist(next);
   return { ok: true, item };
 }
 
 export function removeReplacedDevice(id: string): { ok: true } | { ok: false; error: string } {
   const all = listReplacedDevices();
   if (!all.some((row) => row.id === id)) return { ok: false, error: "العنصر غير موجود." };
-  writeJson(
-    STORAGE_KEY,
-    all.filter((row) => row.id !== id),
-  );
+  const next = all.filter((row) => row.id !== id);
+  writeJson(STORAGE_KEY, next);
+  notifyChanged();
+  schedulePersist(next);
   return { ok: true };
 }
