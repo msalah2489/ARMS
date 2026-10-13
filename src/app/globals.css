@@ -222,6 +222,33 @@ aside.bg-ink-950 button {
   overscroll-behavior-x: contain;
 }
 
+/* Delay-alerts dashboard card — blink when overdue count > 0 (no @apply) */
+@keyframes arms-delay-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.arms-delay-blink {
+  animation: arms-delay-blink 1.05s ease-in-out infinite;
+}
+
+.arms-delay-count-blink {
+  animation: arms-delay-blink 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arms-delay-blink,
+  .arms-delay-count-blink {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Metallic silver ARMS wordmark — static by default; alive motion on login only */
 @keyframes arms-logo-shimmer {
   0%,

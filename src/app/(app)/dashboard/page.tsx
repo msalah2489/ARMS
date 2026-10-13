@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { DelayAlertsStrip } from "@/components/delay-alerts-strip";
+import { DelayAlertsCard } from "@/components/delay-alerts-card";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import {
@@ -42,6 +42,8 @@ import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { formatDate } from "@/lib/utils";
 import type { DashboardStats, MaintenanceRequestRecord, Profile, ServiceRequest } from "@/types/domain";
 
+const DELAY_MODAL_PREVIEW_LIMIT = 40;
+
 type WorkCard = {
   key: string;
   title: string;
@@ -63,6 +65,7 @@ export default function DashboardPage() {
   const [branchWork, setBranchWork] = useState<BranchDailyWorkCounts | null>(null);
   const [managerWork, setManagerWork] = useState<ManagerDailyWorkCounts | null>(null);
   const [delayAlerts, setDelayAlerts] = useState<DelayAlertItem[]>([]);
+  const [delayAlertsTotal, setDelayAlertsTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +82,9 @@ export default function DashboardPage() {
       const current = readSession();
       if (!current) return;
       setUser(current);
-      setDelayAlerts(getDelayAlertsSummary(current, 5).preview);
+      const delaySummary = getDelayAlertsSummary(current, DELAY_MODAL_PREVIEW_LIMIT);
+      setDelayAlerts(delaySummary.preview);
+      setDelayAlertsTotal(delaySummary.total);
 
       if (isBranchRole(current.role)) {
         setBranchRequests(listMaintenanceRequests(current.opsBranchId));
@@ -146,6 +151,16 @@ export default function DashboardPage() {
 
   const firstName = user.fullName.split(" ")[0];
   const welcome = t("dashboard.welcome").replace("{name}", firstName);
+  const delayViewAllHref = canViewDelayReport(user) ? "/reports?report=delays" : "/my-tasks/";
+  const delayViewAllLabel = canViewDelayReport(user) ? "تقارير التأخير" : "مهامي اليوم";
+  const delayCard = (
+    <DelayAlertsCard
+      alerts={delayAlerts}
+      total={delayAlertsTotal}
+      viewAllHref={delayViewAllHref}
+      viewAllLabel={delayViewAllLabel}
+    />
+  );
 
   if (isPickupCourierRole(user.role)) {
     const mine = listPickupReceipts({ courierId: user.id });
@@ -174,7 +189,9 @@ export default function DashboardPage() {
             </>
           }
         />
-        <DelayAlertsStrip alerts={delayAlerts} />
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {delayCard}
+        </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <DashboardColumn title="بانتظار المراجعة">
             <StatRow label="نماذج معلّقة" value={pending.length} />
@@ -226,8 +243,8 @@ export default function DashboardPage() {
             </>
           }
         />
-        <DelayAlertsStrip alerts={delayAlerts} />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {delayCard}
           <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900">
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-display text-xl text-ink-900 dark:text-sand-50">
@@ -408,9 +425,8 @@ export default function DashboardPage() {
           }
         />
 
-        <DelayAlertsStrip alerts={delayAlerts} />
-
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {delayCard}
           {workCards.map((card) => (
             <WorkCardPanel key={card.key} card={card} openListLabel={t("dashboard.work.openList")} />
           ))}
@@ -569,15 +585,11 @@ export default function DashboardPage() {
             </>
           }
         />
-        <DelayAlertsStrip
-          alerts={delayAlerts}
-          viewAllHref={canViewDelayReport(user) ? "/reports?report=delays" : "/my-tasks/"}
-          viewAllLabel={canViewDelayReport(user) ? "تقارير التأخير" : "مهامي اليوم"}
-        />
         {!managerWork ? (
           <p className="mt-4 text-sm text-ink-700/70 dark:text-sand-100/70">{t("dashboard.loading")}</p>
         ) : null}
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {delayCard}
           {mgrCards.map((card) => (
             <WorkCardPanel key={card.key} card={card} openListLabel={t("dashboard.work.openList")} />
           ))}
@@ -630,11 +642,9 @@ export default function DashboardPage() {
           )
         }
       />
-      <DelayAlertsStrip
-        alerts={delayAlerts}
-        viewAllHref={canViewDelayReport(user) ? "/reports?report=delays" : "/my-tasks/"}
-        viewAllLabel={canViewDelayReport(user) ? "تقارير التأخير" : "مهامي اليوم"}
-      />
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {delayCard}
+      </div>
       <AttentionWidgets
         counts={attention}
         t={t}
