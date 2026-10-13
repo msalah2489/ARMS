@@ -8,6 +8,7 @@ type Props = {
   alerts: DelayAlertItem[];
   title?: string;
   viewAllHref?: string;
+  viewAllLabel?: string;
   emptyHidden?: boolean;
 };
 
@@ -15,6 +16,7 @@ export function DelayAlertsStrip({
   alerts,
   title = "تنبيهات التأخير",
   viewAllHref = "/my-tasks/",
+  viewAllLabel = "مهامي اليوم",
   emptyHidden = true,
 }: Props) {
   if (emptyHidden && alerts.length === 0) return null;
@@ -35,7 +37,7 @@ export function DelayAlertsStrip({
             href={viewAllHref}
             className="rounded-full border border-ink-900/15 bg-white px-3 py-1.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/15 dark:bg-ink-900 dark:text-sand-50"
           >
-            مهامي اليوم
+            {viewAllLabel}
           </Link>
         ) : null}
       </div>

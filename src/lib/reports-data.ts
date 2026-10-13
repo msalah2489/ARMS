@@ -1,4 +1,9 @@
 import {
+  isMaintenanceManagerRole,
+  isSystemAdminRole,
+  normalizeRole,
+} from "@/lib/auth";
+import {
   deviceLocationLabel,
   deviceStatusLabel,
   listAllRequestDevices,
@@ -7,7 +12,9 @@ import {
   normalizeLifecycleStatus,
 } from "@/lib/branch-store";
 import { getBrands, getDeviceTypes, getModelById } from "@/lib/catalog-store";
+import { listAllDeviceDelayAlerts } from "@/lib/delay-alerts";
 import { listOpsCustomers } from "@/lib/ops-data";
+import { hasPermission } from "@/lib/permissions";
 import {
   cityForBranchName,
   isAllFilter,
@@ -21,9 +28,11 @@ import { listShippingBatches } from "@/lib/shipping-store";
 import { listStockMovements } from "@/lib/spare-inventory-store";
 import { listTechnicianWork } from "@/lib/technician-store";
 import type {
+  AppRole,
   DeviceLifecycleStatus,
   DraftRequestDevice,
   MaintenanceRequestRecord,
+  Profile,
   ShippingBatch,
   TechnicianWorkRecord,
 } from "@/types/domain";
@@ -892,4 +901,176 @@ export function buildFaultAnalysisRows(
         }) satisfies FaultAnalysisRow,
     ),
   ];
+}
+
+/** Admin-facing delay concentration report (reuses Phase 1 SLA thresholds). */
+export type DelayPeriodDays = 7 | 30 | 0;
+
+export type DelayReportDetailRow = {
+  id: string;
+  deviceCode: string;
+  requestNumber: string;
+  customer: string;
+  branch: string;
+  technician: string;
+  model: string;
+  fault: string;
+  statusLabel: string;
+  daysInStage: number;
+  thresholdDays: number;
+  daysOverdue: number;
+  priority: "urgent" | "normal";
+  stageStartedAt: string;
+  href: string;
+};
+
+export type DelayAggregateRow = {
+  key: string;
+  label: string;
+  count: number;
+  urgentCount: number;
+  avgDaysOverdue: number;
+  maxDaysOverdue: number;
+};
+
+export type DelayReport = {
+  periodDays: DelayPeriodDays;
+  total: number;
+  urgent: number;
+  byBranch: DelayAggregateRow[];
+  byTechnician: DelayAggregateRow[];
+  byFaultModel: DelayAggregateRow[];
+  items: DelayReportDetailRow[];
+};
+
+const UNASSIGNED_TECH_LABEL = "غير معيّن";
+const UNKNOWN_FAULT_LABEL = "غير محدد";
+const UNKNOWN_MODEL_LABEL = "بدون موديل";
+
+/** Roles that see the delay concentration report (plus view_reports). */
+export function canViewDelayReport(user: Profile | null | undefined): boolean {
+  if (!user || !hasPermission(user, "view_reports")) return false;
+  const role = normalizeRole(user.role) as AppRole;
+  if (isSystemAdminRole(role) || isMaintenanceManagerRole(role)) return true;
+  return (
+    role === "maintenance_supervisor" ||
+    role === "supervisor" ||
+    role === "manager"
+  );
+}
+
+function stageStartedWithinPeriod(stageStartedAt: string, periodDays: DelayPeriodDays): boolean {
+  if (!periodDays) return true;
+  const started = Date.parse(stageStartedAt);
+  if (Number.isNaN(started)) return true;
+  const cutoff = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+  return started >= cutoff;
+}
+
+function aggregateDelayRows(
+  items: DelayReportDetailRow[],
+  keyOf: (row: DelayReportDetailRow) => string,
+  labelOf: (row: DelayReportDetailRow) => string,
+): DelayAggregateRow[] {
+  const map = new Map<
+    string,
+    { label: string; count: number; urgentCount: number; sumOverdue: number; maxDaysOverdue: number }
+  >();
+  for (const row of items) {
+    const key = keyOf(row);
+    const existing = map.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (row.priority === "urgent") existing.urgentCount += 1;
+      existing.sumOverdue += row.daysOverdue;
+      existing.maxDaysOverdue = Math.max(existing.maxDaysOverdue, row.daysOverdue);
+    } else {
+      map.set(key, {
+        label: labelOf(row),
+        count: 1,
+        urgentCount: row.priority === "urgent" ? 1 : 0,
+        sumOverdue: row.daysOverdue,
+        maxDaysOverdue: row.daysOverdue,
+      });
+    }
+  }
+  return [...map.entries()]
+    .map(([key, value]) => ({
+      key,
+      label: value.label,
+      count: value.count,
+      urgentCount: value.urgentCount,
+      avgDaysOverdue: Math.round((value.sumOverdue / value.count) * 10) / 10,
+      maxDaysOverdue: value.maxDaysOverdue,
+    }))
+    .sort((a, b) => b.count - a.count || b.maxDaysOverdue - a.maxDaysOverdue || a.label.localeCompare(b.label, "ar"));
+}
+
+/**
+ * Build delay concentration report from current SLA overdue devices.
+ * @param periodDays 7 | 30 | 0 (0 = all current overdue)
+ */
+export function buildDelayReport(periodDays: DelayPeriodDays = 30): DelayReport {
+  const alerts = listAllDeviceDelayAlerts().filter((alert) =>
+    stageStartedWithinPeriod(alert.stageStartedAt, periodDays),
+  );
+  const byDeviceId = new Map(
+    listAllRequestDevices().map((row) => [row.device.localId, row] as const),
+  );
+
+  const items: DelayReportDetailRow[] = [];
+  for (const alert of alerts) {
+    if (alert.kind !== "device" || !alert.deviceLocalId) continue;
+    const match = byDeviceId.get(alert.deviceLocalId);
+    const device = match?.device;
+    const request = match?.request;
+    const model =
+      [device?.brandName, device?.modelName]
+        .map((part) => part?.trim())
+        .filter(Boolean)
+        .join(" · ") || UNKNOWN_MODEL_LABEL;
+    const fault = device?.fault?.trim() || UNKNOWN_FAULT_LABEL;
+    const technician =
+      device?.assignedTechnicianName?.trim() ||
+      (device?.assignedTechnicianId ? String(device.assignedTechnicianId) : UNASSIGNED_TECH_LABEL);
+    items.push({
+      id: alert.id,
+      deviceCode: alert.title,
+      requestNumber: request?.requestNumber ?? "",
+      customer: request?.contactName ?? "",
+      branch: request?.opsBranchName?.trim() || "—",
+      technician,
+      model,
+      fault,
+      statusLabel: alert.statusLabel,
+      daysInStage: alert.daysInStage,
+      thresholdDays: alert.thresholdDays,
+      daysOverdue: alert.daysOverdue,
+      priority: alert.priority,
+      stageStartedAt: alert.stageStartedAt,
+      href: alert.href,
+    });
+  }
+
+  return {
+    periodDays,
+    total: items.length,
+    urgent: items.filter((row) => row.priority === "urgent").length,
+    byBranch: aggregateDelayRows(
+      items,
+      (row) => row.branch,
+      (row) => row.branch,
+    ),
+    byTechnician: aggregateDelayRows(
+      items,
+      (row) => row.technician,
+      (row) => row.technician,
+    ),
+    byFaultModel: aggregateDelayRows(
+      items,
+      (row) => `${row.fault}||${row.model}`,
+      (row) => `${row.fault} · ${row.model}`,
+    ),
+    items,
+  };
 }

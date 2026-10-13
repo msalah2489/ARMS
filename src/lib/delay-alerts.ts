@@ -94,7 +94,8 @@ function evaluateDevice(
   };
 }
 
-function listAllDeviceDelayAlerts(opsBranchId?: string | null): DelayAlertItem[] {
+/** All currently overdue devices (optional branch scope). Used by dashboard + delay reports. */
+export function listAllDeviceDelayAlerts(opsBranchId?: string | null): DelayAlertItem[] {
   const items = listAllRequestDevices().filter((row) =>
     opsBranchId ? row.request.opsBranchId === opsBranchId : true,
   );

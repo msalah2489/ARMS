@@ -36,6 +36,7 @@ import {
 import { getDelayAlertsSummary, type DelayAlertItem } from "@/lib/delay-alerts";
 import { getDashboardStats, getServiceRequests } from "@/lib/data";
 import type { MessageKey } from "@/lib/i18n/messages";
+import { canViewDelayReport } from "@/lib/reports-data";
 import { readSession } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import { formatDate } from "@/lib/utils";
@@ -568,7 +569,11 @@ export default function DashboardPage() {
             </>
           }
         />
-        <DelayAlertsStrip alerts={delayAlerts} />
+        <DelayAlertsStrip
+          alerts={delayAlerts}
+          viewAllHref={canViewDelayReport(user) ? "/reports?report=delays" : "/my-tasks/"}
+          viewAllLabel={canViewDelayReport(user) ? "تقارير التأخير" : "مهامي اليوم"}
+        />
         {!managerWork ? (
           <p className="mt-4 text-sm text-ink-700/70 dark:text-sand-100/70">{t("dashboard.loading")}</p>
         ) : null}
@@ -625,7 +630,11 @@ export default function DashboardPage() {
           )
         }
       />
-      <DelayAlertsStrip alerts={delayAlerts} />
+      <DelayAlertsStrip
+        alerts={delayAlerts}
+        viewAllHref={canViewDelayReport(user) ? "/reports?report=delays" : "/my-tasks/"}
+        viewAllLabel={canViewDelayReport(user) ? "تقارير التأخير" : "مهامي اليوم"}
+      />
       <AttentionWidgets
         counts={attention}
         t={t}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Download, RotateCcw } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
@@ -9,6 +10,7 @@ import { branchScopeId, isBranchRole, isDemoMode } from "@/lib/auth";
 import { deviceStatusLabel } from "@/lib/branch-store";
 import {
   buildCustomersReport,
+  buildDelayReport,
   buildDevicesReport,
   buildExcludedDevicesReport,
   buildFaultAnalysisRows,
@@ -18,7 +20,11 @@ import {
   buildSpareConsumeByTechnicianReport,
   buildSpareConsumeDetailReport,
   buildSpareStockMovementReport,
+  canViewDelayReport,
   type CustomerReportRow,
+  type DelayAggregateRow,
+  type DelayPeriodDays,
+  type DelayReportDetailRow,
   type DeviceReportRow,
   type FaultAnalysisRow,
   type MaintenanceRequestReportRow,
@@ -61,9 +67,10 @@ type ReportId =
   | "spareByTech"
   | "spareConsume"
   | "spareMovements"
-  | "faultAnalysis";
+  | "faultAnalysis"
+  | "delays";
 
-const REPORT_TYPES: { id: ReportId; labelKey: MessageKey }[] = [
+const BASE_REPORT_TYPES: { id: ReportId; labelKey: MessageKey }[] = [
   { id: "devices", labelKey: "reports.section.devices" },
   { id: "customers", labelKey: "reports.section.customers" },
   { id: "shippingBatches", labelKey: "reports.section.shippingBatches" },
@@ -109,6 +116,49 @@ function EmptyState({ label }: { label: string }) {
     <p className="rounded-xl border border-dashed border-ink-900/15 px-4 py-6 text-sm text-ink-700/60 dark:border-white/10 dark:text-sand-100/60">
       {label}
     </p>
+  );
+}
+
+function DelayAggregateTable({
+  title,
+  rows,
+  labelHeader,
+}: {
+  title: string;
+  rows: DelayAggregateRow[];
+  labelHeader: string;
+}) {
+  const { t } = usePreferences();
+  if (rows.length === 0) {
+    return (
+      <section className="rounded-xl border border-ink-900/10 bg-white p-3 shadow-panel dark:border-white/10 dark:bg-ink-900">
+        <h3 className="mb-2 text-sm font-semibold text-ink-900 dark:text-sand-50">{title}</h3>
+        <EmptyState label={t("reports.empty")} />
+      </section>
+    );
+  }
+  return (
+    <section className="rounded-xl border border-ink-900/10 bg-white p-3 shadow-panel dark:border-white/10 dark:bg-ink-900">
+      <h3 className="mb-2 text-sm font-semibold text-ink-900 dark:text-sand-50">{title}</h3>
+      <DataTable
+        columns={[
+          labelHeader,
+          t("reports.col.count"),
+          t("reports.col.urgentCount"),
+          t("reports.col.avgDaysOverdue"),
+          t("reports.col.maxDaysOverdue"),
+        ]}
+        rows={rows.map((row) => [
+          <span key="l" className="font-medium">
+            {row.label}
+          </span>,
+          String(row.count),
+          String(row.urgentCount),
+          String(row.avgDaysOverdue),
+          String(row.maxDaysOverdue),
+        ])}
+      />
+    </section>
   );
 }
 
@@ -168,12 +218,20 @@ export default function ReportsPage() {
   const [tick, setTick] = useState(0);
   const [reportId, setReportId] = useState<ReportId>("devices");
   const [filters, setFilters] = useState<ReportFilters>(() => emptyReportFilters());
+  const [delayPeriodDays, setDelayPeriodDays] = useState<DelayPeriodDays>(30);
 
   useEffect(() => {
     let cancelled = false;
     const session = readSession();
     setUser(session);
     setReady(true);
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("report") === "delays" && canViewDelayReport(session)) {
+        setReportId("delays");
+      }
+    }
 
     if (isSupabaseConfigured() && !isDemoMode()) {
       void hydrateOpsFromSupabase().then(() => {
@@ -186,8 +244,24 @@ export default function ReportsPage() {
     };
   }, []);
 
+  const showDelayReport = canViewDelayReport(user);
+  const reportTypes = useMemo(() => {
+    if (!showDelayReport) return BASE_REPORT_TYPES;
+    return [
+      ...BASE_REPORT_TYPES,
+      { id: "delays" as const, labelKey: "reports.section.delays" as MessageKey },
+    ];
+  }, [showDelayReport]);
+
+  useEffect(() => {
+    if (reportId === "delays" && user && !canViewDelayReport(user)) {
+      setReportId("devices");
+    }
+  }, [reportId, user]);
+
   const branchId = branchScopeId(user);
   const allLabel = t("reports.all");
+  const isDelayReport = reportId === "delays";
 
   function patchFilters(patch: Partial<ReportFilters>) {
     setFilters((current) => ({ ...current, ...patch }));
@@ -277,9 +351,72 @@ export default function ReportsPage() {
     return value || "—";
   }
 
+  const delayReport = useMemo(() => {
+    if (!ready || !isDelayReport || !showDelayReport) return null;
+    return buildDelayReport(delayPeriodDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick refreshes after hydrate
+  }, [ready, isDelayReport, showDelayReport, delayPeriodDays, tick]);
+
   const result = useMemo(() => {
     if (!ready) {
       return { columns: [] as string[], tableRows: [] as ReactNode[][], csvRows: [] as string[][], filename: "report.csv" };
+    }
+
+    if (reportId === "delays") {
+      const rows: DelayReportDetailRow[] = delayReport?.items ?? [];
+      const columns = [
+        t("reports.col.deviceCode"),
+        t("reports.col.requestNumber"),
+        t("reports.col.customer"),
+        t("reports.col.branch"),
+        t("reports.col.technician"),
+        t("reports.col.model"),
+        t("reports.col.fault"),
+        t("reports.col.currentStatus"),
+        t("reports.col.daysInStage"),
+        t("reports.col.thresholdDays"),
+        t("reports.col.daysOverdue"),
+        t("reports.col.urgency"),
+      ];
+      return {
+        columns,
+        filename: "delay-report.csv",
+        tableRows: rows.map((row) => [
+          <Link
+            key="c"
+            href={row.href}
+            className="font-medium text-aroma-800 underline-offset-2 hover:underline dark:text-aroma-200"
+          >
+            {row.deviceCode}
+          </Link>,
+          row.requestNumber || "—",
+          row.customer || "—",
+          row.branch,
+          row.technician,
+          row.model,
+          row.fault,
+          row.statusLabel,
+          String(row.daysInStage),
+          String(row.thresholdDays),
+          String(row.daysOverdue),
+          urgencyLabel(row.priority),
+        ]),
+        csvRows: rows.map((row) => [
+          row.deviceCode,
+          row.requestNumber,
+          row.customer,
+          row.branch,
+          row.technician,
+          row.model,
+          row.fault,
+          row.statusLabel,
+          String(row.daysInStage),
+          String(row.thresholdDays),
+          String(row.daysOverdue),
+          urgencyLabel(row.priority),
+          row.href,
+        ]),
+      };
     }
 
     switch (reportId) {
@@ -586,7 +723,7 @@ export default function ReportsPage() {
         return { columns: [], tableRows: [], csvRows: [], filename: "report.csv" };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t/urgencyLabel are stable enough for this page
-  }, [ready, reportId, branchId, filters, locale, tick]);
+  }, [ready, reportId, branchId, filters, locale, tick, delayReport]);
 
   if (!user) {
     return <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{t("reports.loading")}</p>;
@@ -658,13 +795,28 @@ export default function ReportsPage() {
                     resetFilters();
                   }}
                 >
-                  {REPORT_TYPES.map((item) => (
+                  {reportTypes.map((item) => (
                     <option key={item.id} value={item.id}>
                       {t(item.labelKey)}
                     </option>
                   ))}
                 </select>
               </FilterField>
+              {isDelayReport ? (
+                <FilterField label={t("reports.delay.period")} wide>
+                  <select
+                    className={fieldClass}
+                    value={String(delayPeriodDays)}
+                    onChange={(event) =>
+                      setDelayPeriodDays(Number(event.target.value) as DelayPeriodDays)
+                    }
+                  >
+                    <option value="7">{t("reports.delay.period.7")}</option>
+                    <option value="30">{t("reports.delay.period.30")}</option>
+                    <option value="0">{t("reports.delay.period.all")}</option>
+                  </select>
+                </FilterField>
+              ) : null}
               {showBrand ? (
                 <FilterField label={t("reports.filter.brand")}>
                   <SelectFilter
@@ -880,53 +1032,61 @@ export default function ReportsPage() {
               ) : null}
             </div>
 
-            {/* Row 2: date range only */}
+            {/* Row 2: date range (hidden for delay report) + export */}
             <div className="mt-2 flex flex-nowrap items-end gap-2">
-              <label className="flex h-[1.875rem] shrink-0 items-center gap-1.5 text-xs text-ink-700 dark:text-sand-100">
-                <input
-                  type="checkbox"
-                  checked={filters.allDates !== false}
-                  onChange={(event) =>
-                    patchFilters({
-                      allDates: event.target.checked,
-                      dateFrom: event.target.checked ? "" : filters.dateFrom,
-                      dateTo: event.target.checked ? "" : filters.dateTo,
-                    })
-                  }
-                  className="size-3.5 rounded border-ink-900/20"
-                />
-                {t("reports.filter.allDates")}
-              </label>
-              <FilterField label={t("reports.filter.dateFrom")}>
-                <input
-                  type="date"
-                  className={fieldClass}
-                  disabled={filters.allDates !== false}
-                  value={filters.dateFrom || ""}
-                  onChange={(event) =>
-                    patchFilters({ allDates: false, dateFrom: event.target.value })
-                  }
-                />
-              </FilterField>
-              <FilterField label={t("reports.filter.dateTo")}>
-                <input
-                  type="date"
-                  className={fieldClass}
-                  disabled={filters.allDates !== false}
-                  value={filters.dateTo || ""}
-                  onChange={(event) =>
-                    patchFilters({ allDates: false, dateTo: event.target.value })
-                  }
-                />
-              </FilterField>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium dark:border-white/10"
-              >
-                <RotateCcw className="h-3 w-3" />
-                {t("reports.resetFilters")}
-              </button>
+              {!isDelayReport ? (
+                <>
+                  <label className="flex h-[1.875rem] shrink-0 items-center gap-1.5 text-xs text-ink-700 dark:text-sand-100">
+                    <input
+                      type="checkbox"
+                      checked={filters.allDates !== false}
+                      onChange={(event) =>
+                        patchFilters({
+                          allDates: event.target.checked,
+                          dateFrom: event.target.checked ? "" : filters.dateFrom,
+                          dateTo: event.target.checked ? "" : filters.dateTo,
+                        })
+                      }
+                      className="size-3.5 rounded border-ink-900/20"
+                    />
+                    {t("reports.filter.allDates")}
+                  </label>
+                  <FilterField label={t("reports.filter.dateFrom")}>
+                    <input
+                      type="date"
+                      className={fieldClass}
+                      disabled={filters.allDates !== false}
+                      value={filters.dateFrom || ""}
+                      onChange={(event) =>
+                        patchFilters({ allDates: false, dateFrom: event.target.value })
+                      }
+                    />
+                  </FilterField>
+                  <FilterField label={t("reports.filter.dateTo")}>
+                    <input
+                      type="date"
+                      className={fieldClass}
+                      disabled={filters.allDates !== false}
+                      value={filters.dateTo || ""}
+                      onChange={(event) =>
+                        patchFilters({ allDates: false, dateTo: event.target.value })
+                      }
+                    />
+                  </FilterField>
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="inline-flex h-[1.875rem] items-center gap-1 rounded-md border border-ink-900/10 px-2 text-[11px] font-medium dark:border-white/10"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {t("reports.resetFilters")}
+                  </button>
+                </>
+              ) : (
+                <p className="pb-1 text-[11px] text-ink-700/70 dark:text-sand-100/70">
+                  {t("reports.hint.delays")}
+                </p>
+              )}
               <span className="pb-1 text-[11px] text-ink-700/60 dark:text-sand-100/60">
                 {t("reports.rows").replace("{count}", String(result.tableRows.length))}
               </span>
@@ -941,6 +1101,49 @@ export default function ReportsPage() {
               </button>
             </div>
           </section>
+
+          {isDelayReport && delayReport ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 shadow-panel dark:border-amber-400/30 dark:bg-amber-950/30">
+                  <p className="text-[11px] text-ink-700/70 dark:text-sand-100/70">
+                    {t("reports.delay.summaryTotal")}
+                  </p>
+                  <p className="mt-1 font-display text-2xl text-ink-900 dark:text-sand-50">
+                    {delayReport.total}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-rose-300/50 bg-rose-50/70 px-4 py-3 shadow-panel dark:border-rose-400/30 dark:bg-rose-950/30">
+                  <p className="text-[11px] text-ink-700/70 dark:text-sand-100/70">
+                    {t("reports.delay.summaryUrgent")}
+                  </p>
+                  <p className="mt-1 font-display text-2xl text-ink-900 dark:text-sand-50">
+                    {delayReport.urgent}
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-3">
+                <DelayAggregateTable
+                  title={t("reports.delay.byBranch")}
+                  rows={delayReport.byBranch}
+                  labelHeader={t("reports.col.branch")}
+                />
+                <DelayAggregateTable
+                  title={t("reports.delay.byTechnician")}
+                  rows={delayReport.byTechnician}
+                  labelHeader={t("reports.col.technician")}
+                />
+                <DelayAggregateTable
+                  title={t("reports.delay.byFaultModel")}
+                  rows={delayReport.byFaultModel}
+                  labelHeader={t("reports.col.label")}
+                />
+              </div>
+              <h3 className="text-sm font-semibold text-ink-900 dark:text-sand-50">
+                {t("reports.delay.overdueList")}
+              </h3>
+            </>
+          ) : null}
 
           {result.tableRows.length === 0 ? (
             <EmptyState label={t("reports.empty")} />
