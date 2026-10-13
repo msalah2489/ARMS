@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   listUnreadNotifications,
   markNotificationRead,
@@ -34,13 +35,18 @@ function dismissForSession(notificationId: string) {
 }
 
 /**
- * Post-login unread notification overlay (modal).
+ * Post-login unread notification overlay (modal via portal).
  * «قراءة لاحقاً» hides for this browser tab session only — message stays unread in the bell.
  * «تمت القراءة» marks read via the notifications store / reads table.
  */
 export function NotificationLoginBanner({ user }: { user: Profile }) {
   const [active, setActive] = useState<ArmsNotification | null>(null);
   const [tick, setTick] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     return subscribeNotificationsChanged(() => setTick((n) => n + 1));
@@ -69,7 +75,7 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
     };
   }, [active]);
 
-  if (!active) return null;
+  if (!active || !mounted) return null;
 
   // Capture after null check so nested handlers stay typed as ArmsNotification (CI/tsc).
   const notification = active;
@@ -84,8 +90,11 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
     dismissOnly();
   }
 
-  return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink-950/60 p-4">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 dark:bg-black/70"
+      data-arms-notification-overlay="true"
+    >
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -96,23 +105,23 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-login-title"
-        className="relative z-10 w-full max-w-md rounded-2xl border border-ink-900/10 bg-white p-5 text-ink-900 shadow-panel dark:border-white/15 dark:bg-ink-900 dark:text-sand-50 sm:p-6"
+        className="relative z-10 w-full max-w-md rounded-2xl border border-ink-900/15 bg-white p-5 text-ink-900 shadow-panel dark:border-white/20 dark:bg-[#2a3d33] dark:text-[#fbf7f0] sm:p-6"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h2
               id="notification-login-title"
-              className="font-display text-lg text-ink-900 dark:text-sand-50 sm:text-xl"
+              className="font-display text-lg text-ink-900 dark:text-[#fbf7f0] sm:text-xl"
             >
               {notification.title}
             </h2>
-            <p className="mt-3 whitespace-pre-wrap text-sm text-ink-700 dark:text-sand-100">
+            <p className="mt-3 whitespace-pre-wrap text-sm text-ink-700 dark:text-[rgba(251,247,240,0.92)]">
               {notification.body}
             </p>
           </div>
           <button
             type="button"
-            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg text-ink-700 hover:bg-ink-900/5 dark:text-sand-50 dark:hover:bg-white/10"
+            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg text-ink-700 hover:bg-ink-900/5 dark:text-[#fbf7f0] dark:hover:bg-white/10"
             aria-label="إغلاق"
             onClick={dismissOnly}
           >
@@ -122,20 +131,21 @@ export function NotificationLoginBanner({ user }: { user: Profile }) {
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600 dark:text-sand-50"
+            className="rounded-full bg-ink-900 px-5 py-2.5 text-sm text-white dark:bg-aroma-600 dark:text-[#fbf7f0]"
             onClick={acknowledge}
           >
             تمت القراءة
           </button>
           <button
             type="button"
-            className="rounded-full border border-ink-900/15 bg-white px-5 py-2.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/25 dark:bg-ink-950 dark:text-sand-50"
+            className="rounded-full border border-ink-900/15 bg-white px-5 py-2.5 text-sm text-ink-900 hover:border-aroma-400 dark:border-white/25 dark:bg-ink-950 dark:text-[#fbf7f0]"
             onClick={dismissOnly}
           >
             قراءة لاحقاً
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

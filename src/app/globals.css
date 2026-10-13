@@ -116,19 +116,12 @@ html.dark .text-ink-700\/50 {
   color: rgba(251, 247, 240, 0.78) !important;
 }
 
-/* Light sand text tokens — keep readable on dark panels */
-html.dark .dark\:text-sand-50,
-html.dark .text-sand-50 {
-  color: #fbf7f0 !important;
-}
-
-html.dark .dark\:text-sand-100,
-html.dark .dark\:text-sand-100\/80,
-html.dark .dark\:text-sand-100\/75,
-html.dark .dark\:text-sand-100\/70,
-html.dark .text-sand-100 {
-  color: rgba(251, 247, 240, 0.9) !important;
-}
+/*
+ * Do NOT redefine .text-sand-50 / .dark:text-sand-* here — body uses
+ * `@apply text-sand-50` and that creates a PostCSS circular dependency
+ * (broke Deploy GitHub Pages for 961eb9d).
+ * Notification overlay contrast is handled on the component itself.
+ */
 
 html.dark .text-aroma-700 {
   color: #c5d6c0 !important;
