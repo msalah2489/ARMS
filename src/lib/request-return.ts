@@ -1,5 +1,5 @@
 /**
- * أسباب الإرجاع / إعادة الفتح — طلب متابعة مرتبط أو إعادة فتح نفس الطلب.
+ * أسباب الإرجاع / إعادة الفتح — قائمتان منفصلتان: طلب متابعة vs إعادة فتح نفس الطلب.
  */
 import {
   getMaintenanceRequestById,
@@ -16,7 +16,8 @@ import type {
   RequestReturnReason,
 } from "@/types/domain";
 
-export const REQUEST_RETURN_REASON_LABELS: Record<RequestReturnReason, string> = {
+/** أسباب طلب المتابعة (إرجاع) — القائمة الكاملة. */
+export const REQUEST_FOLLOW_UP_REASON_LABELS: Record<RequestReturnReason, string> = {
   repeat_fault: "تكرار العطل",
   new_fault: "عطل جديد",
   wrong_delivery: "تسليم خاطئ",
@@ -26,7 +27,7 @@ export const REQUEST_RETURN_REASON_LABELS: Record<RequestReturnReason, string> =
   other: "أخرى",
 };
 
-export const REQUEST_RETURN_REASON_OPTIONS: RequestReturnReason[] = [
+export const REQUEST_FOLLOW_UP_REASON_OPTIONS: RequestReturnReason[] = [
   "repeat_fault",
   "new_fault",
   "wrong_delivery",
@@ -36,17 +37,75 @@ export const REQUEST_RETURN_REASON_OPTIONS: RequestReturnReason[] = [
   "other",
 ];
 
-export function requestReturnReasonLabel(reason: RequestReturnReason | null | undefined): string {
+/** أسباب إعادة فتح نفس الطلب فقط. */
+export type RequestReopenReason =
+  | "repeat_fault"
+  | "new_fault"
+  | "customer_refusal"
+  | "other";
+
+export const REQUEST_REOPEN_REASON_LABELS: Record<RequestReopenReason, string> = {
+  repeat_fault: "نفس الجهاز والعطل الجديد هو نفس العطل السابق",
+  new_fault: "الجهاز وصل للعميل بعطل جديد حدث أثناء الصيانة أو بسبب التوصيل",
+  customer_refusal: "رفض العميل",
+  other: "أخرى",
+};
+
+export const REQUEST_REOPEN_REASON_OPTIONS: RequestReopenReason[] = [
+  "repeat_fault",
+  "new_fault",
+  "customer_refusal",
+  "other",
+];
+
+/** @deprecated استخدم REQUEST_FOLLOW_UP_* — مُبقى للتوافق مع طلب المتابعة */
+export const REQUEST_RETURN_REASON_LABELS = REQUEST_FOLLOW_UP_REASON_LABELS;
+/** @deprecated استخدم REQUEST_FOLLOW_UP_* */
+export const REQUEST_RETURN_REASON_OPTIONS = REQUEST_FOLLOW_UP_REASON_OPTIONS;
+
+export type ReturnReasonMode = "follow_up" | "reopen";
+
+export function requestReturnReasonLabel(
+  reason: RequestReturnReason | null | undefined,
+  mode?: ReturnReasonMode,
+): string {
   if (!reason) return "—";
-  return REQUEST_RETURN_REASON_LABELS[reason] ?? reason;
+  if (mode === "reopen" && reason in REQUEST_REOPEN_REASON_LABELS) {
+    return REQUEST_REOPEN_REASON_LABELS[reason as RequestReopenReason];
+  }
+  return REQUEST_FOLLOW_UP_REASON_LABELS[reason] ?? reason;
+}
+
+function reasonRequiresNote(
+  reason: RequestReturnReason,
+  mode: ReturnReasonMode,
+): boolean {
+  if (reason === "other") return true;
+  if (mode === "reopen" && reason === "customer_refusal") return true;
+  return false;
 }
 
 export function validateReturnReason(
   reason: RequestReturnReason | "" | null | undefined,
   note: string,
+  mode: ReturnReasonMode = "follow_up",
 ): string | null {
-  if (!reason) return "يجب اختيار سبب الإرجاع / إعادة الفتح.";
-  if (reason === "other" && !note.trim()) {
+  if (!reason) {
+    return mode === "reopen"
+      ? "يجب اختيار سبب إعادة فتح الطلب."
+      : "يجب اختيار سبب الإرجاع / طلب المتابعة.";
+  }
+  if (mode === "reopen") {
+    if (!(REQUEST_REOPEN_REASON_OPTIONS as string[]).includes(reason)) {
+      return "سبب إعادة الفتح غير صالح.";
+    }
+  } else if (!(REQUEST_FOLLOW_UP_REASON_OPTIONS as string[]).includes(reason)) {
+    return "سبب الإرجاع غير صالح.";
+  }
+  if (reasonRequiresNote(reason, mode) && !note.trim()) {
+    if (reason === "customer_refusal") {
+      return "الملاحظة / السبب إلزامي عند اختيار «رفض العميل».";
+    }
     return "الملاحظة إلزامية عند اختيار «أخرى».";
   }
   return null;
@@ -151,7 +210,7 @@ export function reopenMaintenanceRequest(input: {
   note?: string;
 }): { ok: true; request: MaintenanceRequestRecord } | { ok: false; error: string } {
   const note = (input.note || "").trim();
-  const reasonError = validateReturnReason(input.reason, note);
+  const reasonError = validateReturnReason(input.reason, note, "reopen");
   if (reasonError) return { ok: false, error: reasonError };
 
   const current = getMaintenanceRequestById(input.requestId);

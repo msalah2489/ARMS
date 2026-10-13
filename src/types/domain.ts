@@ -537,7 +537,11 @@ export type TechnicianWorkRecord = {
   holdOtherNote?: string;
 };
 
-/** Fixed Arabic list for return / reopen / follow-up linking */
+/**
+ * Stored reason keys for return / reopen / follow-up linking.
+ * UI lists are split: follow-up uses the full set; reopen uses a subset
+ * (repeat_fault | new_fault | customer_refusal | other) with distinct Arabic labels.
+ */
 export type RequestReturnReason =
   | "repeat_fault"
   | "new_fault"

@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
-  REQUEST_RETURN_REASON_LABELS,
-  REQUEST_RETURN_REASON_OPTIONS,
+  REQUEST_FOLLOW_UP_REASON_LABELS,
+  REQUEST_FOLLOW_UP_REASON_OPTIONS,
+  REQUEST_REOPEN_REASON_LABELS,
+  REQUEST_REOPEN_REASON_OPTIONS,
   validateReturnReason,
+  type ReturnReasonMode,
 } from "@/lib/request-return";
 import type { RequestReturnReason } from "@/types/domain";
 
-type Mode = "follow_up" | "reopen";
+type Mode = ReturnReasonMode;
 
 type Props = {
   open: boolean;
@@ -29,6 +32,12 @@ const HINTS: Record<Mode, string> = {
     "مسار خاص: إعادة فتح نفس الطلب عند الإغلاق بالخطأ أو قبل التسليم النهائي للعميل.",
 };
 
+function noteRequired(mode: Mode, reason: RequestReturnReason | ""): boolean {
+  if (!reason) return false;
+  if (reason === "other") return true;
+  return mode === "reopen" && reason === "customer_refusal";
+}
+
 export function RequestReturnReasonModal({ open, mode, onClose, onConfirm }: Props) {
   const [reason, setReason] = useState<RequestReturnReason | "">("");
   const [note, setNote] = useState("");
@@ -42,6 +51,12 @@ export function RequestReturnReasonModal({ open, mode, onClose, onConfirm }: Pro
   }, [open, mode]);
 
   if (!open) return null;
+
+  const options =
+    mode === "reopen" ? REQUEST_REOPEN_REASON_OPTIONS : REQUEST_FOLLOW_UP_REASON_OPTIONS;
+  const labels =
+    mode === "reopen" ? REQUEST_REOPEN_REASON_LABELS : REQUEST_FOLLOW_UP_REASON_LABELS;
+  const requiresNote = noteRequired(mode, reason);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4">
@@ -77,22 +92,26 @@ export function RequestReturnReasonModal({ open, mode, onClose, onConfirm }: Pro
             className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
           >
             <option value="">اختر السبب</option>
-            {REQUEST_RETURN_REASON_OPTIONS.map((key) => (
+            {options.map((key) => (
               <option key={key} value={key}>
-                {REQUEST_RETURN_REASON_LABELS[key]}
+                {labels[key as keyof typeof labels]}
               </option>
             ))}
           </select>
         </label>
 
         <label className="mt-3 block text-sm text-ink-900 dark:text-sand-50">
-          ملاحظة {reason === "other" ? "*" : "(اختياري)"}
+          ملاحظة {requiresNote ? "*" : "(اختياري)"}
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             placeholder={
-              reason === "other" ? "اكتب تفصيل السبب…" : "تفاصيل إضافية إن وُجدت"
+              requiresNote
+                ? reason === "customer_refusal"
+                  ? "اكتب ملاحظة / سبب رفض العميل…"
+                  : "اكتب تفصيل السبب…"
+                : "تفاصيل إضافية إن وُجدت"
             }
             className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
           />
@@ -104,7 +123,7 @@ export function RequestReturnReasonModal({ open, mode, onClose, onConfirm }: Pro
           <button
             type="button"
             onClick={() => {
-              const err = validateReturnReason(reason, note);
+              const err = validateReturnReason(reason, note, mode);
               if (err) {
                 setError(err);
                 return;

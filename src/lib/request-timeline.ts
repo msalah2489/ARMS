@@ -323,7 +323,10 @@ export function buildRequestTimeline(
   });
 
   for (const link of request.linkEvents ?? []) {
-    const reason = requestReturnReasonLabel(link.reason);
+    const reason = requestReturnReasonLabel(
+      link.reason,
+      link.kind === "reopened" ? "reopen" : "follow_up",
+    );
     const notePart = link.note?.trim() ? ` · ${link.note.trim()}` : "";
     const related =
       link.relatedRequestNumber || link.relatedRequestId
