@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArmsLogo } from "@/components/arms-logo";
 import { AuthGate } from "@/components/auth-gate";
+import { GlobalSearch } from "@/components/global-search";
 import { NotificationBell } from "@/components/notification-bell";
 import { NotificationLoginBanner } from "@/components/notification-login-banner";
 import { Sidebar } from "@/components/sidebar";
@@ -57,28 +58,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
-              <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-ink-900/10 bg-white/90 px-3 py-2.5 backdrop-blur dark:border-white/10 dark:bg-ink-900/90 md:hidden">
-                <button
-                  type="button"
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-ink-900/10 text-ink-900 dark:border-white/15 dark:text-sand-50"
-                  aria-expanded={menuOpen}
-                  aria-controls="mobile-nav-drawer"
-                  onClick={() => setMenuOpen(true)}
-                >
-                  <Menu className="h-5 w-5" aria-hidden />
-                  <span className="sr-only">{t("common.openMenu")}</span>
-                </button>
-                <ArmsLogo size="sm" />
-                <div className="flex items-center gap-2">
-                  <NotificationBell user={user} />
-                  <span className="max-w-[28vw] truncate text-end text-xs text-ink-700/70 dark:text-sand-100/70">
-                    {user.fullName}
-                  </span>
+              <header className="sticky top-0 z-20 border-b border-ink-900/10 bg-white/90 px-3 py-2.5 backdrop-blur dark:border-white/10 dark:bg-ink-900/90 md:hidden">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-ink-900/10 text-ink-900 dark:border-white/15 dark:text-sand-50"
+                    aria-expanded={menuOpen}
+                    aria-controls="mobile-nav-drawer"
+                    onClick={() => setMenuOpen(true)}
+                  >
+                    <Menu className="h-5 w-5" aria-hidden />
+                    <span className="sr-only">{t("common.openMenu")}</span>
+                  </button>
+                  <ArmsLogo size="sm" />
+                  <div className="flex items-center gap-2">
+                    <NotificationBell user={user} />
+                    <span className="max-w-[28vw] truncate text-end text-xs text-ink-700/70 dark:text-sand-100/70">
+                      {user.fullName}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <GlobalSearch user={user} />
                 </div>
               </header>
 
-              {/* Desktop top strip with notifications */}
-              <header className="sticky top-0 z-20 hidden items-center justify-end gap-3 border-b border-ink-900/10 bg-white/90 px-4 py-2 backdrop-blur dark:border-white/10 dark:bg-ink-900/90 md:flex md:px-8">
+              {/* Desktop top strip: global search + notifications */}
+              <header className="sticky top-0 z-20 hidden items-center justify-between gap-3 border-b border-ink-900/10 bg-white/90 px-4 py-2 backdrop-blur dark:border-white/10 dark:bg-ink-900/90 md:flex md:px-8">
+                <GlobalSearch user={user} />
                 <NotificationBell user={user} />
               </header>
 

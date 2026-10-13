@@ -15,6 +15,11 @@ const messagesAr = {
   "common.expand": "توسيع",
   "common.collapse": "طي",
 
+  "search.label": "بحث عام",
+  "search.placeholder": "رقم طلب، كود جهاز/QR، تسلسلي، جوال، اسم عميل، فاتورة…",
+  "search.empty": "لا توجد نتائج مطابقة.",
+  "search.filterHint": "تصفية حسب البحث: {q}",
+
   "sync.invalidKey": "مفتاح Supabase غير صالح (يجب أن يكون anon JWT يبدأ بـ eyJ وطوله كافٍ). حدّث السر في GitHub Actions وملف .env.local ثم أعد البناء. مفاتيح sb_publishable_ القصيرة مرفوضة.",
   "sync.missingKey": "مفتاح Supabase (anon) غير مضبوط. انسخه من Project Settings → API إلى NEXT_PUBLIC_SUPABASE_ANON_KEY.",
   "sync.missingUrl": "رابط مشروع Supabase غير مضبوط. عيّن NEXT_PUBLIC_SUPABASE_URL.",
@@ -453,6 +458,11 @@ const messagesEn: Record<MessageKey, string> = {
   "common.back": "Back",
   "common.expand": "Expand",
   "common.collapse": "Collapse",
+
+  "search.label": "Global search",
+  "search.placeholder": "Request no., device/QR, serial, mobile, customer, invoice…",
+  "search.empty": "No matching results.",
+  "search.filterHint": "Filtered by search: {q}",
 
   "sync.invalidKey": "Supabase key is invalid (need the anon JWT starting with eyJ). Update the GitHub Actions secret and .env.local, then rebuild. Short sb_publishable_ keys are rejected.",
   "sync.missingKey": "Supabase anon key is missing. Copy it from Project Settings → API into NEXT_PUBLIC_SUPABASE_ANON_KEY.",

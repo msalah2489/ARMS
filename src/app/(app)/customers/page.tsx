@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { branchScopeId } from "@/lib/auth";
 import { getCustomers, peekCustomers } from "@/lib/data";
+import { normalizeSearchToken } from "@/lib/global-search";
 import { readSession } from "@/lib/session";
 import type { Customer } from "@/types/domain";
 
-export default function CustomersPage() {
+function CustomersPageContent() {
   const { t, locale } = usePreferences();
+  const searchParams = useSearchParams();
+  const filterQ = (searchParams?.get("q") || "").trim();
   const [customers, setCustomers] = useState<Customer[]>(() =>
     typeof window !== "undefined" ? peekCustomers(branchScopeId(readSession()), locale) : [],
   );
@@ -40,9 +44,30 @@ export default function CustomersPage() {
     };
   }, [locale]);
 
+  const visible = useMemo(() => {
+    if (!filterQ) return customers;
+    const needle = normalizeSearchToken(filterQ);
+    const needleLower = filterQ.toLowerCase();
+    return customers.filter((customer) => {
+      const name = (customer.name || "").toLowerCase();
+      const contact = (customer.contactName || "").toLowerCase();
+      const phone = normalizeSearchToken(customer.phone || "");
+      return (
+        name.includes(needleLower) ||
+        contact.includes(needleLower) ||
+        (needle.length > 0 && phone.includes(needle))
+      );
+    });
+  }, [customers, filterQ]);
+
   return (
     <div>
       <PageHeader title={t("customers.title")} description={t("customers.description")} />
+      {filterQ ? (
+        <p className="mb-3 text-sm text-ink-700/70 dark:text-sand-100/70">
+          {t("search.filterHint").replace("{q}", filterQ)}
+        </p>
+      ) : null}
       {loading ? (
         <p className="text-sm text-ink-700/70 dark:text-sand-100/70">{t("customers.loading")}</p>
       ) : (
@@ -55,7 +80,7 @@ export default function CustomersPage() {
             t("customers.col.devices"),
             t("customers.col.address"),
           ]}
-          rows={customers.map((customer) => [
+          rows={visible.map((customer) => [
             <span key="n" className="font-medium">
               {customer.name}
             </span>,
@@ -68,5 +93,13 @@ export default function CustomersPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-700/70">…</p>}>
+      <CustomersPageContent />
+    </Suspense>
   );
 }
