@@ -24,7 +24,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "ARMS", body: "", url: "" };
+  let data = { title: "ARMS", body: "", url: "", notificationId: null };
   try {
     if (event.data) {
       const parsed = event.data.json();
@@ -32,6 +32,7 @@ self.addEventListener("push", (event) => {
         title: typeof parsed.title === "string" && parsed.title.trim() ? parsed.title : "ARMS",
         body: typeof parsed.body === "string" ? parsed.body : "",
         url: typeof parsed.url === "string" ? parsed.url : "",
+        notificationId: parsed.notificationId ?? null,
       };
     }
   } catch {
@@ -50,13 +51,14 @@ self.addEventListener("push", (event) => {
       : `${self.location.origin}${base}${data.url.startsWith("/") ? data.url : `/${data.url}`}`
     : appHomeUrl();
 
+  // userVisibleOnly subscriptions require a visible notification on every push.
   event.waitUntil(
     self.registration.showNotification(data.title, {
-      body: data.body,
+      body: data.body || "لديك تنبيه جديد في ARMS",
       dir: "rtl",
       lang: "ar",
-      data: { url: targetUrl },
-      tag: data.title.slice(0, 64) || "arms-push",
+      data: { url: targetUrl, notificationId: data.notificationId },
+      tag: String(data.notificationId || data.title).slice(0, 64) || "arms-push",
       renotify: true,
     }),
   );

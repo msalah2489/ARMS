@@ -16,11 +16,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import webpush from "npm:web-push@3.6.7";
 
+/** Broad allow-list so browser preflight from GitHub Pages succeeds. */
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, prefer",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 
 type AudienceType = "all" | "role" | "user";
@@ -64,7 +66,7 @@ function getAdminClient() {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
   if (req.method !== "POST") {
     return jsonResponse(405, { ok: false, error: "Method not allowed" });
@@ -156,6 +158,7 @@ Deno.serve(async (req) => {
 
     let sent = 0;
     const deadIds: string[] = [];
+    const failures: Array<{ id: string; status: number; message: string }> = [];
 
     await Promise.all(
       rows.map(async (row) => {
@@ -166,6 +169,10 @@ Deno.serve(async (req) => {
               keys: { p256dh: row.p256dh, auth: row.auth },
             },
             message,
+            {
+              TTL: 60 * 60 * 12,
+              urgency: "normal",
+            },
           );
           sent += 1;
         } catch (err: unknown) {
@@ -173,11 +180,13 @@ Deno.serve(async (req) => {
             err && typeof err === "object" && "statusCode" in err
               ? Number((err as { statusCode?: number }).statusCode)
               : 0;
+          const errMessage = err instanceof Error ? err.message : String(err);
           // Gone / expired subscription — clean up.
           if (statusCode === 404 || statusCode === 410) {
             deadIds.push(row.id);
           } else {
-            console.error("[send-web-push] fail", row.id, err);
+            failures.push({ id: row.id, status: statusCode, message: errMessage });
+            console.error("[send-web-push] fail", row.id, statusCode, errMessage);
           }
         }
       }),
@@ -192,6 +201,7 @@ Deno.serve(async (req) => {
       sent,
       total: rows.length,
       removed: deadIds.length,
+      failures: failures.slice(0, 5),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

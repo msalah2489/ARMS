@@ -1,0 +1,13 @@
+{
+  "name": "ARMS — نظام إدارة الصيانة",
+  "short_name": "ARMS",
+  "description": "منصة إدارة طلبات وعمليات صيانة الأجهزة",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "ar",
+  "dir": "rtl",
+  "background_color": "#1f3329",
+  "theme_color": "#1f3329"
+}

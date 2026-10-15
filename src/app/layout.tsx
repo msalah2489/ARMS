@@ -16,6 +16,15 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "ARMS — نظام إدارة الصيانة",
   description: "منصة إدارة طلبات وعمليات صيانة الأجهزة",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ARMS",
+    statusBarStyle: "default",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 /** Boot flash: load theme/locale for the signed-in account (per-user map). */

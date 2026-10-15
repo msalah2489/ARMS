@@ -5,10 +5,15 @@
 import { isDemoMode } from "@/lib/auth";
 import { getAppBasePath } from "@/lib/device-qr";
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  getSupabaseAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+} from "@/lib/supabase/config";
 import type { ArmsNotification, Profile } from "@/types/domain";
 
 const PROMPT_DISMISSED_KEY = "arms_web_push_prompt_dismissed_v1";
+const VAPID_FP_KEY = "arms_vapid_public_fp_v1";
 const SW_PATH = "/sw.js";
 
 export type WebPushSupportState =
@@ -140,6 +145,31 @@ function swScope(): string {
   return `${base}/`;
 }
 
+/** In-app deep link path for the SW (respects GitHub Pages basePath `/ARMS`). */
+function notificationOpenPath(): string {
+  return "/";
+}
+
+function vapidFingerprint(key: string): string {
+  return key.slice(0, 24);
+}
+
+function readStoredVapidFingerprint(): string | null {
+  try {
+    return window.localStorage.getItem(VAPID_FP_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeVapidFingerprint(key: string) {
+  try {
+    window.localStorage.setItem(VAPID_FP_KEY, vapidFingerprint(key));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function registerArmsServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
@@ -175,13 +205,45 @@ async function persistSubscription(userId: string, subscription: PushSubscriptio
     onConflict: "id",
   });
   if (error) {
-    // Soft-fail if migration not applied yet.
     if (/does not exist|Could not find the table|PGRST/i.test(error.message ?? "")) {
-      console.warn("[arms] app_push_subscriptions missing — run migration 026");
-      return;
+      throw new Error(
+        "جدول app_push_subscriptions غير موجود — شغّل ملف SQL رقم 026 في Supabase.",
+      );
     }
-    throw error;
+    throw new Error(error.message || "تعذّر حفظ اشتراك الإشعارات.");
   }
+}
+
+async function getOrCreatePushSubscription(
+  registration: ServiceWorkerRegistration,
+): Promise<PushSubscription> {
+  const vapid = getVapidPublicKey();
+  const applicationServerKey = urlBase64ToUint8Array(vapid) as BufferSource;
+  const storedFp = readStoredVapidFingerprint();
+  const currentFp = vapidFingerprint(vapid);
+  let existing = await registration.pushManager.getSubscription();
+
+  // Public key rotated in a new deploy — drop old PushSubscription so keys match Edge secrets.
+  if (existing && storedFp && storedFp !== currentFp) {
+    try {
+      await existing.unsubscribe();
+    } catch {
+      /* ignore */
+    }
+    existing = null;
+  }
+
+  if (existing) {
+    storeVapidFingerprint(vapid);
+    return existing;
+  }
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
+  });
+  storeVapidFingerprint(vapid);
+  return subscription;
 }
 
 /**
@@ -212,13 +274,7 @@ export async function enableWebPushForUser(
 
   try {
     await navigator.serviceWorker.ready;
-    const existing = await registration.pushManager.getSubscription();
-    const subscription =
-      existing ??
-      (await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(getVapidPublicKey()) as BufferSource,
-      }));
+    const subscription = await getOrCreatePushSubscription(registration);
     await persistSubscription(user.id, subscription);
     dismissWebPushPrompt();
     return { ok: true };
@@ -245,25 +301,63 @@ export async function ensureWebPushSubscription(user: Profile): Promise<void> {
 
 /**
  * Ask Edge Function to deliver Web Push for an in-app notification.
+ * Uses a minimal fetch (anon JWT + apikey) to avoid CORS preflight header mismatches.
  * Best-effort — never blocks the in-app notification path.
  */
 export async function requestWebPushDelivery(notification: ArmsNotification): Promise<void> {
   if (!isWebPushConfigured() || typeof window === "undefined") return;
+
+  const baseUrl = getSupabaseUrl().replace(/\/$/, "");
+  const anonKey = getSupabaseAnonKey();
+  if (!baseUrl || !anonKey) return;
+
+  const body = {
+    notificationId: notification.id,
+    title: notification.title,
+    body: notification.body,
+    audienceType: notification.audienceType,
+    audienceRole: notification.audienceRole ?? null,
+    audienceUserId: notification.audienceUserId ?? null,
+    url: notificationOpenPath(),
+  };
+
   try {
-    const supabase = createClient();
-    const { error } = await supabase.functions.invoke("send-web-push", {
-      body: {
-        notificationId: notification.id,
-        title: notification.title,
-        body: notification.body,
-        audienceType: notification.audienceType,
-        audienceRole: notification.audienceRole ?? null,
-        audienceUserId: notification.audienceUserId ?? null,
-        url: "/",
+    const response = await fetch(`${baseUrl}/functions/v1/send-web-push`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
       },
+      body: JSON.stringify(body),
     });
-    if (error) {
-      console.warn("[arms] send-web-push invoke:", error.message);
+
+    let payload: { ok?: boolean; error?: string; sent?: number; skipped?: string } | null = null;
+    try {
+      payload = (await response.json()) as typeof payload;
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      console.warn(
+        "[arms] send-web-push HTTP",
+        response.status,
+        payload?.error ?? response.statusText,
+      );
+      return;
+    }
+
+    if (payload && payload.ok === false) {
+      console.warn("[arms] send-web-push:", payload.error ?? "unknown error");
+      return;
+    }
+
+    if (payload && typeof payload.sent === "number" && payload.sent === 0) {
+      console.info(
+        "[arms] send-web-push: no devices reached",
+        payload.skipped ?? "check app_push_subscriptions",
+      );
     }
   } catch (error) {
     console.warn("[arms] requestWebPushDelivery", error);
