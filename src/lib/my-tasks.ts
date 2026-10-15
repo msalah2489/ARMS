@@ -71,7 +71,14 @@ function mapOverdueAsTasks(alerts: DelayAlertItem[]): MyTaskItem[] {
     id: `overdue:${a.id}`,
     group: "overdue",
     title: a.title,
-    subtitle: `${a.statusLabel} · متأخر ${a.daysOverdue} يوم · ${a.subtitle}`,
+    subtitle: [
+      a.statusLabel,
+      a.stuckWith ? `متوقف عند: ${a.stuckWith}` : "",
+      `متأخر ${a.daysOverdue} يوم`,
+      a.subtitle,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     href: a.href,
     badge: "متأخر",
     urgent: a.priority === "urgent",

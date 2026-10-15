@@ -162,6 +162,11 @@ export function DelayAlertsCard({
                           {alert.statusLabel} · منذ {formatDate(alert.stageStartedAt)} ·{" "}
                           {alert.subtitle}
                         </p>
+                        {alert.stuckWith ? (
+                          <p className="mt-0.5 font-medium text-rose-800 dark:text-rose-200">
+                            متوقف عند: {alert.stuckWith}
+                          </p>
+                        ) : null}
                       </div>
                     </Link>
                   </li>

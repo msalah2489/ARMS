@@ -17,7 +17,15 @@ import { listPickupReceipts } from "@/lib/pickup-receipt-store";
 import { listShippingBatches } from "@/lib/shipping-store";
 import { COURIER_PENDING_SLA_DAYS, thresholdDaysForStage } from "@/lib/sla-thresholds";
 import { listTechnicianWork } from "@/lib/technician-store";
-import type { AppRole, DeviceLifecycleStatus, Profile } from "@/types/domain";
+import type {
+  AppRole,
+  DeviceLifecycleStatus,
+  DraftRequestDevice,
+  PickupReceipt,
+  Profile,
+  ShippingBatch,
+  ShipmentDirection,
+} from "@/types/domain";
 import {
   isBranchRole,
   isMaintenanceManagerRole,
@@ -27,12 +35,31 @@ import {
   normalizeRole,
 } from "@/lib/auth";
 
+/** Role-queue labels when no named assignee exists (never invent fake people). */
+const STUCK_BRANCH_FALLBACK = "الفرع";
+const STUCK_TECH_QUEUE = "طابور الفنيين";
+const STUCK_TECH_UNNAMED = "فني (غير معيّن)";
+const STUCK_MANAGER_QUEUE = "مدير/مشرف الصيانة";
+const STUCK_COURIER_QUEUE = "مندوب الاستلام";
+const STUCK_CARRIER_FALLBACK = "شركة الشحن";
+const STUCK_UNKNOWN = "غير محدد";
+
+const OPEN_PICKUP_FOR_STUCK = new Set([
+  "draft",
+  "pending_courier",
+  "partially_rejected",
+  "approved",
+  "pending_supervisor",
+]);
+
 export type DelayAlertItem = {
   id: string;
   kind: "device" | "receipt";
   title: string;
   subtitle: string;
   statusLabel: string;
+  /** Who the workflow is currently waiting on (Arabic label / known name). */
+  stuckWith: string;
   stageStartedAt: string;
   daysInStage: number;
   thresholdDays: number;
@@ -45,6 +72,189 @@ export type DelayAlertItem = {
   lifecycleStatus?: DeviceLifecycleStatus;
 };
 
+function branchStuckLabel(opsBranchName?: string | null): string {
+  const name = opsBranchName?.trim();
+  return name || STUCK_BRANCH_FALLBACK;
+}
+
+function technicianStuckLabel(
+  assignedTechnicianName?: string | null,
+  assignedTechnicianId?: string | null,
+  { queueWhenEmpty = false }: { queueWhenEmpty?: boolean } = {},
+): string {
+  const name = assignedTechnicianName?.trim();
+  if (name) return name;
+  if (String(assignedTechnicianId ?? "").trim()) return STUCK_TECH_UNNAMED;
+  return queueWhenEmpty ? STUCK_TECH_QUEUE : STUCK_TECH_UNNAMED;
+}
+
+function findOpenPickupForDevice(
+  receipts: PickupReceipt[],
+  deviceLocalId: string,
+  direction?: PickupReceipt["direction"],
+): PickupReceipt | undefined {
+  return receipts.find((receipt) => {
+    if (direction && receipt.direction !== direction) return false;
+    if (!OPEN_PICKUP_FOR_STUCK.has(receipt.status)) return false;
+    return receipt.lines.some(
+      (line) => line.deviceLocalId === deviceLocalId && line.status !== "rejected",
+    );
+  });
+}
+
+function findActiveTransitBatch(
+  batches: ShippingBatch[],
+  device: DraftRequestDevice,
+  direction: ShipmentDirection,
+): ShippingBatch | undefined {
+  return batches
+    .filter(
+      (batch) =>
+        batch.direction === direction &&
+        ["ready", "draft", "handed_to_carrier"].includes(batch.status) &&
+        batch.items.some(
+          (item) =>
+            item.status === "active" &&
+            (item.requestDeviceId === device.localId ||
+              item.deviceCode === device.deviceCode),
+        ),
+    )
+    .sort((a, b) =>
+      (b.handedToCarrierAt ?? b.createdAt).localeCompare(
+        a.handedToCarrierAt ?? a.createdAt,
+      ),
+    )[0];
+}
+
+function transitStuckLabel(input: {
+  courierName?: string | null;
+  carrierName?: string | null;
+  fallback: string;
+}): string {
+  const courier = input.courierName?.trim();
+  if (courier) return courier;
+  const carrier = input.carrierName?.trim();
+  if (carrier) return carrier;
+  return input.fallback;
+}
+
+/**
+ * Derive «متوقف عند» from lifecycle stage + known assignment fields.
+ * Uses real names when present; otherwise role-queue labels — never invents people.
+ */
+export function resolveDelayStuckWith(input: {
+  kind: "device" | "receipt";
+  lifecycleStatus?: DeviceLifecycleStatus | null;
+  opsBranchName?: string | null;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string | null;
+  courierName?: string | null;
+  carrierName?: string | null;
+}): string {
+  if (input.kind === "receipt") {
+    return input.courierName?.trim() || STUCK_COURIER_QUEUE;
+  }
+
+  const status = normalizeLifecycleStatus(input.lifecycleStatus);
+  switch (status) {
+    case "received_at_branch":
+    case "excluded_from_shipment":
+    case "awaiting_customer":
+      return branchStuckLabel(input.opsBranchName);
+
+    case "in_maintenance_at_branch":
+      return technicianStuckLabel(
+        input.assignedTechnicianName,
+        input.assignedTechnicianId,
+        { queueWhenEmpty: false },
+      );
+
+    case "awaiting_maintenance":
+      return technicianStuckLabel(
+        input.assignedTechnicianName,
+        input.assignedTechnicianId,
+        { queueWhenEmpty: true },
+      );
+
+    case "in_maintenance":
+      return technicianStuckLabel(
+        input.assignedTechnicianName,
+        input.assignedTechnicianId,
+        { queueWhenEmpty: false },
+      );
+
+    case "awaiting_manager_decision":
+    case "maintenance_failed":
+    case "ready_to_return":
+      return STUCK_MANAGER_QUEUE;
+
+    case "in_transit_to_service":
+      return transitStuckLabel({
+        courierName: input.courierName,
+        carrierName: input.carrierName,
+        fallback: STUCK_COURIER_QUEUE,
+      });
+
+    case "in_return_transit":
+      return transitStuckLabel({
+        courierName: input.courierName,
+        carrierName: input.carrierName,
+        fallback: branchStuckLabel(input.opsBranchName),
+      });
+
+    default:
+      return (
+        input.assignedTechnicianName?.trim() ||
+        branchStuckLabel(input.opsBranchName) ||
+        STUCK_UNKNOWN
+      );
+  }
+}
+
+function stuckWithForDeviceItem(
+  item: TechnicianQueueItem,
+  batches: ShippingBatch[],
+  receipts: PickupReceipt[],
+): string {
+  const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
+
+  if (status === "in_transit_to_service") {
+    const pickup = findOpenPickupForDevice(
+      receipts,
+      item.device.localId,
+      "branch_to_center",
+    );
+    const batch = findActiveTransitBatch(batches, item.device, "to_service");
+    return transitStuckLabel({
+      courierName: pickup?.assignedCourierName,
+      carrierName: batch?.carrier?.trim() || (batch ? STUCK_CARRIER_FALLBACK : null),
+      fallback: STUCK_COURIER_QUEUE,
+    });
+  }
+
+  if (status === "in_return_transit") {
+    const pickup = findOpenPickupForDevice(
+      receipts,
+      item.device.localId,
+      "center_to_branch",
+    );
+    const batch = findActiveTransitBatch(batches, item.device, "return");
+    return transitStuckLabel({
+      courierName: pickup?.assignedCourierName,
+      carrierName: batch?.carrier?.trim() || (batch ? STUCK_CARRIER_FALLBACK : null),
+      fallback: branchStuckLabel(item.request.opsBranchName),
+    });
+  }
+
+  return resolveDelayStuckWith({
+    kind: "device",
+    lifecycleStatus: status,
+    opsBranchName: item.request.opsBranchName,
+    assignedTechnicianId: item.device.assignedTechnicianId,
+    assignedTechnicianName: item.device.assignedTechnicianName,
+  });
+}
+
 function deviceDetailHref(deviceLocalId: string) {
   return `/devices/detail/?id=${encodeURIComponent(deviceLocalId)}`;
 }
@@ -55,7 +265,8 @@ function requestDetailHref(requestId: string) {
 
 function evaluateDevice(
   item: TechnicianQueueItem,
-  batches: ReturnType<typeof listShippingBatches>,
+  batches: ShippingBatch[],
+  receipts: PickupReceipt[],
   workAll: ReturnType<typeof listTechnicianWork>,
 ): DelayAlertItem | null {
   const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
@@ -81,6 +292,7 @@ function evaluateDevice(
     title: item.device.deviceCode,
     subtitle: `${item.request.requestNumber} · ${item.request.contactName} · ${item.request.opsBranchName}`,
     statusLabel: deviceStatusLabel(status, "technician"),
+    stuckWith: stuckWithForDeviceItem(item, batches, receipts),
     stageStartedAt,
     daysInStage,
     thresholdDays: threshold,
@@ -100,10 +312,11 @@ export function listAllDeviceDelayAlerts(opsBranchId?: string | null): DelayAler
     opsBranchId ? row.request.opsBranchId === opsBranchId : true,
   );
   const batches = listShippingBatches();
+  const receipts = listPickupReceipts();
   const workAll = listTechnicianWork();
   const alerts: DelayAlertItem[] = [];
   for (const item of items) {
-    const alert = evaluateDevice(item, batches, workAll);
+    const alert = evaluateDevice(item, batches, receipts, workAll);
     if (alert) alerts.push(alert);
   }
   return alerts.sort((a, b) => {
@@ -130,6 +343,10 @@ function listCourierReceiptDelayAlerts(courierId?: string | null): DelayAlertIte
       title: receipt.receiptNumber,
       subtitle: `${receipt.opsBranchName} · ${receipt.lines.length} جهاز`,
       statusLabel: "بانتظار مراجعة المندوب",
+      stuckWith: resolveDelayStuckWith({
+        kind: "receipt",
+        courierName: receipt.assignedCourierName,
+      }),
       stageStartedAt: started,
       daysInStage,
       thresholdDays: COURIER_PENDING_SLA_DAYS,

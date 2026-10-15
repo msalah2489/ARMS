@@ -914,6 +914,8 @@ export type DelayReportDetailRow = {
   customer: string;
   branch: string;
   technician: string;
+  /** Who the workflow is waiting on (branch / tech / manager queue / courier…). */
+  stuckWith: string;
   model: string;
   fault: string;
   statusLabel: string;
@@ -1103,6 +1105,7 @@ export function buildDelayReport(periodDays: DelayPeriodDays = 30): DelayReport 
       customer: request?.contactName ?? "",
       branch: request?.opsBranchName?.trim() || "—",
       technician,
+      stuckWith: alert.stuckWith,
       model,
       fault,
       statusLabel: alert.statusLabel,

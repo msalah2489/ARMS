@@ -361,6 +361,7 @@ export default function ReportsPage() {
         t("reports.col.requestNumber"),
         t("reports.col.customer"),
         t("reports.col.branch"),
+        t("reports.col.stuckWith"),
         t("reports.col.technician"),
         t("reports.col.model"),
         t("reports.col.fault"),
@@ -384,6 +385,9 @@ export default function ReportsPage() {
           row.requestNumber || "—",
           row.customer || "—",
           row.branch,
+          <span key="stuck" className="font-medium text-rose-800 dark:text-rose-200">
+            {row.stuckWith}
+          </span>,
           row.technician,
           row.model,
           row.fault,
@@ -398,6 +402,7 @@ export default function ReportsPage() {
           row.requestNumber,
           row.customer,
           row.branch,
+          row.stuckWith,
           row.technician,
           row.model,
           row.fault,
