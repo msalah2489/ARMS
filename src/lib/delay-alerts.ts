@@ -10,12 +10,17 @@ import {
 import {
   daysBetween,
   getDeviceStageStartedAt,
+  hoursBetween,
   latestWorkForDevice,
   TERMINAL_LIFECYCLE_STATUSES,
 } from "@/lib/device-stage";
 import { listPickupReceipts } from "@/lib/pickup-receipt-store";
 import { listShippingBatches } from "@/lib/shipping-store";
-import { COURIER_PENDING_SLA_DAYS, thresholdDaysForStage } from "@/lib/sla-thresholds";
+import {
+  COURIER_PENDING_SLA_HOURS,
+  thresholdDaysForStage,
+  thresholdHoursForStage,
+} from "@/lib/sla-thresholds";
 import { listTechnicianWork } from "@/lib/technician-store";
 import type {
   AppRole,
@@ -158,8 +163,11 @@ export function resolveDelayStuckWith(input: {
   const status = normalizeLifecycleStatus(input.lifecycleStatus);
   switch (status) {
     case "received_at_branch":
+    case "ready_to_send":
     case "excluded_from_shipment":
+    case "excluded":
     case "awaiting_customer":
+    case "awaiting_branch_handover":
       return branchStuckLabel(input.opsBranchName);
 
     case "in_maintenance_at_branch":
@@ -170,6 +178,8 @@ export function resolveDelayStuckWith(input: {
       );
 
     case "awaiting_maintenance":
+    case "at_service_center":
+    case "received_at_warehouse":
       return technicianStuckLabel(
         input.assignedTechnicianName,
         input.assignedTechnicianId,
@@ -177,6 +187,7 @@ export function resolveDelayStuckWith(input: {
       );
 
     case "in_maintenance":
+    case "under_maintenance":
       return technicianStuckLabel(
         input.assignedTechnicianName,
         input.assignedTechnicianId,
@@ -272,8 +283,8 @@ function evaluateDevice(
   const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
   if (TERMINAL_LIFECYCLE_STATUSES.has(status)) return null;
 
-  const threshold = thresholdDaysForStage(status, item.request.priority);
-  if (threshold == null) return null;
+  const thresholdHours = thresholdHoursForStage(status, item.request.priority);
+  if (thresholdHours == null) return null;
 
   const work = latestWorkForDevice(workAll, item.request.id, item.device.localId);
   const stageStartedAt = getDeviceStageStartedAt({
@@ -282,9 +293,13 @@ function evaluateDevice(
     batches,
     work,
   });
-  const daysInStage = daysBetween(stageStartedAt);
-  if (daysInStage < threshold) return null;
+  const hoursInStage = hoursBetween(stageStartedAt);
+  // Overdue when ≥ threshold hours since last stage entry (default 24h; urgent shorter).
+  if (hoursInStage < thresholdHours) return null;
 
+  const thresholdDays = thresholdDaysForStage(status, item.request.priority) ?? thresholdHours / 24;
+  const daysInStage = daysBetween(stageStartedAt);
+  const daysOverdue = Math.max(0, Math.floor((hoursInStage - thresholdHours) / 24));
   const priority = item.request.priority === "urgent" ? "urgent" : "normal";
   return {
     id: `device:${item.device.localId}`,
@@ -295,8 +310,8 @@ function evaluateDevice(
     stuckWith: stuckWithForDeviceItem(item, batches, receipts),
     stageStartedAt,
     daysInStage,
-    thresholdDays: threshold,
-    daysOverdue: daysInStage - threshold,
+    thresholdDays,
+    daysOverdue,
     priority,
     href: deviceDetailHref(item.device.localId),
     opsBranchId: item.request.opsBranchId,
@@ -333,10 +348,12 @@ function listCourierReceiptDelayAlerts(courierId?: string | null): DelayAlertIte
   );
 
   const alerts: DelayAlertItem[] = [];
+  const thresholdDays = COURIER_PENDING_SLA_HOURS / 24;
   for (const receipt of receipts) {
     const started = receipt.submittedAt || receipt.createdAt;
+    const hoursInStage = hoursBetween(started);
+    if (hoursInStage < COURIER_PENDING_SLA_HOURS) continue;
     const daysInStage = daysBetween(started);
-    if (daysInStage < COURIER_PENDING_SLA_DAYS) continue;
     alerts.push({
       id: `receipt:${receipt.id}`,
       kind: "receipt",
@@ -349,8 +366,11 @@ function listCourierReceiptDelayAlerts(courierId?: string | null): DelayAlertIte
       }),
       stageStartedAt: started,
       daysInStage,
-      thresholdDays: COURIER_PENDING_SLA_DAYS,
-      daysOverdue: daysInStage - COURIER_PENDING_SLA_DAYS,
+      thresholdDays,
+      daysOverdue: Math.max(
+        0,
+        Math.floor((hoursInStage - COURIER_PENDING_SLA_HOURS) / 24),
+      ),
       priority: "normal",
       href: "/courier/receipts",
       opsBranchId: receipt.opsBranchId,

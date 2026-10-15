@@ -25,7 +25,7 @@ export function DelayAlertsCard({
   alerts,
   total,
   title = "تنبيهات التأخير",
-  hint = "عناصر تجاوزت المهلة الزمنية للمرحلة الحالية",
+  hint = "عناصر تجاوزت 24 ساعة في المرحلة الحالية دون انتقال (أقصر للعاجل)",
   viewAllHref = "/my-tasks/",
   viewAllLabel = "مهامي اليوم",
   openListLabel = "عرض التأخيرات",
@@ -122,8 +122,8 @@ export function DelayAlertsCard({
                 </h2>
                 <p className="mt-1 text-sm text-ink-700/75 dark:text-sand-100/70">
                   {count === 0
-                    ? "لا توجد عناصر متأخرة عن المهلة الافتراضية."
-                    : `${count} عنصر تجاوز المهلة الزمنية للمرحلة الحالية`}
+                    ? "لا توجد عناصر متأخرة عن مهلة 24 ساعة."
+                    : `${count} عنصر تجاوز 24 ساعة في المرحلة الحالية دون انتقال`}
                 </p>
               </div>
               <button

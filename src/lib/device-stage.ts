@@ -165,9 +165,15 @@ export function getDeviceStageStartedAt(input: {
   }
 }
 
-export function daysBetween(fromIso: string, toMs: number = Date.now()): number {
+/** Whole hours elapsed since `fromIso` (floor). Used for the 24h stuck-with rule. */
+export function hoursBetween(fromIso: string, toMs: number = Date.now()): number {
   const from = Date.parse(fromIso);
   if (!Number.isFinite(from)) return 0;
   const ms = Math.max(0, toMs - from);
-  return Math.floor(ms / (24 * 60 * 60 * 1000));
+  return Math.floor(ms / (60 * 60 * 1000));
+}
+
+/** Whole calendar days elapsed since `fromIso` (floor of 24h blocks). */
+export function daysBetween(fromIso: string, toMs: number = Date.now()): number {
+  return Math.floor(hoursBetween(fromIso, toMs) / 24);
 }
