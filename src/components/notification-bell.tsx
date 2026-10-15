@@ -11,16 +11,27 @@ import {
   subscribeNotificationsChanged,
 } from "@/lib/notifications-store";
 import { formatDate } from "@/lib/utils";
+import {
+  enableWebPushForUser,
+  getWebPushSupportState,
+} from "@/lib/web-push-client";
 import type { Profile } from "@/types/domain";
 
 export function NotificationBell({ user }: { user: Profile }) {
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNote, setPushNote] = useState<string | null>(null);
+  const [pushState, setPushState] = useState<ReturnType<typeof getWebPushSupportState> | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return subscribeNotificationsChanged(() => setTick((n) => n + 1));
   }, []);
+
+  useEffect(() => {
+    setPushState(getWebPushSupportState());
+  }, [tick, user.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +52,17 @@ export function NotificationBell({ user }: { user: Profile }) {
   void tick;
   const items = listNotificationsForUser(user);
   const unread = countUnreadNotifications(user);
+  const canOfferPush = pushState === "default";
+
+  async function onEnablePush() {
+    setPushBusy(true);
+    setPushNote(null);
+    const result = await enableWebPushForUser(user);
+    setPushBusy(false);
+    setPushNote(result.ok ? "تم تفعيل إشعارات هذا الجهاز." : result.error);
+    setPushState(getWebPushSupportState());
+    setTick((n) => n + 1);
+  }
 
   return (
     <div ref={rootRef} className="relative">
@@ -111,9 +133,24 @@ export function NotificationBell({ user }: { user: Profile }) {
               })
             )}
           </ul>
-          <p className="border-t border-ink-900/10 px-3 py-2 text-[11px] text-ink-700/55 dark:border-white/10 dark:text-sand-100/55">
-            الرسائل تبقى في السجل ولا تُحذف.
-          </p>
+          <div className="border-t border-ink-900/10 px-3 py-2 dark:border-white/10">
+            {canOfferPush ? (
+              <button
+                type="button"
+                disabled={pushBusy}
+                className="mb-1.5 w-full rounded-lg bg-aroma-50 px-2 py-2 text-xs font-medium text-aroma-900 hover:bg-aroma-100 disabled:opacity-60 dark:bg-aroma-900/30 dark:text-aroma-100"
+                onClick={() => void onEnablePush()}
+              >
+                {pushBusy ? "جاري التفعيل…" : "تفعيل إشعارات هذا الجهاز"}
+              </button>
+            ) : null}
+            {pushNote ? (
+              <p className="mb-1 text-[11px] text-ink-700/80 dark:text-sand-100/70">{pushNote}</p>
+            ) : null}
+            <p className="text-[11px] text-ink-700/55 dark:text-sand-100/55">
+              الرسائل تبقى في السجل ولا تُحذف.
+            </p>
+          </div>
         </div>
       ) : null}
     </div>

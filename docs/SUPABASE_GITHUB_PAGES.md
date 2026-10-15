@@ -93,6 +93,10 @@ After setting secrets, re-run **Deploy GitHub Pages** (push to `main` or **Actio
 
 Do **not** look at classic CRM `service_requests` / `profiles` — after **`015_drop_unused_tables.sql`** those tables should be gone from Table Editor.
 
+## Web Push (إشعارات المتصفح)
+
+See **[WEB_PUSH_SETUP.md](./WEB_PUSH_SETUP.md)** — SQL `026_web_push_subscriptions_RUN_ME.sql`, VAPID secrets on the Edge Function, public key in GitHub Actions as `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, then enable once after login.
+
 ## Verify
 
 1. Run **`013_normalized_app_tables.sql`** once in SQL Editor

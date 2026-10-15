@@ -1,0 +1,5 @@
+# Minimal Supabase CLI config for deploying Edge Functions from this repo.
+# Project linking is done via `supabase link` (not committed).
+
+[functions.send-web-push]
+verify_jwt = false

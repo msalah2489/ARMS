@@ -8,6 +8,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { GlobalSearch } from "@/components/global-search";
 import { NotificationBell } from "@/components/notification-bell";
 import { NotificationLoginBanner } from "@/components/notification-login-banner";
+import { WebPushPrompt } from "@/components/web-push-prompt";
 import { Sidebar } from "@/components/sidebar";
 import { SyncStatusBanner } from "@/components/sync-status-banner";
 import { usePreferences } from "@/components/preferences-provider";
@@ -119,6 +120,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
               <SyncStatusBanner />
               <NotificationLoginBanner user={user} />
+              <WebPushPrompt user={user} />
               <main className="flex-1 px-3 py-4 text-ink-900 dark:text-sand-50 sm:px-4 sm:py-6 md:px-8">
                 {children}
               </main>

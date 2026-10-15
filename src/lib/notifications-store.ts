@@ -4,6 +4,7 @@ import {
   pushAppNotifications,
 } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { requestWebPushDelivery } from "@/lib/web-push-client";
 import type {
   AppRole,
   ArmsNotification,
@@ -178,6 +179,8 @@ function persistNewNotification(notification: ArmsNotification) {
   saveNotifications([notification, ...listNotificationsLocal()]);
   if (isSupabaseConfigured() && !isDemoMode()) {
     void pushAppNotifications([notification]);
+    // Best-effort browser push for subscribed staff (Edge Function + VAPID).
+    void requestWebPushDelivery(notification);
   }
 }
 

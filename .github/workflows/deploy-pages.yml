@@ -32,11 +32,14 @@ jobs:
           KEY_SECRET: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           KEY_VAR: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           USE_DEMO_VAR: ${{ vars.NEXT_PUBLIC_USE_DEMO }}
+          VAPID_SECRET: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+          VAPID_VAR: ${{ vars.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
         run: |
           # Secrets/vars override committed .env.production when set.
           URL="${URL_SECRET:-$URL_VAR}"
           KEY="${KEY_SECRET:-$KEY_VAR}"
           USE_DEMO="${USE_DEMO_VAR:-}"
+          VAPID="${VAPID_SECRET:-$VAPID_VAR}"
 
           read_dotenv_value() {
             local file="$1" name="$2"
@@ -55,6 +58,9 @@ jobs:
           fi
           if [ -z "$USE_DEMO" ]; then
             USE_DEMO="$(read_dotenv_value .env.production NEXT_PUBLIC_USE_DEMO)"
+          fi
+          if [ -z "$VAPID" ]; then
+            VAPID="$(read_dotenv_value .env.production NEXT_PUBLIC_VAPID_PUBLIC_KEY)"
           fi
           if [ -z "$USE_DEMO" ]; then
             USE_DEMO="false"
@@ -88,6 +94,7 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "use_demo=$USE_DEMO" >> "$GITHUB_OUTPUT"
+          echo "vapid=$VAPID" >> "$GITHUB_OUTPUT"
       - name: Build static export
         run: npm run build
         env:
@@ -95,6 +102,7 @@ jobs:
           NEXT_PUBLIC_USE_DEMO: ${{ steps.supabase_env.outputs.use_demo }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ steps.supabase_env.outputs.url }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.supabase_env.outputs.key }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ steps.supabase_env.outputs.vapid }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out
