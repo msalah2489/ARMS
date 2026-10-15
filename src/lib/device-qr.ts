@@ -125,6 +125,86 @@ export function findDeviceByQrQuery(query: string): TechnicianQueueItem[] {
   return exact.length ? exact : matches;
 }
 
+/** Exact serial match for lost-sticker fallback (no partial codes). */
+export function findDeviceBySerialExact(serial: string): TechnicianQueueItem[] {
+  const key = serial.trim().toLowerCase();
+  if (!key) return [];
+  return listAllRequestDevices().filter(
+    ({ device }) => (device.serialNumber || "").trim().toLowerCase() === key,
+  );
+}
+
+export type ReturningDeviceLookupMode = "qr" | "serial";
+
+export type ReturningDeviceResolve = {
+  request: TechnicianQueueItem["request"];
+  device: DraftRequestDevice;
+  /** Serial/lost-sticker path — reprint the same QR identity */
+  forceReprint: boolean;
+};
+
+/**
+ * Resolve a returning device to its stable identity (latest visit wins).
+ * Reuses localId / deviceCode / qrToken so history stays on one device.
+ */
+export function resolveReturningDevice(
+  query: string,
+  mode: ReturningDeviceLookupMode,
+): ReturningDeviceResolve | null {
+  const raw = query.trim();
+  if (!raw) return null;
+
+  const matches =
+    mode === "serial" ? findDeviceBySerialExact(raw) : findDeviceByQrQuery(raw);
+  if (!matches.length) return null;
+
+  const sorted = [...matches].sort((a, b) =>
+    (b.request.receivedAt || "").localeCompare(a.request.receivedAt || ""),
+  );
+  const best = sorted[0];
+  return {
+    request: best.request,
+    device: ensureDeviceQrFields(best.device),
+    forceReprint: mode === "serial",
+  };
+}
+
+/**
+ * Build a draft for a new maintenance visit that keeps the same device identity.
+ * Clears visit-specific receipt fields; optionally clears qrPrintedAt to force reprint.
+ */
+export function buildReturningDeviceDraft(
+  source: DraftRequestDevice,
+  options: { forceReprint: boolean },
+): DraftRequestDevice {
+  const ensured = ensureDeviceQrFields(source);
+  const qrToken = (ensured.qrToken || ensured.localId).trim();
+  return {
+    ...ensured,
+    localId: ensured.localId,
+    deviceCode: ensured.deviceCode,
+    qrToken,
+    receiptNumber: "",
+    receiptPhotoName: "",
+    receiptPhotoDataUrl: undefined,
+    lifecycleStatus: undefined,
+    currentLocation: undefined,
+    lockedAfterShip: false,
+    assignedTechnicianId: null,
+    assignedTechnicianName: null,
+    maintenanceStartedAt: null,
+    maintenanceFinishedAt: null,
+    replacedByLocalId: null,
+    replacedByDeviceCode: null,
+    replacementOfLocalId: null,
+    replacementOfDeviceCode: null,
+    replacementStockItemId: null,
+    replacementDecidedAt: null,
+    replacementDecidedByName: null,
+    qrPrintedAt: options.forceReprint ? null : ensured.qrPrintedAt ?? null,
+  };
+}
+
 export function markDeviceQrPrinted(input: {
   requestId: string;
   deviceLocalId: string;

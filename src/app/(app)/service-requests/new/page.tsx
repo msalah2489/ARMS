@@ -88,6 +88,8 @@ function NewServiceRequestContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [qrDevice, setQrDevice] = useState<DraftRequestDevice | null>(null);
   const [pendingAddAnother, setPendingAddAnother] = useState(false);
+  /** Contact/name locked after loading a returning device; mobile stays editable */
+  const [customerFromReturningDevice, setCustomerFromReturningDevice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -309,12 +311,19 @@ function NewServiceRequestContent() {
               onChange={(e) => {
                 const value = e.target.value.replace(/\D/g, "").slice(0, 10);
                 setMobile(value);
-                const hits = findCustomersByMobile(value);
-                if (hits[0]) setContactName(hits[0].contactName);
+                if (!customerFromReturningDevice) {
+                  const hits = findCustomersByMobile(value);
+                  if (hits[0]) setContactName(hits[0].contactName);
+                }
               }}
               placeholder="05xxxxxxxx"
               className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
             />
+            {customerFromReturningDevice ? (
+              <span className="mt-1 block text-xs text-ink-700/60 dark:text-sand-100/60">
+                محمّل من جهاز سابق — يمكن تعديل الجوال فقط.
+              </span>
+            ) : null}
           </label>
           <label className="block text-sm md:col-span-2 dark:text-sand-100">
             اسم جهة التواصل *
@@ -325,7 +334,12 @@ function NewServiceRequestContent() {
                 const hits = findCustomersByName(e.target.value);
                 if (hits[0] && !mobile) setMobile(hits[0].mobile);
               }}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              readOnly={customerFromReturningDevice}
+              className={
+                customerFromReturningDevice
+                  ? "mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+                  : "mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              }
             />
           </label>
           <label className="block text-sm dark:text-sand-100">
@@ -333,7 +347,12 @@ function NewServiceRequestContent() {
             <input
               value={purchaseInvoice}
               onChange={(e) => setPurchaseInvoice(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              readOnly={customerFromReturningDevice}
+              className={
+                customerFromReturningDevice
+                  ? "mt-1 w-full rounded-xl border border-ink-900/15 bg-sand-50 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+                  : "mt-1 w-full rounded-xl border border-ink-900/15 px-3 py-2 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
+              }
             />
           </label>
           <label className="block text-sm dark:text-sand-100">
@@ -348,7 +367,12 @@ function NewServiceRequestContent() {
 
         <div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-xl dark:text-sand-50">الأجهزة المستلمة في هذا الطلب</h2>
+            <div>
+              <h2 className="font-display text-xl dark:text-sand-50">الأجهزة المستلمة في هذا الطلب</h2>
+              <p className="mt-1 text-xs text-ink-700/60 dark:text-sand-100/60">
+                اختر «جهاز سابق (مسح QR)» للزيارات المتكررة أو «جهاز جديد» لأول مرة.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setModalOpen(true)}
@@ -476,6 +500,12 @@ function NewServiceRequestContent() {
                               ? "إعادة طباعة ملصق QR"
                               : "طباعة ملصق QR"}
                           </button>
+                          <Link
+                            href={`/devices/detail/?id=${encodeURIComponent(device.localId)}`}
+                            className="rounded-full border border-ink-900/15 px-3 py-1.5 text-xs dark:border-white/15"
+                          >
+                            السجل
+                          </Link>
                           <button
                             type="button"
                             onClick={() =>
@@ -597,12 +627,25 @@ function NewServiceRequestContent() {
       <DeviceFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        existingLocalIds={devices.map((item) => item.localId)}
+        onReturningCustomer={(customer) => {
+          setMobile(customer.mobile.replace(/\D/g, "").slice(0, 10));
+          setContactName(customer.contactName);
+          if (customer.purchaseInvoice) setPurchaseInvoice(customer.purchaseInvoice);
+          setCustomerFromReturningDevice(true);
+        }}
         onSave={(device, addAnother) => {
           const withQr = ensureDeviceQrFields(device);
           setDevices((prev) => [...prev, withQr]);
           setModalOpen(false);
-          setPendingAddAnother(addAnother);
-          setQrDevice(withQr);
+          // Skip print gate when sticker already confirmed (returning device with QR).
+          // Lost-sticker path clears qrPrintedAt so print/confirm still opens.
+          if (!isDeviceQrPrinted(withQr)) {
+            setPendingAddAnother(addAnother);
+            setQrDevice(withQr);
+          } else if (addAnother) {
+            setModalOpen(true);
+          }
         }}
       />
 
