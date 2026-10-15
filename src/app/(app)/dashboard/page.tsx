@@ -19,6 +19,7 @@ import {
 import { DelayAlertsCard } from "@/components/delay-alerts-card";
 import { PageHeader } from "@/components/page-header";
 import { usePreferences } from "@/components/preferences-provider";
+import { RoleScreenGuide } from "@/components/role-screen-guide";
 import {
   ROLE_LABELS,
   isBranchRole,
@@ -204,6 +205,7 @@ export default function DashboardPage() {
             </>
           }
         />
+        <RoleScreenGuide screen="dashboard" role={user.role} className="mt-4" />
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {delayCard}
         </div>
@@ -258,6 +260,7 @@ export default function DashboardPage() {
             </>
           }
         />
+        <RoleScreenGuide screen="dashboard" role={user.role} className="mt-4" />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {delayCard}
           <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-ink-900">
@@ -445,6 +448,8 @@ export default function DashboardPage() {
           }
         />
 
+        <RoleScreenGuide screen="dashboard" role={user.role} className="mt-4" />
+
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {delayCard}
           {workCards.map((card) => (
@@ -613,6 +618,7 @@ export default function DashboardPage() {
             </>
           }
         />
+        <RoleScreenGuide screen="dashboard" role={user.role} className="mt-4" />
         {!managerWork ? (
           <p className="mt-4 text-sm text-ink-700/70 dark:text-sand-100/70">{t("dashboard.loading")}</p>
         ) : null}
@@ -670,6 +676,7 @@ export default function DashboardPage() {
           )
         }
       />
+      <RoleScreenGuide screen="dashboard" role={user.role} className="mt-4" />
       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {delayCard}
       </div>

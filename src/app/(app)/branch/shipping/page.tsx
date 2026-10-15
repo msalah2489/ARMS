@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { RoleScreenGuide } from "@/components/role-screen-guide";
 import { deviceStatusLabel } from "@/lib/branch-store";
 import {
   PICKUP_RECEIPT_STATUS_LABELS,
@@ -105,6 +106,7 @@ function BranchShippingContent() {
         title="شحن الصيانة"
         description="بدون بوليصة شحن: أرسل الأجهزة عبر مندوب الاستلام. إن وُجدت بوليصة فعّالة يبقى مسار شركة الشحن كما هو."
       />
+      <RoleScreenGuide screen="branch_shipping" role={user?.role} />
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
 

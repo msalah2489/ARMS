@@ -8,6 +8,7 @@ import { DeviceFormModal } from "@/components/device-form-modal";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
+import { RoleScreenGuide } from "@/components/role-screen-guide";
 import { SortableTh } from "@/components/sortable-th";
 import { usePreferences } from "@/components/preferences-provider";
 import { isBranchRole, isMaintenanceManagerRole } from "@/lib/auth";
@@ -201,6 +202,8 @@ function NewServiceRequestContent() {
           </Link>
         }
       />
+
+      <RoleScreenGuide screen="service_request_new" role={user.role} className="mb-6" />
 
       {parentRequestId ? (
         <div className="mb-6 rounded-2xl border border-ink-900/10 bg-white p-4 shadow-panel dark:border-white/10 dark:bg-ink-900">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
+import { RoleScreenGuide } from "@/components/role-screen-guide";
 import { subscribeMaintenanceRequestsChanged } from "@/lib/branch-store";
 import { getMyTasksForUser, type MyTasksResult } from "@/lib/my-tasks";
 import { readSession } from "@/lib/session";
@@ -60,6 +61,8 @@ export default function MyTasksPage() {
         backHref="/dashboard"
         backLabel="الرئيسية"
       />
+
+      <RoleScreenGuide screen="my_tasks" role={user.role} className="mb-4" />
 
       {result.total === 0 ? (
         <section className="rounded-2xl border border-ink-900/10 bg-white p-6 shadow-panel dark:border-white/10 dark:bg-ink-900">
