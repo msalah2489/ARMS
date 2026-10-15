@@ -11,6 +11,7 @@ import {
 } from "@/lib/notifications-store";
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
+import { getWebPushDeliveryMessage } from "@/lib/web-push-client";
 import {
   ASSIGNABLE_ROLE_LABELS,
   ASSIGNABLE_ROLES,
@@ -43,6 +44,7 @@ function AdminNotificationsInner() {
   const [audienceUserId, setAudienceUserId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -72,34 +74,44 @@ function AdminNotificationsInner() {
     );
   }
 
-  function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!user) return;
+    if (!user || sending) return;
     setMessage(null);
     setError(null);
-    const result = sendNotification({
-      title,
-      body,
-      audienceType,
-      audienceRole: audienceType === "role" ? audienceRole : null,
-      audienceUserId: audienceType === "user" ? audienceUserId : null,
-      sender: user,
-    });
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    setSending(true);
+    try {
+      const result = await sendNotification({
+        title,
+        body,
+        audienceType,
+        audienceRole: audienceType === "role" ? audienceRole : null,
+        audienceUserId: audienceType === "user" ? audienceUserId : null,
+        sender: user,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setTitle("");
+      setBody("");
+      const inApp =
+        "تم حفظ الرسالة داخل النظام (الجرس). تظهر للمستلمين بعد المزامنة/تحديث الصفحة.";
+      const pushLine = result.push
+        ? getWebPushDeliveryMessage(result.push)
+        : "إشعار نظام التشغيل غير متاح في هذا البناء (تحقق من VAPID/Supabase).";
+      setMessage(`${inApp} ${pushLine}`);
+      setTick((n) => n + 1);
+    } finally {
+      setSending(false);
     }
-    setTitle("");
-    setBody("");
-    setMessage("تم إرسال الرسالة. ستظهر للمستلمين بعد التحديث/المزامنة.");
-    setTick((n) => n + 1);
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="الرسائل والإشعارات"
-        description="أرسل رسالة للجميع أو لدور محدد أو لحساب واحد. الرسائل لا تُحذف؛ يظهر للمستلم جرس إشعارات وبانر بعد الدخول."
+        description="أرسل رسالة للجميع أو لدور محدد أو لحساب واحد. الرسائل لا تُحذف. الجرس داخل التطبيق يعمل بعد المزامنة؛ إشعار نظام التشغيل يصل فقط للأجهزة التي فعّلت Web Push ونُشرت لها دالة send-web-push."
       />
 
       <form
@@ -203,9 +215,10 @@ function AdminNotificationsInner() {
 
         <button
           type="submit"
-          className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white dark:bg-aroma-600"
+          disabled={sending}
+          className="rounded-full bg-ink-900 px-4 py-2 text-sm text-white disabled:opacity-60 dark:bg-aroma-600"
         >
-          إرسال الرسالة
+          {sending ? "جاري الإرسال…" : "إرسال الرسالة"}
         </button>
       </form>
 

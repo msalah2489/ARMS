@@ -83,6 +83,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Helps confirm Edge secrets match the Pages build public key (first chars only).
+  console.log(
+    "[send-web-push] vapidPublicPrefix",
+    vapidPublic.slice(0, 16),
+    "len",
+    vapidPublic.length,
+  );
+
   let payload: PushBody;
   try {
     payload = (await req.json()) as PushBody;
@@ -196,12 +204,24 @@ Deno.serve(async (req) => {
       await supabase.from("app_push_subscriptions").delete().in("id", deadIds);
     }
 
+    console.log(
+      "[send-web-push] done",
+      JSON.stringify({
+        sent,
+        total: rows.length,
+        removed: deadIds.length,
+        failures: failures.length,
+        audienceType,
+      }),
+    );
+
     return jsonResponse(200, {
       ok: true,
       sent,
       total: rows.length,
       removed: deadIds.length,
       failures: failures.slice(0, 5),
+      vapidPublicPrefix: vapidPublic.slice(0, 16),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

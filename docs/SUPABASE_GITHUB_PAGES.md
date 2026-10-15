@@ -97,7 +97,7 @@ Do **not** look at classic CRM `service_requests` / `profiles` — after **`015_
 
 See **[WEB_PUSH_SETUP.md](./WEB_PUSH_SETUP.md)** — SQL `026_web_push_subscriptions_RUN_ME.sql`, VAPID secrets on the Edge Function, public key in GitHub Actions as `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, then enable once after login.
 
-**iOS:** Push يعمل فقط بعد إضافة الموقع للشاشة الرئيسية (iOS 16.4+)، وليس من تبويب Safari العادي. **Android Chrome:** يعمل من التبويب بعد منح الإذن. بعد أي تعديل على `send-web-push` أعد `npx supabase functions deploy send-web-push`.
+**iOS:** Push يعمل فقط بعد إضافة الموقع للشاشة الرئيسية (iOS 16.4+)، وليس من تبويب Safari العادي. **Android Chrome:** يعمل من التبويب بعد منح الإذن. من الجرس: «اختبار إشعار النظام». بعد أي تعديل على `send-web-push` أعد `npx supabase functions deploy send-web-push` (Pages لا ينشر الدالة تلقائياً).
 
 ## Verify
 

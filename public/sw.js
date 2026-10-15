@@ -23,6 +23,12 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("push", (event) => {
   let data = { title: "ARMS", body: "", url: "", notificationId: null };
   try {
@@ -52,6 +58,7 @@ self.addEventListener("push", (event) => {
     : appHomeUrl();
 
   // userVisibleOnly subscriptions require a visible notification on every push.
+  // Keep options conservative so Android Chrome + iOS PWA both accept the show.
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body || "لديك تنبيه جديد في ARMS",
@@ -60,6 +67,7 @@ self.addEventListener("push", (event) => {
       data: { url: targetUrl, notificationId: data.notificationId },
       tag: String(data.notificationId || data.title).slice(0, 64) || "arms-push",
       renotify: true,
+      vibrate: [120, 60, 120],
     }),
   );
 });

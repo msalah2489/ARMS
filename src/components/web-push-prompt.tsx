@@ -37,7 +37,7 @@ function dismissConfigHint() {
 /**
  * After login: offer browser notification permission (Arabic UX),
  * or silently refresh the push subscription when already granted.
- * When VAPID/Supabase is missing from the build, show a clear setup hint
+ * When VAPID/Supabase/iOS-Home-Screen is missing, show a clear setup hint
  * instead of hiding all Web Push UI silently.
  */
 export function WebPushPrompt({ user }: { user: Profile }) {
@@ -67,8 +67,14 @@ export function WebPushPrompt({ user }: { user: Profile }) {
       const timer = window.setTimeout(() => setMode("enable"), 1200);
       return () => window.clearTimeout(timer);
     }
-    // Misconfigured build / unsupported / denied — never pretend nothing exists.
-    if (state === "no_vapid" || state === "no_supabase") {
+    // Misconfigured build / iOS not installed as PWA / denied — show why OS push won't work.
+    if (
+      state === "no_vapid" ||
+      state === "no_supabase" ||
+      state === "ios_not_standalone" ||
+      state === "denied" ||
+      state === "unsupported"
+    ) {
       if (wasConfigHintDismissed()) {
         setMode("hidden");
         return;
@@ -107,7 +113,11 @@ export function WebPushPrompt({ user }: { user: Profile }) {
   }
 
   const title =
-    mode === "config" ? "إشعارات المتصفح غير جاهزة" : "تفعيل إشعارات المتصفح";
+    mode === "config"
+      ? configState === "ios_not_standalone"
+        ? "إشعارات الآيفون تحتاج إضافة للشاشة الرئيسية"
+        : "إشعارات نظام التشغيل غير جاهزة"
+      : "تفعيل إشعارات المتصفح";
   const body =
     mode === "config"
       ? getWebPushStatusMessage(configState ?? "no_vapid")
@@ -118,6 +128,7 @@ export function WebPushPrompt({ user }: { user: Profile }) {
       className="fixed inset-x-0 bottom-0 z-[90] flex justify-center p-3 sm:p-4"
       data-arms-web-push-prompt="true"
       data-arms-web-push-mode={mode}
+      data-arms-web-push-state={configState ?? "default"}
     >
       <div
         role="dialog"

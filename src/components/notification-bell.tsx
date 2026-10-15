@@ -14,8 +14,11 @@ import { formatDate } from "@/lib/utils";
 import {
   clearWebPushPromptDismissed,
   enableWebPushForUser,
+  getWebPushDeliveryMessage,
   getWebPushStatusMessage,
   getWebPushSupportState,
+  hasActivePushSubscription,
+  sendTestWebPushToUser,
 } from "@/lib/web-push-client";
 import type { Profile } from "@/types/domain";
 
@@ -23,8 +26,12 @@ export function NotificationBell({ user }: { user: Profile }) {
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
   const [pushBusy, setPushBusy] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
   const [pushNote, setPushNote] = useState<string | null>(null);
-  const [pushState, setPushState] = useState<ReturnType<typeof getWebPushSupportState> | null>(null);
+  const [pushState, setPushState] = useState<ReturnType<typeof getWebPushSupportState> | null>(
+    null,
+  );
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,7 +40,8 @@ export function NotificationBell({ user }: { user: Profile }) {
 
   useEffect(() => {
     setPushState(getWebPushSupportState());
-  }, [tick, user.id]);
+    void hasActivePushSubscription().then(setHasSubscription);
+  }, [tick, user.id, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +62,7 @@ export function NotificationBell({ user }: { user: Profile }) {
   void tick;
   const items = listNotificationsForUser(user);
   const unread = countUnreadNotifications(user);
-  const canOfferPush = pushState === "default";
+  const canOfferPush = pushState === "default" || pushState === "granted";
   const pushStatusHint =
     pushState && pushState !== "default" ? getWebPushStatusMessage(pushState) : "";
 
@@ -64,9 +72,24 @@ export function NotificationBell({ user }: { user: Profile }) {
     clearWebPushPromptDismissed();
     const result = await enableWebPushForUser(user);
     setPushBusy(false);
-    setPushNote(result.ok ? "تم تفعيل إشعارات هذا الجهاز." : result.error);
+    setPushNote(
+      result.ok
+        ? "تم ربط هذا الجهاز لإشعارات نظام التشغيل. جرّب «اختبار إشعار النظام» بعد إخفاء التطبيق."
+        : result.error,
+    );
     setPushState(getWebPushSupportState());
+    setHasSubscription(await hasActivePushSubscription());
     setTick((n) => n + 1);
+  }
+
+  async function onTestPush() {
+    setTestBusy(true);
+    setPushNote(null);
+    const result = await sendTestWebPushToUser(user);
+    setTestBusy(false);
+    setPushNote(getWebPushDeliveryMessage(result));
+    setPushState(getWebPushSupportState());
+    setHasSubscription(await hasActivePushSubscription());
   }
 
   return (
@@ -146,7 +169,21 @@ export function NotificationBell({ user }: { user: Profile }) {
                 className="mb-1.5 w-full rounded-lg bg-aroma-50 px-2 py-2 text-xs font-medium text-aroma-900 hover:bg-aroma-100 disabled:opacity-60 dark:bg-aroma-900/30 dark:text-aroma-100"
                 onClick={() => void onEnablePush()}
               >
-                {pushBusy ? "جاري التفعيل…" : "تفعيل إشعارات هذا الجهاز"}
+                {pushBusy
+                  ? "جاري التفعيل…"
+                  : pushState === "granted"
+                    ? "إعادة ربط إشعارات الجهاز"
+                    : "تفعيل إشعارات هذا الجهاز"}
+              </button>
+            ) : null}
+            {pushState === "granted" ? (
+              <button
+                type="button"
+                disabled={testBusy || pushBusy}
+                className="mb-1.5 w-full rounded-lg border border-ink-900/10 px-2 py-2 text-xs font-medium text-ink-800 hover:border-aroma-400 disabled:opacity-60 dark:border-white/15 dark:text-sand-50"
+                onClick={() => void onTestPush()}
+              >
+                {testBusy ? "جاري الاختبار…" : "اختبار إشعار النظام"}
               </button>
             ) : null}
             {!canOfferPush && pushStatusHint ? (
@@ -157,11 +194,23 @@ export function NotificationBell({ user }: { user: Profile }) {
                 {pushStatusHint}
               </p>
             ) : null}
+            {pushState === "granted" && hasSubscription === false ? (
+              <p className="mb-1.5 text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-200/90">
+                الإذن مفعّل لكن الاشتراك غير موجود محلياً — اضغط «إعادة ربط إشعارات الجهاز».
+              </p>
+            ) : null}
+            {pushState === "granted" && pushStatusHint ? (
+              <p className="mb-1.5 text-[11px] leading-relaxed text-ink-700/70 dark:text-sand-100/60">
+                {pushStatusHint}
+              </p>
+            ) : null}
             {pushNote ? (
-              <p className="mb-1 text-[11px] text-ink-700/80 dark:text-sand-100/70">{pushNote}</p>
+              <p className="mb-1 text-[11px] text-ink-700/80 dark:text-sand-100/70" role="status">
+                {pushNote}
+              </p>
             ) : null}
             <p className="text-[11px] text-ink-700/55 dark:text-sand-100/55">
-              الرسائل تبقى في السجل ولا تُحذف.
+              الرسائل تبقى في السجل ولا تُحذف. إشعار نظام التشغيل يختلف عن الجرس داخل الموقع.
             </p>
           </div>
         </div>

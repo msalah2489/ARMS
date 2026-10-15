@@ -18,12 +18,24 @@ const SW_PATH = "/sw.js";
 
 export type WebPushSupportState =
   | "unsupported"
+  | "ios_not_standalone"
   | "denied"
   | "default"
   | "granted"
   | "demo"
   | "no_supabase"
   | "no_vapid";
+
+export type WebPushDeliveryResult = {
+  ok: boolean;
+  sent?: number;
+  total?: number;
+  removed?: number;
+  skipped?: string;
+  error?: string;
+  httpStatus?: number;
+  failures?: Array<{ id: string; status: number; message: string }>;
+};
 
 function getVapidPublicKey(): string {
   return (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "").trim();
@@ -38,9 +50,30 @@ export function hasVapidPublicKey(): boolean {
   return Boolean(getVapidPublicKey());
 }
 
+/** iPhone / iPad (incl. iPadOS desktop UA spoof). */
+export function isAppleMobileDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/i.test(ua)) return true;
+  // iPadOS 13+ may report as Mac with touch.
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
+/** Home Screen / installed PWA (required for Web Push on iOS). */
+export function isStandaloneWebApp(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.matchMedia("(display-mode: standalone)").matches) return true;
+  } catch {
+    /* ignore */
+  }
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return nav.standalone === true;
+}
+
 /**
  * Arabic hint for why the enable UI is unavailable or what to do next.
- * Empty string when the user can enable push normally (`default` / `granted`).
+ * Empty string when the user can enable push normally (`default`).
  */
 export function getWebPushStatusMessage(state: WebPushSupportState = getWebPushSupportState()): string {
   switch (state) {
@@ -50,12 +83,14 @@ export function getWebPushStatusMessage(state: WebPushSupportState = getWebPushS
       return "إشعارات المتصفح تحتاج اتصال Supabase مضبوطاً في البناء.";
     case "demo":
       return "وضع العرض التجريبي لا يدعم إشعارات المتصفح.";
+    case "ios_not_standalone":
+      return "على الآيفون/الآيباد: افتح الموقع في Safari ثم مشاركة ← إضافة إلى الشاشة الرئيسية، وافتح ARMS من الأيقونة (ليس من تبويب Safari)، ثم فعّل الإشعارات من داخل التطبيق.";
     case "unsupported":
       return "هذا المتصفح أو الجهاز لا يدعم إشعارات الدفع (أو الاتصال ليس عبر HTTPS).";
     case "denied":
-      return "إذن الإشعارات مرفوض لهذا الموقع. امسح الحظر من إعدادات الموقع في المتصفح ثم أعد المحاولة.";
+      return "إذن الإشعارات مرفوض لهذا الموقع. امسح الحظر من إعدادات الموقع/التطبيق ثم أعد المحاولة.";
     case "granted":
-      return "إذن الإشعارات مفعّل على هذا الجهاز.";
+      return "إذن الإشعارات مفعّل على هذا الجهاز. إن لم يصل إشعار النظام، اضغط «إعادة ربط إشعارات الجهاز» وتأكد من نشر دالة send-web-push.";
     case "default":
     default:
       return "";
@@ -77,9 +112,19 @@ export function getWebPushSupportState(): WebPushSupportState {
     }
     return "no_vapid";
   }
-  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+
+  const hasPushApis =
+    "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+
+  // iOS/iPadOS: Web Push only inside a Home Screen web app (standalone).
+  if (isAppleMobileDevice() && !isStandaloneWebApp()) {
+    return "ios_not_standalone";
+  }
+
+  if (!hasPushApis) {
     return "unsupported";
   }
+
   const permission = Notification.permission;
   if (permission === "denied") return "denied";
   if (permission === "granted") return "granted";
@@ -123,6 +168,32 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
     output[i] = raw.charCodeAt(i);
   }
   return output;
+}
+
+function bufferSourceToBase64Url(source: BufferSource): string {
+  const bytes =
+    source instanceof ArrayBuffer
+      ? new Uint8Array(source)
+      : new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function applicationServerKeysMatch(
+  existing: PushSubscription,
+  expected: Uint8Array,
+): boolean {
+  try {
+    const options = existing.options as PushSubscriptionOptions | undefined;
+    const key = options?.applicationServerKey;
+    if (!key) return true; // older engines — fall back to fingerprint / reuse
+    return bufferSourceToBase64Url(key) === bufferSourceToBase64Url(expected);
+  } catch {
+    return true;
+  }
 }
 
 function subscriptionId(endpoint: string): string {
@@ -180,6 +251,21 @@ export async function registerArmsServiceWorker(): Promise<ServiceWorkerRegistra
   }
 }
 
+/** True when this browser already has an active PushSubscription. */
+export async function hasActivePushSubscription(): Promise<boolean> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return false;
+  try {
+    const registration =
+      (await navigator.serviceWorker.getRegistration(swScope())) ??
+      (await navigator.serviceWorker.getRegistration());
+    if (!registration) return false;
+    const sub = await registration.pushManager.getSubscription();
+    return Boolean(sub?.endpoint);
+  } catch {
+    return false;
+  }
+}
+
 async function persistSubscription(userId: string, subscription: PushSubscription) {
   const json = subscription.toJSON();
   const endpoint = json.endpoint ?? subscription.endpoint;
@@ -219,12 +305,17 @@ async function getOrCreatePushSubscription(
 ): Promise<PushSubscription> {
   const vapid = getVapidPublicKey();
   const applicationServerKey = urlBase64ToUint8Array(vapid) as BufferSource;
+  const expectedKey = urlBase64ToUint8Array(vapid);
   const storedFp = readStoredVapidFingerprint();
   const currentFp = vapidFingerprint(vapid);
   let existing = await registration.pushManager.getSubscription();
 
-  // Public key rotated in a new deploy — drop old PushSubscription so keys match Edge secrets.
-  if (existing && storedFp && storedFp !== currentFp) {
+  const keyRotated =
+    (storedFp && storedFp !== currentFp) ||
+    (existing ? !applicationServerKeysMatch(existing, expectedKey) : false);
+
+  // Public key rotated / mismatched — drop old PushSubscription so keys match Edge secrets.
+  if (existing && keyRotated) {
     try {
       await existing.unsubscribe();
     } catch {
@@ -252,10 +343,14 @@ async function getOrCreatePushSubscription(
 export async function enableWebPushForUser(
   user: Profile,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const state = getWebPushSupportState();
+  if (state === "ios_not_standalone") {
+    return { ok: false, error: getWebPushStatusMessage("ios_not_standalone") };
+  }
   if (!isWebPushConfigured()) {
     return { ok: false, error: "Web Push غير مضبوط (مفتاح VAPID العام أو Supabase)." };
   }
-  if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     return { ok: false, error: "المتصفح لا يدعم إشعارات الدفع." };
   }
 
@@ -274,6 +369,10 @@ export async function enableWebPushForUser(
 
   try {
     await navigator.serviceWorker.ready;
+    // Ensure the SW controls this client so push → showNotification is reliable.
+    if (registration.waiting) {
+      registration.waiting.postMessage?.({ type: "SKIP_WAITING" });
+    }
     const subscription = await getOrCreatePushSubscription(registration);
     await persistSubscription(user.id, subscription);
     dismissWebPushPrompt();
@@ -291,6 +390,7 @@ export async function enableWebPushForUser(
 export async function ensureWebPushSubscription(user: Profile): Promise<void> {
   if (!isWebPushConfigured()) return;
   if (typeof window === "undefined") return;
+  if (getWebPushSupportState() === "ios_not_standalone") return;
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   try {
     await enableWebPushForUser(user);
@@ -299,17 +399,53 @@ export async function ensureWebPushSubscription(user: Profile): Promise<void> {
   }
 }
 
+function formatDeliveryHint(result: WebPushDeliveryResult): string {
+  if (result.ok && (result.sent ?? 0) > 0) {
+    return `تم إرسال إشعار النظام إلى ${result.sent} جهاز/أجهزة.`;
+  }
+  if (result.skipped === "no subscriptions") {
+    return "لم يُحفظ أي اشتراك أجهزة (app_push_subscriptions فارغ). على الجهاز المستقبل: فعّل إشعارات المتصفح من الجرس.";
+  }
+  if (result.skipped === "no target users") {
+    return "لا يوجد مستلمون مطابقون للجمهور المحدد.";
+  }
+  if (result.error) {
+    if (/VAPID/i.test(result.error)) {
+      return `فشل Web Push (VAPID): ${result.error} — تأكد أن مفتاح GitHub العام يطابق أسرار Edge Function ثم أعد deploy.`;
+    }
+    return `فشل Web Push: ${result.error}`;
+  }
+  if ((result.sent ?? 0) === 0) {
+    return "لم يصل إشعار النظام لأي جهاز (sent=0). راجع سجلات send-web-push واشتراكات الأجهزة.";
+  }
+  return "تعذّر تأكيد إرسال إشعار النظام.";
+}
+
+export function getWebPushDeliveryMessage(result: WebPushDeliveryResult): string {
+  return formatDeliveryHint(result);
+}
+
 /**
  * Ask Edge Function to deliver Web Push for an in-app notification.
  * Uses a minimal fetch (anon JWT + apikey) to avoid CORS preflight header mismatches.
- * Best-effort — never blocks the in-app notification path.
+ * Best-effort — never blocks the in-app notification path when fire-and-forget.
  */
-export async function requestWebPushDelivery(notification: ArmsNotification): Promise<void> {
-  if (!isWebPushConfigured() || typeof window === "undefined") return;
+export async function requestWebPushDelivery(
+  notification: ArmsNotification,
+): Promise<WebPushDeliveryResult> {
+  if (!isWebPushConfigured() || typeof window === "undefined") {
+    return {
+      ok: false,
+      error: "Web Push غير مضبوط في هذا البناء (VAPID أو Supabase).",
+      sent: 0,
+    };
+  }
 
   const baseUrl = getSupabaseUrl().replace(/\/$/, "");
   const anonKey = getSupabaseAnonKey();
-  if (!baseUrl || !anonKey) return;
+  if (!baseUrl || !anonKey) {
+    return { ok: false, error: "إعدادات Supabase ناقصة.", sent: 0 };
+  }
 
   const body = {
     notificationId: notification.id,
@@ -336,7 +472,10 @@ export async function requestWebPushDelivery(notification: ArmsNotification): Pr
       ok?: boolean;
       error?: string;
       sent?: number;
+      total?: number;
+      removed?: number;
       skipped?: string;
+      failures?: Array<{ id: string; status: number; message: string }>;
     };
     let payload: SendWebPushResponse | null = null;
     try {
@@ -346,26 +485,70 @@ export async function requestWebPushDelivery(notification: ArmsNotification): Pr
     }
 
     if (!response.ok) {
-      console.warn(
-        "[arms] send-web-push HTTP",
-        response.status,
-        payload?.error ?? response.statusText,
-      );
-      return;
+      const error = payload?.error ?? (response.statusText || `HTTP ${response.status}`);
+      console.warn("[arms] send-web-push HTTP", response.status, error);
+      return {
+        ok: false,
+        error,
+        httpStatus: response.status,
+        sent: 0,
+      };
     }
 
     if (payload && payload.ok === false) {
       console.warn("[arms] send-web-push:", payload.error ?? "unknown error");
-      return;
+      return {
+        ok: false,
+        error: payload.error ?? "unknown error",
+        sent: payload.sent ?? 0,
+        skipped: payload.skipped,
+        failures: payload.failures,
+      };
     }
 
-    if (payload && typeof payload.sent === "number" && payload.sent === 0) {
+    const sent = typeof payload?.sent === "number" ? payload.sent : undefined;
+    if (sent === 0) {
       console.info(
         "[arms] send-web-push: no devices reached",
-        payload.skipped ?? "check app_push_subscriptions",
+        payload?.skipped ?? "check app_push_subscriptions",
       );
     }
+
+    return {
+      ok: true,
+      sent,
+      total: payload?.total,
+      removed: payload?.removed,
+      skipped: payload?.skipped,
+      failures: payload?.failures,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.warn("[arms] requestWebPushDelivery", error);
+    return { ok: false, error: message, sent: 0 };
   }
+}
+
+/**
+ * Send a one-device test push to the signed-in user (after they enabled this browser).
+ */
+export async function sendTestWebPushToUser(user: Profile): Promise<WebPushDeliveryResult> {
+  const ensure = await enableWebPushForUser(user);
+  if (!ensure.ok) {
+    return { ok: false, error: ensure.error, sent: 0 };
+  }
+
+  const testNotification: ArmsNotification = {
+    id: `test_${crypto.randomUUID()}`,
+    title: "اختبار إشعار ARMS",
+    body: "إذا ظهر هذا في شريط إشعارات النظام، فـ Web Push يعمل على هذا الجهاز.",
+    audienceType: "user",
+    audienceRole: null,
+    audienceUserId: user.id,
+    createdBy: "system",
+    createdByName: "النظام",
+    createdAt: new Date().toISOString(),
+  };
+
+  return requestWebPushDelivery(testNotification);
 }

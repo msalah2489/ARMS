@@ -4,7 +4,10 @@ import {
   pushAppNotifications,
 } from "@/lib/supabase/app-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { requestWebPushDelivery } from "@/lib/web-push-client";
+import {
+  requestWebPushDelivery,
+  type WebPushDeliveryResult,
+} from "@/lib/web-push-client";
 import type {
   AppRole,
   ArmsNotification,
@@ -175,12 +178,18 @@ export function markAllNotificationsRead(user: Profile) {
   }
 }
 
-function persistNewNotification(notification: ArmsNotification) {
+function persistNewNotification(
+  notification: ArmsNotification,
+  options?: { deliverPush?: boolean },
+) {
   saveNotifications([notification, ...listNotificationsLocal()]);
   if (isSupabaseConfigured() && !isDemoMode()) {
     void pushAppNotifications([notification]);
     // Best-effort browser push for subscribed staff (Edge Function + VAPID).
-    void requestWebPushDelivery(notification);
+    // Admin send awaits delivery separately so the UI can show sent/skipped.
+    if (options?.deliverPush !== false) {
+      void requestWebPushDelivery(notification);
+    }
   }
 }
 
@@ -213,14 +222,17 @@ export function createSystemNotification(input: {
   return notification;
 }
 
-export function sendNotification(input: {
+export async function sendNotification(input: {
   title: string;
   body: string;
   audienceType: NotificationAudienceType;
   audienceRole?: AppRole | null;
   audienceUserId?: string | null;
   sender: Profile;
-}): { ok: true; notification: ArmsNotification } | { ok: false; error: string } {
+}): Promise<
+  | { ok: true; notification: ArmsNotification; push: WebPushDeliveryResult | null }
+  | { ok: false; error: string }
+> {
   if (!isSystemAdminRole(input.sender.role)) {
     return { ok: false, error: "إرسال الرسائل متاح لمدير النظام فقط." };
   }
@@ -247,8 +259,10 @@ export function sendNotification(input: {
     createdAt: new Date().toISOString(),
   };
 
-  persistNewNotification(notification);
-  return { ok: true, notification };
+  const cloudReady = isSupabaseConfigured() && !isDemoMode();
+  persistNewNotification(notification, { deliverPush: false });
+  const push = cloudReady ? await requestWebPushDelivery(notification) : null;
+  return { ok: true, notification, push };
 }
 
 export function listAllNotificationsAdmin(): ArmsNotification[] {
