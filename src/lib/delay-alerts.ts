@@ -40,14 +40,12 @@ import {
   normalizeRole,
 } from "@/lib/auth";
 
-/** Role-queue labels when no named assignee exists (never invent fake people). */
-const STUCK_BRANCH_FALLBACK = "الفرع";
-const STUCK_TECH_QUEUE = "طابور الفنيين";
-const STUCK_TECH_UNNAMED = "فني (غير معيّن)";
-const STUCK_MANAGER_QUEUE = "مدير/مشرف الصيانة";
-const STUCK_COURIER_QUEUE = "مندوب الاستلام";
-const STUCK_CARRIER_FALLBACK = "شركة الشحن";
-const STUCK_UNKNOWN = "غير محدد";
+/** Place labels (where the device sits in the workflow). */
+const PLACE_BRANCH = "الفرع";
+const PLACE_SERVICE_CENTER = "مركز الصيانة";
+const PLACE_COURIER = "مندوب الاستلام";
+const PLACE_CARRIER = "شركة الشحن";
+const PLACE_UNKNOWN = "غير محدد";
 
 const OPEN_PICKUP_FOR_STUCK = new Set([
   "draft",
@@ -63,7 +61,10 @@ export type DelayAlertItem = {
   title: string;
   subtitle: string;
   statusLabel: string;
-  /** Who the workflow is currently waiting on (Arabic label / known name). */
+  /**
+   * Arabic «متوقف عند» body: place + what is awaited
+   * (e.g. «مركز الصيانة وبانتظار أحد الفنيين للبدء في الصيانة»).
+   */
   stuckWith: string;
   stageStartedAt: string;
   daysInStage: number;
@@ -77,20 +78,21 @@ export type DelayAlertItem = {
   lifecycleStatus?: DeviceLifecycleStatus;
 };
 
-function branchStuckLabel(opsBranchName?: string | null): string {
+/** «الفرع» or «الفرع (الحرم)» when a branch name is known. */
+function branchPlace(opsBranchName?: string | null): string {
   const name = opsBranchName?.trim();
-  return name || STUCK_BRANCH_FALLBACK;
+  return name ? `${PLACE_BRANCH} (${name})` : PLACE_BRANCH;
 }
 
-function technicianStuckLabel(
-  assignedTechnicianName?: string | null,
-  assignedTechnicianId?: string | null,
-  { queueWhenEmpty = false }: { queueWhenEmpty?: boolean } = {},
+/** Compose «place وبانتظار action», optionally naming a person in the place. */
+function stuckPhrase(
+  place: string,
+  waitingFor: string,
+  namedPerson?: string | null,
 ): string {
-  const name = assignedTechnicianName?.trim();
-  if (name) return name;
-  if (String(assignedTechnicianId ?? "").trim()) return STUCK_TECH_UNNAMED;
-  return queueWhenEmpty ? STUCK_TECH_QUEUE : STUCK_TECH_UNNAMED;
+  const person = namedPerson?.trim();
+  const where = person ? `${place} · ${person}` : place;
+  return `${where} وبانتظار ${waitingFor}`;
 }
 
 function findOpenPickupForDevice(
@@ -131,21 +133,45 @@ function findActiveTransitBatch(
     )[0];
 }
 
-function transitStuckLabel(input: {
+/** Real technician display name only — never invents people. */
+function techDisplayName(assignedTechnicianName?: string | null): string | null {
+  return assignedTechnicianName?.trim() || null;
+}
+
+function hasTechnicianAssignee(
+  assignedTechnicianName?: string | null,
+  assignedTechnicianId?: string | null,
+): boolean {
+  return Boolean(
+    assignedTechnicianName?.trim() || String(assignedTechnicianId ?? "").trim(),
+  );
+}
+
+/**
+ * Transit: place = مندوب / شركة شحن (+ name), waiting for arrival.
+ */
+function transitStuckPhrase(input: {
   courierName?: string | null;
   carrierName?: string | null;
-  fallback: string;
+  waitingFor: string;
+  /** Used when neither courier nor carrier is known. */
+  fallbackPlace: string;
 }): string {
   const courier = input.courierName?.trim();
-  if (courier) return courier;
+  if (courier) return stuckPhrase(PLACE_COURIER, input.waitingFor, courier);
   const carrier = input.carrierName?.trim();
-  if (carrier) return carrier;
-  return input.fallback;
+  if (carrier) {
+    const place =
+      carrier === PLACE_CARRIER ? PLACE_CARRIER : `${PLACE_CARRIER} (${carrier})`;
+    return stuckPhrase(place, input.waitingFor);
+  }
+  return stuckPhrase(input.fallbackPlace, input.waitingFor);
 }
 
 /**
  * Derive «متوقف عند» from lifecycle stage + known assignment fields.
- * Uses real names when present; otherwise role-queue labels — never invents people.
+ * Each label states where the device sits and what action is awaited.
+ * Uses real names when present; never invents people.
  */
 export function resolveDelayStuckWith(input: {
   kind: "device" | "receipt";
@@ -157,67 +183,117 @@ export function resolveDelayStuckWith(input: {
   carrierName?: string | null;
 }): string {
   if (input.kind === "receipt") {
-    return input.courierName?.trim() || STUCK_COURIER_QUEUE;
+    return stuckPhrase(
+      PLACE_COURIER,
+      "مراجعة سند الاستلام",
+      input.courierName,
+    );
   }
 
+  const branch = branchPlace(input.opsBranchName);
+  const techName = techDisplayName(input.assignedTechnicianName);
+  const techAssigned = hasTechnicianAssignee(
+    input.assignedTechnicianName,
+    input.assignedTechnicianId,
+  );
   const status = normalizeLifecycleStatus(input.lifecycleStatus);
+
   switch (status) {
     case "received_at_branch":
+      return stuckPhrase(
+        branch,
+        "التعيين لفني متنقل أو الإرسال للصيانة",
+      );
+
     case "ready_to_send":
+    case "ready_to_ship":
+      return stuckPhrase(branch, "الإرسال لمركز الصيانة");
+
     case "excluded_from_shipment":
     case "excluded":
+      return stuckPhrase(branch, "إعادة الإدراج في الشحنة أو قرار الفرع");
+
     case "awaiting_customer":
+      return stuckPhrase(branch, "تسليم الجهاز للعميل");
+
     case "awaiting_branch_handover":
-      return branchStuckLabel(input.opsBranchName);
+      return stuckPhrase(branch, "تسليم الجهاز من الفرع");
 
     case "in_maintenance_at_branch":
-      return technicianStuckLabel(
-        input.assignedTechnicianName,
-        input.assignedTechnicianId,
-        { queueWhenEmpty: false },
+      return stuckPhrase(
+        branch,
+        techAssigned
+          ? "استكمال الصيانة الميدانية"
+          : "تعيين فني متنقل أو استكمال العمل",
+        techName,
       );
 
     case "awaiting_maintenance":
     case "at_service_center":
     case "received_at_warehouse":
-      return technicianStuckLabel(
-        input.assignedTechnicianName,
-        input.assignedTechnicianId,
-        { queueWhenEmpty: true },
+      return stuckPhrase(
+        PLACE_SERVICE_CENTER,
+        techAssigned
+          ? "بدء الفني في الصيانة"
+          : "أحد الفنيين للبدء في الصيانة",
+        techName,
       );
 
     case "in_maintenance":
     case "under_maintenance":
-      return technicianStuckLabel(
-        input.assignedTechnicianName,
-        input.assignedTechnicianId,
-        { queueWhenEmpty: false },
+      // Prefer «مركز الصيانة · جاري الصيانة» when no named tech yet.
+      if (techName) {
+        return stuckPhrase(PLACE_SERVICE_CENTER, "استكمال العمل", techName);
+      }
+      return stuckPhrase(
+        `${PLACE_SERVICE_CENTER} · جاري الصيانة`,
+        "تعيين فني أو استكمال العمل",
       );
 
     case "awaiting_manager_decision":
+      return stuckPhrase(
+        PLACE_SERVICE_CENTER,
+        "قرار مدير/مشرف الصيانة",
+      );
+
     case "maintenance_failed":
+      return stuckPhrase(
+        branch,
+        "قرار مدير/مشرف الصيانة بشأن تعذّر الإصلاح",
+      );
+
     case "ready_to_return":
-      return STUCK_MANAGER_QUEUE;
+      return stuckPhrase(
+        PLACE_SERVICE_CENTER,
+        "تجهيز الإرجاع للفرع",
+      );
 
     case "in_transit_to_service":
-      return transitStuckLabel({
+    case "handed_to_carrier":
+    case "in_shipping":
+      return transitStuckPhrase({
         courierName: input.courierName,
         carrierName: input.carrierName,
-        fallback: STUCK_COURIER_QUEUE,
+        waitingFor: "الوصول إلى مركز الصيانة",
+        fallbackPlace: PLACE_COURIER,
       });
 
     case "in_return_transit":
-      return transitStuckLabel({
+    case "returning_from_service":
+      return transitStuckPhrase({
         courierName: input.courierName,
         carrierName: input.carrierName,
-        fallback: branchStuckLabel(input.opsBranchName),
+        waitingFor: "الوصول إلى الفرع",
+        fallbackPlace: branch,
       });
 
     default:
-      return (
-        input.assignedTechnicianName?.trim() ||
-        branchStuckLabel(input.opsBranchName) ||
-        STUCK_UNKNOWN
+      if (techName) {
+        return stuckPhrase(PLACE_SERVICE_CENTER, "استكمال العمل", techName);
+      }
+      return stuckPhrase(
+        branch !== PLACE_BRANCH ? branch : PLACE_UNKNOWN,
+        "اتخاذ الإجراء التالي",
       );
   }
 }
@@ -229,31 +305,37 @@ function stuckWithForDeviceItem(
 ): string {
   const status = normalizeLifecycleStatus(item.device.lifecycleStatus);
 
-  if (status === "in_transit_to_service") {
+  if (
+    status === "in_transit_to_service" ||
+    status === "handed_to_carrier" ||
+    status === "in_shipping"
+  ) {
     const pickup = findOpenPickupForDevice(
       receipts,
       item.device.localId,
       "branch_to_center",
     );
     const batch = findActiveTransitBatch(batches, item.device, "to_service");
-    return transitStuckLabel({
+    return transitStuckPhrase({
       courierName: pickup?.assignedCourierName,
-      carrierName: batch?.carrier?.trim() || (batch ? STUCK_CARRIER_FALLBACK : null),
-      fallback: STUCK_COURIER_QUEUE,
+      carrierName: batch?.carrier?.trim() || (batch ? PLACE_CARRIER : null),
+      waitingFor: "الوصول إلى مركز الصيانة",
+      fallbackPlace: PLACE_COURIER,
     });
   }
 
-  if (status === "in_return_transit") {
+  if (status === "in_return_transit" || status === "returning_from_service") {
     const pickup = findOpenPickupForDevice(
       receipts,
       item.device.localId,
       "center_to_branch",
     );
     const batch = findActiveTransitBatch(batches, item.device, "return");
-    return transitStuckLabel({
+    return transitStuckPhrase({
       courierName: pickup?.assignedCourierName,
-      carrierName: batch?.carrier?.trim() || (batch ? STUCK_CARRIER_FALLBACK : null),
-      fallback: branchStuckLabel(item.request.opsBranchName),
+      carrierName: batch?.carrier?.trim() || (batch ? PLACE_CARRIER : null),
+      waitingFor: "الوصول إلى الفرع",
+      fallbackPlace: branchPlace(item.request.opsBranchName),
     });
   }
 
