@@ -69,6 +69,14 @@ jobs:
             URL="https://khjjfqqaeaeynnaizycq.supabase.co"
           fi
 
+          # Public VAPID is required at build time for the post-login enable banner.
+          # Without it the client intentionally cannot offer Notification.requestPermission.
+          if [ -z "$VAPID" ]; then
+            echo "::warning::NEXT_PUBLIC_VAPID_PUBLIC_KEY is empty. Web Push enable UI will show a setup hint instead of the browser permission prompt. Add Actions secret/variable NEXT_PUBLIC_VAPID_PUBLIC_KEY (public key only), or set it in .env.production, then rebuild."
+          else
+            echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY is set (length ${#VAPID})."
+          fi
+
           # Require classic anon JWT only. Short sb_publishable_* keys return 401.
           is_valid_anon_jwt() {
             local k="$1"

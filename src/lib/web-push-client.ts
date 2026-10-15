@@ -28,11 +28,50 @@ export function isWebPushConfigured(): boolean {
   return Boolean(getVapidPublicKey()) && isSupabaseConfigured() && !isDemoMode();
 }
 
+/** True when the public VAPID key was inlined at build time. */
+export function hasVapidPublicKey(): boolean {
+  return Boolean(getVapidPublicKey());
+}
+
+/**
+ * Arabic hint for why the enable UI is unavailable or what to do next.
+ * Empty string when the user can enable push normally (`default` / `granted`).
+ */
+export function getWebPushStatusMessage(state: WebPushSupportState = getWebPushSupportState()): string {
+  switch (state) {
+    case "no_vapid":
+      return "إشعارات المتصفح غير مفعّلة في هذا البناء: مفتاح VAPID العام ناقص. أضف NEXT_PUBLIC_VAPID_PUBLIC_KEY في GitHub Actions ثم أعد النشر.";
+    case "no_supabase":
+      return "إشعارات المتصفح تحتاج اتصال Supabase مضبوطاً في البناء.";
+    case "demo":
+      return "وضع العرض التجريبي لا يدعم إشعارات المتصفح.";
+    case "unsupported":
+      return "هذا المتصفح أو الجهاز لا يدعم إشعارات الدفع (أو الاتصال ليس عبر HTTPS).";
+    case "denied":
+      return "إذن الإشعارات مرفوض لهذا الموقع. امسح الحظر من إعدادات الموقع في المتصفح ثم أعد المحاولة.";
+    case "granted":
+      return "إذن الإشعارات مفعّل على هذا الجهاز.";
+    case "default":
+    default:
+      return "";
+  }
+}
+
+let warnedMissingVapid = false;
+
 export function getWebPushSupportState(): WebPushSupportState {
   if (typeof window === "undefined") return "unsupported";
   if (isDemoMode()) return "demo";
   if (!isSupabaseConfigured()) return "no_supabase";
-  if (!getVapidPublicKey()) return "no_vapid";
+  if (!getVapidPublicKey()) {
+    if (!warnedMissingVapid && typeof console !== "undefined") {
+      warnedMissingVapid = true;
+      console.warn(
+        "[arms] Web Push unavailable: NEXT_PUBLIC_VAPID_PUBLIC_KEY was empty at build time.",
+      );
+    }
+    return "no_vapid";
+  }
   if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     return "unsupported";
   }
@@ -40,6 +79,16 @@ export function getWebPushSupportState(): WebPushSupportState {
   if (permission === "denied") return "denied";
   if (permission === "granted") return "granted";
   return "default";
+}
+
+/** Clear the “later” dismiss so the bottom banner can appear again. */
+export function clearWebPushPromptDismissed() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PROMPT_DISMISSED_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function wasWebPushPromptDismissed(): boolean {

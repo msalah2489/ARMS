@@ -12,7 +12,9 @@ import {
 } from "@/lib/notifications-store";
 import { formatDate } from "@/lib/utils";
 import {
+  clearWebPushPromptDismissed,
   enableWebPushForUser,
+  getWebPushStatusMessage,
   getWebPushSupportState,
 } from "@/lib/web-push-client";
 import type { Profile } from "@/types/domain";
@@ -53,10 +55,13 @@ export function NotificationBell({ user }: { user: Profile }) {
   const items = listNotificationsForUser(user);
   const unread = countUnreadNotifications(user);
   const canOfferPush = pushState === "default";
+  const pushStatusHint =
+    pushState && pushState !== "default" ? getWebPushStatusMessage(pushState) : "";
 
   async function onEnablePush() {
     setPushBusy(true);
     setPushNote(null);
+    clearWebPushPromptDismissed();
     const result = await enableWebPushForUser(user);
     setPushBusy(false);
     setPushNote(result.ok ? "تم تفعيل إشعارات هذا الجهاز." : result.error);
@@ -143,6 +148,14 @@ export function NotificationBell({ user }: { user: Profile }) {
               >
                 {pushBusy ? "جاري التفعيل…" : "تفعيل إشعارات هذا الجهاز"}
               </button>
+            ) : null}
+            {!canOfferPush && pushStatusHint ? (
+              <p
+                className="mb-1.5 text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-200/90"
+                data-arms-web-push-status={pushState ?? undefined}
+              >
+                {pushStatusHint}
+              </p>
             ) : null}
             {pushNote ? (
               <p className="mb-1 text-[11px] text-ink-700/80 dark:text-sand-100/70">{pushNote}</p>
