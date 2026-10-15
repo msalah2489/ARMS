@@ -190,7 +190,11 @@ function applicationServerKeysMatch(
     const options = existing.options as PushSubscriptionOptions | undefined;
     const key = options?.applicationServerKey;
     if (!key) return true; // older engines — fall back to fingerprint / reuse
-    return bufferSourceToBase64Url(key) === bufferSourceToBase64Url(expected);
+    // Cast: TS DOM libs type Uint8Array buffer as ArrayBufferLike; BufferSource wants ArrayBuffer.
+    return (
+      bufferSourceToBase64Url(key) ===
+      bufferSourceToBase64Url(expected as BufferSource)
+    );
   } catch {
     return true;
   }
