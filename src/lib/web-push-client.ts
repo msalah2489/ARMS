@@ -332,9 +332,15 @@ export async function requestWebPushDelivery(notification: ArmsNotification): Pr
       body: JSON.stringify(body),
     });
 
-    let payload: { ok?: boolean; error?: string; sent?: number; skipped?: string } | null = null;
+    type SendWebPushResponse = {
+      ok?: boolean;
+      error?: string;
+      sent?: number;
+      skipped?: string;
+    };
+    let payload: SendWebPushResponse | null = null;
     try {
-      payload = (await response.json()) as typeof payload;
+      payload = (await response.json()) as SendWebPushResponse;
     } catch {
       payload = null;
     }
