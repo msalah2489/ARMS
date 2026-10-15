@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClickableImage, ImagePlaceholder } from "@/components/clickable-image";
+import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { LifecycleProgressStrip } from "@/components/lifecycle-progress";
 import { PageHeader } from "@/components/page-header";
 import { RequestReturnReasonModal } from "@/components/request-return-reason-modal";
 import { RequestTimeline } from "@/components/request-timeline";
 import { StatusBadge } from "@/components/status-badge";
-import { branchScopeId } from "@/lib/auth";
+import { branchScopeId, isBranchRole, isMaintenanceManagerRole } from "@/lib/auth";
 import {
   ASSIGNMENT_PATH_LABELS,
   deviceStatusLabel,
@@ -20,6 +21,7 @@ import {
   normalizeLifecycleStatus,
   withDevicePhotos,
 } from "@/lib/branch-store";
+import { ensureDeviceQrFields, isDeviceQrPrinted } from "@/lib/device-qr";
 import { getOpsServiceRequest } from "@/lib/ops-data";
 import {
   canCreateFollowUpRequest,
@@ -32,6 +34,7 @@ import { buildRequestTimeline, type TimelineEvent } from "@/lib/request-timeline
 import { readSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type {
+  DraftRequestDevice,
   MaintenanceRequestRecord,
   Profile,
   RequestReturnReason,
@@ -54,10 +57,18 @@ export function RequestDetailClient({ id }: { id: string }) {
   const [modalMode, setModalMode] = useState<"follow_up" | "reopen" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [qrDevice, setQrDevice] = useState<DraftRequestDevice | null>(null);
+  const [canPrintQr, setCanPrintQr] = useState(false);
 
   const refresh = useCallback(() => {
     const session = readSession();
     setUser(session);
+    setCanPrintQr(
+      Boolean(
+        session &&
+          (isBranchRole(session.role) || isMaintenanceManagerRole(session.role)),
+      ),
+    );
     const scope = branchScopeId(session);
     const opsRecord = getMaintenanceRequestById(id);
     if (scope && opsRecord && opsRecord.opsBranchId !== scope) {
@@ -353,6 +364,23 @@ export function RequestDetailClient({ id }: { id: string }) {
                         />
                       </div>
                     ) : null}
+                    {canPrintQr ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQrDevice(ensureDeviceQrFields(device))}
+                          className={
+                            isDeviceQrPrinted(device)
+                              ? "rounded-full border border-ink-900/15 px-3 py-1.5 text-xs dark:border-white/15"
+                              : "rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
+                          }
+                        >
+                          {isDeviceQrPrinted(device)
+                            ? "إعادة طباعة ملصق QR"
+                            : "طباعة ملصق QR"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 );
@@ -366,6 +394,20 @@ export function RequestDetailClient({ id }: { id: string }) {
         <div className="mt-6">
           <RequestTimeline events={timeline} title="الخط الزمني للطلب" />
         </div>
+      ) : null}
+
+      {record && qrDevice ? (
+        <DeviceQrPrintModal
+          open={Boolean(qrDevice)}
+          device={qrDevice}
+          requestId={record.id}
+          requirePrint={!isDeviceQrPrinted(qrDevice)}
+          onPrinted={() => {
+            setQrDevice(null);
+            refresh();
+          }}
+          onClose={() => setQrDevice(null)}
+        />
       ) : null}
 
       <RequestReturnReasonModal

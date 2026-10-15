@@ -338,10 +338,10 @@ function ReceivingDevicesTable({
                   {row.qrPrinted ? (
                     <button
                       type="button"
-                      className="text-xs text-aroma-700 underline"
+                      className="rounded-full border border-ink-900/15 px-3 py-1.5 text-xs"
                       onClick={() => onOpenQr(row.requestId, row.device)}
                     >
-                      مطبوع — إعادة
+                      إعادة طباعة ملصق QR
                     </button>
                   ) : (
                     <button
@@ -349,7 +349,7 @@ function ReceivingDevicesTable({
                       className="rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
                       onClick={() => onOpenQr(row.requestId, row.device)}
                     >
-                      طباعة QR
+                      طباعة ملصق QR
                     </button>
                   )}
                 </td>

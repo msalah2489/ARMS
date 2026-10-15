@@ -104,9 +104,11 @@ export function DeviceDetailClient({ id }: { id: string }) {
               <button
                 type="button"
                 onClick={() => setQrOpen(true)}
-                className="rounded-full border border-ink-900/15 px-3 py-1.5 text-xs dark:border-white/15"
+                className="rounded-full border border-ink-900/15 bg-white px-4 py-2 text-sm text-ink-900 dark:border-white/15 dark:bg-ink-950 dark:text-sand-50"
               >
-                {isDeviceQrPrinted(draftDevice) ? "إعادة طباعة QR" : "طباعة QR"}
+                {isDeviceQrPrinted(draftDevice)
+                  ? "إعادة طباعة ملصق QR"
+                  : "طباعة ملصق QR"}
               </button>
             ) : null}
             <StatusBadge value={lifecycle || device.lifecycleStatus || device.status} />

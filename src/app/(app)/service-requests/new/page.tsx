@@ -455,13 +455,7 @@ function NewServiceRequestContent() {
                         {isDeviceQrPrinted(device) ? (
                           <span className="text-aroma-700 dark:text-aroma-200">مطبوع</span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => setQrDevice(ensureDeviceQrFields(device))}
-                            className="text-amber-800 underline dark:text-amber-200"
-                          >
-                            طباعة مطلوبة
-                          </button>
+                          <span className="text-amber-800 dark:text-amber-200">مطلوب</span>
                         )}
                       </td>
                       <td className="px-2 py-3 dark:text-sand-100">
@@ -472,9 +466,15 @@ function NewServiceRequestContent() {
                           <button
                             type="button"
                             onClick={() => setQrDevice(ensureDeviceQrFields(device))}
-                            className="text-ink-900 underline dark:text-sand-50"
+                            className={
+                              isDeviceQrPrinted(device)
+                                ? "rounded-full border border-ink-900/15 px-3 py-1.5 text-xs dark:border-white/15"
+                                : "rounded-full bg-amber-600 px-3 py-1.5 text-xs text-white"
+                            }
                           >
-                            QR
+                            {isDeviceQrPrinted(device)
+                              ? "إعادة طباعة ملصق QR"
+                              : "طباعة ملصق QR"}
                           </button>
                           <button
                             type="button"
@@ -609,7 +609,7 @@ function NewServiceRequestContent() {
       <DeviceQrPrintModal
         open={Boolean(qrDevice)}
         device={qrDevice}
-        requirePrint
+        requirePrint={qrDevice ? !isDeviceQrPrinted(qrDevice) : true}
         onPrinted={(printed) => {
           setDevices((prev) =>
             prev.map((item) => (item.localId === printed.localId ? printed : item)),
@@ -621,8 +621,13 @@ function NewServiceRequestContent() {
           }
         }}
         onClose={() => {
+          // First print is gated; reprint (or later reopen) can be closed freely.
           if (qrDevice && !isDeviceQrPrinted(qrDevice)) return;
           setQrDevice(null);
+          if (pendingAddAnother) {
+            setPendingAddAnother(false);
+            setModalOpen(true);
+          }
         }}
       />
     </div>
