@@ -4,7 +4,6 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { RoleGuard } from "@/components/role-guard";
 import { PageHeader } from "@/components/page-header";
-import { RoleScreenGuide } from "@/components/role-screen-guide";
 import { TechnicianWorkModal } from "@/components/technician-work-modal";
 import {
   deviceStatusLabel,
@@ -159,8 +158,6 @@ function TechnicianWorkContent() {
             : "أجهزة مركز الصيانة بحالة «بانتظار الصيانة». إن وُجد جهاز عاجل يظهر العاجل فقط. عند بدء العمل يختفي الجهاز من طابور الفنيين الآخرين."
         }
       />
-
-      <RoleScreenGuide screen="technician_work" role={user?.role} />
 
       {claimError ? <p className="text-sm text-rose-700">{claimError}</p> : null}
       {actionMessage ? <p className="text-sm text-aroma-700">{actionMessage}</p> : null}

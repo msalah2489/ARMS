@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeviceQrPrintModal } from "@/components/device-qr-print-modal";
 import { PageHeader } from "@/components/page-header";
 import { RoleGuard } from "@/components/role-guard";
-import { RoleScreenGuide } from "@/components/role-screen-guide";
 import { SortableTh } from "@/components/sortable-th";
 import {
   deviceStatusLabel,
@@ -169,7 +168,6 @@ function BranchReceivingContent() {
           </Link>
         }
       />
-      <RoleScreenGuide screen="branch_receiving" role={user.role} />
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="text-sm text-aroma-700">{message}</p> : null}
       {sections.atBranch.some((row) => !row.qrPrinted) ? (
