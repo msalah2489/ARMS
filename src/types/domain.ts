@@ -7,6 +7,8 @@ export type AppRole =
   | "mobile_technician"
   /** مندوب الاستلام — courier handheld receipt forms */
   | "pickup_courier"
+  // CS-FEATURE — خدمة العملاء (isolatable; see docs/CUSTOMER_SERVICE_FEATURE.md)
+  | "customer_service"
   // legacy roles still present in older data
   | "manager"
   | "supervisor"
@@ -200,7 +202,9 @@ export type AssignableUserRole =
   | "branch"
   | "technician"
   | "mobile_technician"
-  | "pickup_courier";
+  | "pickup_courier"
+  // CS-FEATURE
+  | "customer_service";
 
 export type ManagedUser = {
   id: string;

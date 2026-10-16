@@ -9,6 +9,8 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   maintenance_supervisor: "مشرف صيانة",
   mobile_technician: "فني متنقل",
   pickup_courier: "مندوب الاستلام",
+  // CS-FEATURE
+  customer_service: "خدمة العملاء",
   manager: "مدير نظام",
   supervisor: "مشرف صيانة",
   branch_employee: "فرع",
@@ -68,6 +70,13 @@ export const DEMO_USERS: Array<{
     password: "demo",
     fullName: "فهد مندوب الاستلام",
     role: "pickup_courier",
+  },
+  // CS-FEATURE — demo CS account (password matches other demos)
+  {
+    email: "cs@arms.local",
+    password: "demo",
+    fullName: "ليان خدمة العملاء",
+    role: "customer_service",
   },
 ];
 
@@ -139,6 +148,8 @@ export function homePathForRole(role: AppRole): string {
     return "/technician/work";
   }
   if (normalized === "pickup_courier") return "/courier/receipts";
+  // CS-FEATURE
+  if (normalized === "customer_service") return "/customer-service";
   if (normalized === "maintenance_manager" || normalized === "maintenance_supervisor") {
     return "/maintenance/shipping";
   }

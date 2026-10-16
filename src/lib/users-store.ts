@@ -32,6 +32,8 @@ export const ASSIGNABLE_ROLE_LABELS: Record<AssignableUserRole, string> = {
   technician: "فني",
   mobile_technician: "فني متنقل",
   pickup_courier: "مندوب الاستلام",
+  // CS-FEATURE
+  customer_service: "خدمة العملاء",
 };
 
 export const ASSIGNABLE_ROLES = Object.keys(ASSIGNABLE_ROLE_LABELS) as AssignableUserRole[];
@@ -122,6 +124,20 @@ const SEED_USERS: Array<Omit<ManagedUser, "createdAt" | "updatedAt" | "permissio
     email: "courier@arms.local",
     mobile: "0500000007",
     role: "pickup_courier",
+    opsBranchId: null,
+    opsBranchName: null,
+    password: "demo",
+    isActive: true,
+    isArchived: false,
+  },
+  // CS-FEATURE
+  {
+    id: "cs-local",
+    fullName: "ليان خدمة العملاء",
+    username: "cs",
+    email: "cs@arms.local",
+    mobile: "0500000008",
+    role: "customer_service",
     opsBranchId: null,
     opsBranchName: null,
     password: "demo",

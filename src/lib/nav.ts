@@ -20,6 +20,7 @@ import {
   Users,
   Wrench,
   ClipboardSignature,
+  Headphones,
   type LucideIcon,
 } from "lucide-react";
 
@@ -184,6 +185,31 @@ const COURIER_NAV: NavItem[] = [
   },
 ];
 
+/** CS-FEATURE — Customer Service lane only */
+const CUSTOMER_SERVICE_NAV: NavItem[] = [
+  {
+    href: "/customer-service",
+    labelKey: "nav.csHome",
+    icon: Headphones,
+    roles: ["customer_service"],
+    permission: "login",
+  },
+  {
+    href: "/customer-service/diagnostic",
+    labelKey: "nav.csDiagnostic",
+    icon: Wrench,
+    roles: ["customer_service"],
+    permission: "login",
+  },
+  {
+    href: "/settings",
+    labelKey: "nav.settings",
+    icon: Settings,
+    roles: ["customer_service"],
+    permission: "edit_own_profile",
+  },
+];
+
 /** Admin / managers / supervisors */
 const ADMIN_NAV: NavItem[] = [
   {
@@ -339,6 +365,7 @@ export const NAV_ITEMS: NavItem[] = [
   ...BRANCH_NAV,
   ...TECHNICIAN_NAV,
   ...COURIER_NAV,
+  ...CUSTOMER_SERVICE_NAV, // CS-FEATURE
   ...ADMIN_NAV,
 ];
 
@@ -365,6 +392,11 @@ export function navForRole(role: AppRole) {
 
   if (normalized === "pickup_courier") {
     return COURIER_NAV;
+  }
+
+  // CS-FEATURE
+  if (normalized === "customer_service") {
+    return CUSTOMER_SERVICE_NAV;
   }
 
   return ADMIN_NAV.filter((item) => item.roles.includes(role) || item.roles.includes(normalized));

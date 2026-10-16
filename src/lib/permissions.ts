@@ -252,6 +252,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AssignableUserRole, PermissionKey[
     "view_devices",
     "view_requests",
   ]),
+
+  // CS-FEATURE — login + profile only for diagnostic lane
+  customer_service: uniq([...GENERAL]),
 };
 
 export function isPermissionKey(value: unknown): value is PermissionKey {
