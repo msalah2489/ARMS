@@ -52,10 +52,6 @@ const messagesAr = {
   "nav.courierReceipts": "نماذج الاستلام",
   "nav.courierHandover": "تسليم للصيانة (مندوب)",
   "nav.courierHandoverApprove": "اعتماد تسليم المندوب",
-  // CS-FEATURE
-  "nav.csHome": "خدمة العملاء",
-  "nav.csDiagnostic": "تشخيص: الجهاز لا يعمل",
-
   "dashboard.welcome": "مرحبًا، {name}",
   "dashboard.loading": "جاري التحميل…",
   "dashboard.techDescription": "لوحة الفني — نظرة على أجهزة قسم الصيانة المتاحة لك",
@@ -500,10 +496,6 @@ const messagesEn: Record<MessageKey, string> = {
   "nav.courierReceipts": "Pickup receipts",
   "nav.courierHandover": "Handover to maintenance",
   "nav.courierHandoverApprove": "Approve courier handover",
-  // CS-FEATURE
-  "nav.csHome": "Customer service",
-  "nav.csDiagnostic": "Diagnostic: device not working",
-
   "dashboard.welcome": "Welcome, {name}",
   "dashboard.loading": "Loading…",
   "dashboard.techDescription": "Technician board — maintenance devices available for you",
