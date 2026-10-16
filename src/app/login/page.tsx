@@ -8,6 +8,8 @@ import { safeNextPath } from "@/lib/device-qr";
 import { readSession, signIn } from "@/lib/session";
 import { hydrateOpsFromSupabase } from "@/lib/supabase/hydrate";
 import {
+  ensureCustomerServiceSeedUser,
+  getCustomerServiceLoginShortcut,
   listLoginShortcutUsers,
   listManagedUsersLocal,
   recoverLocalUsersToSupabase,
@@ -26,9 +28,12 @@ function LoginPageContent() {
   const [revealPassword, setRevealPassword] = useState(false);
   // TEMPORARY: visible account shortcuts for easier login during setup — remove later.
   const [accounts, setAccounts] = useState<ManagedUser[]>([]);
+  // CS-FEATURE — mirror other role buttons: show live username/password from cache.
+  const [csShortcut, setCsShortcut] = useState(() => getCustomerServiceLoginShortcut());
 
   const refreshAccounts = () => {
     setAccounts(listLoginShortcutUsers());
+    setCsShortcut(getCustomerServiceLoginShortcut());
   };
 
   useEffect(() => {
@@ -48,6 +53,8 @@ function LoginPageContent() {
       }
 
       await hydrateOpsFromSupabase();
+      // CS-FEATURE — Pages/cloud may lack cs in app_users; seed + push if missing.
+      ensureCustomerServiceSeedUser();
       refreshAccounts();
     })();
 
@@ -84,7 +91,7 @@ function LoginPageContent() {
               : "سجّل الدخول بحساب موجود في قاعدة البيانات، أو اختر من القائمة المؤقتة أدناه."}
           </p>
 
-          {/* CS-FEATURE — dedicated demo shortcut (always visible; not buried in scroll grid) */}
+          {/* CS-FEATURE — dedicated shortcut (fills live password from app_users when present) */}
           <div className="mt-6">
             <p className="mb-2 text-xs text-ink-700/50 dark:text-sand-100/50">
               اختصار خدمة العملاء
@@ -92,18 +99,20 @@ function LoginPageContent() {
             <button
               type="button"
               onClick={() => {
-                setEmail("cs");
-                setPassword("demo");
+                const creds = getCustomerServiceLoginShortcut();
+                setCsShortcut(creds);
+                setEmail(creds.username);
+                setPassword(creds.password);
                 setError(null);
               }}
               className="w-full rounded-xl border border-aroma-400/40 bg-white px-3 py-2.5 text-right text-sm hover:border-aroma-400 dark:border-aroma-400/30 dark:bg-ink-900 dark:hover:border-aroma-400 sm:max-w-xs"
             >
               <span className="block font-medium dark:text-sand-50">خدمة العملاء</span>
               <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
-                cs · {ROLE_LABELS.customer_service}
+                {csShortcut.username} · {ROLE_LABELS.customer_service}
               </span>
               <span className="mt-0.5 block text-[11px] text-aroma-700/80 dark:text-aroma-200/80">
-                كلمة المرور: demo
+                كلمة المرور: {csShortcut.password}
               </span>
             </button>
           </div>

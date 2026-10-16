@@ -40,6 +40,7 @@ import { readSession, writeSession } from "@/lib/session";
 import {
   applyRemoteManagedUsers,
   ensureBootstrapAdminIfEmpty,
+  ensureCustomerServiceSeedUser,
   findManagedUserForSession,
   listManagedUsersLocal,
   managedUserToProfile,
@@ -302,6 +303,9 @@ async function runHydratePull(): Promise<boolean> {
       } else {
         applyRemoteManagedUsers(remoteUsers);
       }
+
+      // CS-FEATURE — Pages often has real ops users but no cs row; add + upsert if missing.
+      ensureCustomerServiceSeedUser();
     }
 
     const remoteShippingHas = remoteBatches.length > 0 || remoteAudit.length > 0;

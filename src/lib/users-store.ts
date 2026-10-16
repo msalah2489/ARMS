@@ -300,6 +300,17 @@ export function getBootstrapAdminUser(): ManagedUser {
   });
 }
 
+/** CS-FEATURE — built-in CS seed row (username cs / password demo). */
+export function getCustomerServiceSeedUser(): ManagedUser {
+  const seed = SEED_USERS.find((item) => item.id === "cs-local") ?? SEED_USERS[SEED_USERS.length - 1];
+  const now = new Date().toISOString();
+  return normalizeUser({
+    ...seed,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 /**
  * Keep at least one loginable account when local cache is empty.
  * Writes bootstrap admin to localStorage only — does NOT push to cloud.
@@ -312,6 +323,36 @@ export function ensureBootstrapAdminIfEmpty(): ManagedUser[] {
   const admin = getBootstrapAdminUser();
   replaceManagedUsers([admin]);
   return [admin];
+}
+
+/**
+ * CS-FEATURE — ensure the CS demo account exists in local cache (and push when cloud).
+ * Pages login reads app_users only; without this row, the cs/demo shortcut fails.
+ * Does not overwrite an existing user with the same id/username/email.
+ */
+export function ensureCustomerServiceSeedUser(): ManagedUser {
+  const seed = getCustomerServiceSeedUser();
+  const existing = listManagedUsersLocal();
+  const found =
+    existing.find((user) => user.id === seed.id) ??
+    existing.find((user) => user.username.toLowerCase() === seed.username.toLowerCase()) ??
+    existing.find((user) => user.email.toLowerCase() === seed.email.toLowerCase()) ??
+    null;
+  if (found) return found;
+
+  const merged = [...existing, seed];
+  replaceManagedUsers(merged);
+  schedulePersist(merged);
+  return seed;
+}
+
+/** CS-FEATURE — credentials for the login shortcut (prefer live app_users password). */
+export function getCustomerServiceLoginShortcut(): { username: string; password: string } {
+  const ensured = ensureCustomerServiceSeedUser();
+  return {
+    username: ensured.username || "cs",
+    password: ensured.password || "demo",
+  };
 }
 
 /** Active, non-archived users for temporary login shortcuts. */
