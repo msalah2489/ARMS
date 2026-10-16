@@ -6,6 +6,7 @@
 
 - Role: `customer_service` (خدمة العملاء)
 - Demo login (demo mode / seed users): username `cs` / email `cs@arms.local`, password `demo`
+- Login page shortcut: button **خدمة العملاء** on `/login` fills `cs` / `demo` (see `src/app/login/page.tsx`)
 - Home: `/customer-service`
 - Diagnostic wizard: `/customer-service/diagnostic` — complaint «الجهاز لا يعمل» with probability %
 - Data-driven tree under `src/lib/cs-diagnostic/`
@@ -28,6 +29,7 @@
 - `src/lib/users-store.ts` — assignable label + seed user
 - `src/lib/nav.ts` — CS nav lane
 - `src/lib/i18n/messages.ts` — `nav.csDiagnostic` (ar + en)
+- `src/app/login/page.tsx` — خدمة العملاء login shortcut button
 - `.env.example` — `NEXT_PUBLIC_CS_DIAGNOSTIC` line (optional)
 
 ## How to remove completely / كيفية الإزالة بالكامل (5–10 steps)
@@ -35,7 +37,7 @@
 1. Delete folder `src/lib/cs-diagnostic/`
 2. Delete folder `src/components/customer-service/`
 3. Delete folder `src/app/(app)/customer-service/`
-4. In shared files, search for `CS-FEATURE` and remove those marked lines/blocks (role union entries, demo user, nav lane, i18n keys, seed user, permissions entry).
+4. In shared files, search for `CS-FEATURE` and remove those marked lines/blocks (role union entries, demo user, nav lane, i18n keys, seed user, permissions entry, login shortcut).
 5. Remove `customer_service` from `AppRole` and `AssignableUserRole` in `src/types/domain.ts`.
 6. Remove CS demo/seed user (`cs` / `cs@arms.local`) from `src/lib/auth.ts` and `src/lib/users-store.ts`.
 7. Remove `CUSTOMER_SERVICE_NAV` / `customer_service` branch from `src/lib/nav.ts` and `navForRole`.

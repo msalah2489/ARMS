@@ -84,6 +84,30 @@ function LoginPageContent() {
               : "سجّل الدخول بحساب موجود في قاعدة البيانات، أو اختر من القائمة المؤقتة أدناه."}
           </p>
 
+          {/* CS-FEATURE — dedicated demo shortcut (always visible; not buried in scroll grid) */}
+          <div className="mt-6">
+            <p className="mb-2 text-xs text-ink-700/50 dark:text-sand-100/50">
+              اختصار خدمة العملاء
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail("cs");
+                setPassword("demo");
+                setError(null);
+              }}
+              className="w-full rounded-xl border border-aroma-400/40 bg-white px-3 py-2.5 text-right text-sm hover:border-aroma-400 dark:border-aroma-400/30 dark:bg-ink-900 dark:hover:border-aroma-400 sm:max-w-xs"
+            >
+              <span className="block font-medium dark:text-sand-50">خدمة العملاء</span>
+              <span className="text-xs text-ink-700/60 dark:text-sand-100/60">
+                cs · {ROLE_LABELS.customer_service}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-aroma-700/80 dark:text-aroma-200/80">
+                كلمة المرور: demo
+              </span>
+            </button>
+          </div>
+
           {/* TEMPORARY: account picker for convenience — remove when accounts are known. */}
           {accounts.length > 0 ? (
             <div className="mt-6">
